@@ -26,7 +26,7 @@ from gi.repository import Gio, GLib  # noqa: E402
 
 from . import api, events, outside  # noqa: E402
 
-APP_ID = "net.meshsat.Bridge"
+APP_ID = os.environ.get("MESHSAT_APP_ID", "net.meshsat.Bridge")  # a test instance has its own
 APP_PATH = "/net/meshsat/Bridge"
 APP_NAME = "MeshSat"
 STATUS_NAME = "net.meshsat.Status"

@@ -35,15 +35,26 @@ class App:
             path = os.path.join(self.work, "xdg", name.split("_")[1].lower())
             os.makedirs(path, exist_ok=True)
             env[name] = path
-        hardware = os.path.join(self.work, "hardware.json")
-        with open(hardware, "w", encoding="utf-8") as handle:
-            json.dump(self.hardware, handle)
-        status = os.path.join(self.work, "status.json")
-        if not os.path.exists(status):
-            with open(status, "w", encoding="utf-8") as handle:
-                json.dump({"radio": "ok", "message": "The radio answers."}, handle)
+        if self.hardware == "real":
+            # A live case: the device's own verdict, the watchdog's own file, the units as they are.
+            hardware, status = "/run/meshsat/hardware.json", "/run/meshsat-node/status"
+        else:
+            hardware = os.path.join(self.work, "hardware.json")
+            with open(hardware, "w", encoding="utf-8") as handle:
+                json.dump(self.hardware, handle)
+            status = os.path.join(self.work, "status.json")
+            if not os.path.exists(status):
+                with open(status, "w", encoding="utf-8") as handle:
+                    json.dump({"radio": "ok", "message": "The radio answers."}, handle)
+        units = self.units
+        if units == "real":
+            states = []
+            for unit in ("meshtasticd.service", "meshsat-bridge.service", "meshsat-radio-watch.timer"):
+                state = subprocess.run(["systemctl", "is-active", unit], capture_output=True, text=True, timeout=5).stdout.strip() or "inactive"
+                states.append(f"{unit}={state}")
+            units = ",".join(states)
         env.update({"MESHSAT_APP_ID": self.app_id, "MESHSAT_APP_TEST": "1", "MESHSAT_APP_BRIDGE": self.bridge_url, "MESHSAT_APP_TRACE": self.trace_path,
-                    "MESHSAT_APP_UNITS": self.units, "MESHSAT_APP_HARDWARE": hardware, "MESHSAT_APP_STATUS": status, "MESHSAT_APP_POLL": str(self.poll),
+                    "MESHSAT_APP_UNITS": units, "MESHSAT_APP_HARDWARE": hardware, "MESHSAT_APP_STATUS": status, "MESHSAT_APP_POLL": str(self.poll),
                     "PYTHONPATH": self.app_dir, "GTK_A11Y": "atspi", "GSK_RENDERER": os.environ.get("GSK_RENDERER", "cairo"), "LC_ALL": "C.UTF-8", "TZ": os.environ.get("TZ", "UTC")})
         env.update(self.extra_env)
         return env

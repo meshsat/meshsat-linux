@@ -36,6 +36,11 @@
   </recommends>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.5.1" date="2026-09-28">
+      <description>
+        <p>The foundations under every screen and the faults of 0.5.0 fixed: a text addressed to a node no longer opens the Satellite chat; the lanes no longer keep a modem, a SIM or a Hub while the Bridge is down; opening Safety no longer resets the check-in timer; no call to the Bridge holds the screen; the hold-to-send bar asks first when activated by a screen reader; singular and plural as Android's. An end-to-end test harness runs the app on the phone against a scripted Bridge, and a parity ledger measures the distance to MeshSat Android. An amd64 package for desktops.</p>
+      </description>
+    </release>
     <release version="0.5.0" date="2026-09-28">
       <description>
         <p>MeshSat outside its window: notifications for texts that arrive, messages that did not go and an SOS in progress; the satellite signal as a notification kept up to date; on Phosh a MeshSat tile among the quick settings and a widget on the lock screen; a tray icon where the shell has a tray.</p>
