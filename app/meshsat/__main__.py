@@ -5,6 +5,7 @@ and the few things the screens ask of it: push, pop, toast, copy, open a lane, p
 import json
 import os
 import sys
+import time
 
 import gi
 
@@ -17,7 +18,8 @@ from .home import HomeScreen  # noqa: E402
 from .mapview import MapScreen  # noqa: E402
 from .messages import ChatScreen, MessagesScreen  # noqa: E402
 from .people import PeopleScreen  # noqa: E402
-from .setup import (AboutScreen, AdvancedScreen, HubScreen, IntegrationsScreen, MapsScreen, MessagingScreen, NodeScreen, PassesScreen, RadioScreen,  # noqa: E402
+from .passes import PassesScreen  # noqa: E402
+from .setup import (AboutScreen, AdvancedScreen, HubScreen, IntegrationsScreen, MapsScreen, MessagingScreen, NodeScreen, RadioScreen,  # noqa: E402
                     SafetyScreen, SatelliteScreen, SetupScreen, utc_clock)
 from .widgets import Banner, Filtered, KeyValue, NavBar, StatusStrip, ago, filled_button, outlined_button, text  # noqa: E402
 
@@ -57,7 +59,55 @@ class MeshSatApp(Adw.Application):
         Adw.Application.do_startup(self)
         Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK)
         theme.apply()
-        self.night = bool(self.prefs().get("night", False))
+        prefs = self.prefs()
+        self.night = bool(prefs.get("night", False))
+        entered = prefs.get("position")
+        if isinstance(entered, list) and len(entered) == 2:
+            self.state.entered = (float(entered[0]), float(entered[1]))
+        self.locate()
+
+    # The phone's own position, as Android asks the phone for its GPS: geoclue, which asks the
+    # user once (Phosh's location dialog) and follows the Location switch in Settings.
+    def locate(self) -> None:
+        try:
+            gi.require_version("Geoclue", "2.0")
+            from gi.repository import Geoclue  # noqa: PLC0415
+        except (ValueError, ImportError):
+            self.state.location_hint = "Location needs geoclue (gir1.2-geoclue-2.0)."
+            return
+        self.geoclue = None
+        Geoclue.Simple.new(APP_ID, Geoclue.AccuracyLevel.EXACT, None, self.on_located, Geoclue)
+
+    def on_located(self, source, result, Geoclue) -> None:
+        try:
+            self.geoclue = Geoclue.Simple.new_finish(result)
+        except GLib.Error as error:
+            message = str(error.message)
+            if "disabled" in message.lower():
+                self.state.location_hint = "Location is off for this phone: Settings > Privacy > Location Services, then allow MeshSat."
+            elif "denied" in message.lower() or "not allowed" in message.lower():
+                self.state.location_hint = "Location was not allowed for MeshSat: Settings > Privacy > Location Services."
+            else:
+                self.state.location_hint = f"No location service: {message}"
+            return
+        self.geoclue.connect("notify::location", lambda *_: self.on_fix())
+        self.on_fix()
+
+    def on_fix(self) -> None:
+        location = self.geoclue.get_location() if self.geoclue else None
+        if location is None:
+            return
+        lat, lon = location.get_property("latitude"), location.get_property("longitude")
+        if lat == 0 and lon == 0:
+            return
+        self.state.phone = (lat, lon, location.get_property("accuracy"), time.time())
+        self.state.location_hint = ""
+        if self.window is not None:
+            self.on_state(self.state)
+
+    def set_entered_position(self, lat: float, lon: float) -> None:
+        self.state.entered = (lat, lon)
+        self.save_prefs(position=[lat, lon])
 
     def do_activate(self):
         if self.window is not None:
@@ -291,7 +341,7 @@ class MeshSatApp(Adw.Application):
             self.strip.set_lane("mesh", "off")
         hub = s.hub or {}
         self.strip.set_lane("hub", "working" if hub.get("bridge_id") else "trying" if hub.get("url") else "off")
-        self.strip.set_lane("location", "working" if own.get("latitude") else "off")
+        self.strip.set_lane("location", "working" if s.position() else "off")
 
         sos = s.sos or {}
         if sos.get("active"):

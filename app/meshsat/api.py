@@ -144,6 +144,30 @@ class State:
         self.watchdog = {}
         self.polled_at = 0.0
         self.unreachable_since = None  # when the Bridge lost the node, for the banner
+        # Where this phone is, as Android's LocationFixes: geoclue's fix (lat, lon, accuracy_m, at),
+        # a position typed in (lat, lon), and what to tell the user when there is neither.
+        self.phone = None
+        self.entered = None
+        self.location_hint = ""
+
+    def position(self):
+        """(latitude, longitude, source) for the passes and the map: the phone's fix first, then
+        the node's position (a fixed one included), then the one typed in."""
+        override = os.environ.get("MESHSAT_APP_POSITION", "")
+        if override:
+            try:
+                lat, lon = (float(v) for v in override.split(",")[:2])
+                return lat, lon, "MESHSAT_APP_POSITION"
+            except ValueError:
+                pass
+        if self.phone:
+            return self.phone[0], self.phone[1], "GPS" if (self.phone[2] or 1e9) <= 50 else "Network"
+        own = self.own_node()
+        if own and own.get("latitude") and own.get("longitude"):
+            return own["latitude"], own["longitude"], "your node"
+        if self.entered:
+            return self.entered[0], self.entered[1], "the position you entered"
+        return None
 
     # What the Android app calls the lanes.
     def mesh_connected(self) -> bool:

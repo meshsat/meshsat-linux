@@ -9,6 +9,7 @@ from gi.repository import GLib, Gtk
 
 from . import __version__ as VERSION
 from . import api, theme
+from .passes import PassesScreen
 from .widgets import Card, Chip, KeyValue, NavRow, SubHeader, clear, filled_button, group_title, hscroll, outlined_button, page, scroller, spacer, text, text_button, when
 
 # Meshtastic's LoRa config, as the Bridge relays it: protobuf field numbers of Config.LoRaConfig.
@@ -184,36 +185,6 @@ class SatelliteScreen(Page):
         for k, v in (("Node", "Connected" if s.mesh_connected() else "Not connected"), ("Modem", "Ready" if modem.get("connected") else "None"),
                      ("Radio", s.watchdog.get("message", "no word yet")), ("Last reset", b.get("radio_last_reset_reason") or "-")):
             self.health.append(KeyValue(k, v))
-
-
-class PassesScreen(Page):
-    def __init__(self, app):
-        super().__init__(app, "Satellite passes")
-        card = self.card()
-        self.banner = text("Next pass", "title-medium", theme.IRIDIUM)
-        card.append(self.banner)
-        self.detail = text("Position from your node is needed to predict passes.", "body-medium", theme.TEXT_SECONDARY, wrap=True)
-        card.append(self.detail)
-        self.list_card = self.card("Every pass in the window")
-        self.rows = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(4))
-        self.list_card.append(self.rows)
-        self.update(app.state)
-
-    def update(self, s: api.State) -> None:
-        own = s.own_node() or {}
-        clear(self.rows)
-        if not own.get("latitude"):
-            self.detail.set_text("Position from your node is needed to predict passes. Waiting for a position.")
-            return
-        passes = api.get(f"/api/iridium/passes?lat={own['latitude']}&lon={own['longitude']}&hours=6") or {}
-        items = passes.get("passes") or []
-        if not items:
-            self.detail.set_text("No pass data yet.")
-            return
-        first = items[0]
-        self.detail.set_text(f"{first.get('satellite', 'Iridium')} at {when(first.get('aos'))}, {first.get('duration_min', 0):.0f} min, peak {first.get('peak_elev_deg', 0):.0f}°")
-        for p in items[:12]:
-            self.rows.append(KeyValue(when(p.get("aos")), f"{p.get('satellite', '')}, {p.get('duration_min', 0):.0f} min, peak {p.get('peak_elev_deg', 0):.0f}°", mono=True))
 
 
 class HubScreen(Page):
