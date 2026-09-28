@@ -36,6 +36,11 @@
   </recommends>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.3.1" date="2026-09-28">
+      <description>
+        <p>The name of a mesh node: "Node !id" until the phone has heard its NodeInfo, as on the other apps; a name heard once is kept across Bridge restarts; a node that has not told its name is asked again on the cadence its firmware accepts. New message lists the nodes heard recently.</p>
+      </description>
+    </release>
     <release version="0.3.0" date="2026-09-28">
       <description>
         <p>SMS as on the other apps: the lane on Home, SMS chats, texts to a number, Setup > SMS, and emergency contacts under Safety who get the SOS by SMS from the phone's own SIM. The Bridge takes the modem from ModemManager; the wordmark is drawn sharp.</p>

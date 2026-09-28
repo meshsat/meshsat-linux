@@ -575,6 +575,11 @@ class NodeLogScreen(Page):
             out = subprocess.run(["journalctl", "-u", "meshtasticd", "-n", "80", "--no-pager", "-o", "cat"], capture_output=True, text=True, timeout=5).stdout
         except (OSError, subprocess.SubprocessError):
             out = "Cannot read the node's log."
+        # The app's own asks for the name of a node the phone has no NodeInfo from.
+        asks = self.app.state.name_requests
+        if asks:
+            lines = [f"{when(a['time'])} asked {a['node']} for its name: {a['outcome']}" for a in asks[-20:]]
+            out = (out or "").rstrip() + "\n\n" + "\n".join(lines)
         self.log.set_text(out or "No lines yet.")
         return self.get_root() is not None
 
