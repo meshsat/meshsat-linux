@@ -2,9 +2,9 @@
 
 MeshSat Android is the reference, pinned at `v2.19.4`. One row per screen, tab, card, dialog, banner and notification of the Android app; a row is done when the Linux app has it, in Android's words, and a test proves it. Kept by `tools/parity-check.py` from `tests/parity/ledger.json`; the words by `tools/android-strings.py`.
 
-**Rows:** 108: 16 missing, 19 partial, 21 built, 42 verified, 8 excluded, 2 blocked.
+**Rows:** 114: 12 missing, 18 partial, 20 built, 53 verified, 9 excluded, 2 blocked.
 
-**Words:** 742 of 1410 readable strings of Android's `ui/` and `sos/` are in the Linux sources, 0 excluded with a reason, 668 still to port.
+**Words:** 837 of 1410 readable strings of Android's `ui/` and `sos/` are in the Linux sources, 0 excluded with a reason, 573 still to port.
 
 States: `missing` (not there), `partial` (some of it), `built` (there, untested), `verified` (there, in Android's words, with a test that ran green on the phone), `excluded` (not ported, with the reason), `blocked` (built and tested against the scripted Bridge, waiting for hardware the bench lacks).
 
@@ -75,16 +75,16 @@ States: `missing` (not there), `partial` (some of it), `built` (there, untested)
 | setup.maps | screen | `ui/screens/SettingsScreen.kt:maps` | `setup.py:MapsScreen` | both | partial |  | 0.10.0 |
 | setup.integrations | screen | `ui/screens/SettingsScreen.kt:integrations` | `setup.py:IntegrationsScreen` | both | partial |  | read only until 0.9.1 |
 | radio-config | screen | `ui/screens/RadioConfigScreen.kt` | `setup.py:RadioScreen` | both | partial |  | read only until 0.9.0 (Bridge change B1) |
-| setup.advanced | screen | `ui/screens/SetupScreen.kt:162-170` | `setup.py:AdvancedScreen` | both | built |  | the rows; the pages behind them are a web view until 0.7.0 and 0.8.0 |
+| setup.advanced | screen | `ui/screens/SetupScreen.kt:162-170` | `setup.py:AdvancedScreen` | both | verified | h_shell::every_route_opens_and_fits_the_screen | every row a native page since 0.8.0; the Diagnostics row reads "Link health, service" (no batch queue, no local crash telemetry here) |
 | rules | screen | `ui/screens/RulesScreen.kt` | `pages/rules.py:RulesScreen` | both | verified | h_rules::tabs_badges_and_cards | five tabs with badges, subtitles and empty texts; the cards with the switch, the route in the links' colours, the meta line, the filters; the add button |
 | interfaces | screen | `ui/screens/InterfacesScreen.kt` | `pages/links.py:LinksScreen` | both | verified | h_links::six_tabs_in_androids_words | a link the Bridge's device manager does not bind (the mesh over the daemon or Bluetooth, the SIM, the Hub) shows the lane's state the app sees |
 | deliveries | screen | `ui/screens/DeliveryScreen.kt` | `pages/deliveries.py:DeliveryScreen` | both | verified | h_queue::counts_chips_and_cards | the counts by state, a chip per link, the cards, the empty texts |
-| topology | screen | `ui/screens/TopologyScreen.kt` | `` | both | missing |  | 0.8.0 |
-| audit | screen | `ui/screens/AuditScreen.kt` | `` | both | missing |  | 0.8.0 |
-| credentials | screen | `ui/screens/CredentialsScreen.kt` | `` | both | missing |  | 0.8.0 |
-| decrypt | screen | `ui/screens/DecryptScreen.kt` | `` | both | missing |  | 0.8.0 |
-| setup.diagnostics | screen | `ui/screens/SettingsScreen.kt:2226-2311` | `` | both | missing |  | 0.8.0 |
-| nodelog | screen | `ui/screens/NodeLogScreen.kt` | `setup.py:NodeLogScreen` | cover | partial |  | the daemon's journal; Pause, Clear, Share and the Bluetooth node's log come with 0.8.0 |
+| topology | screen | `ui/screens/TopologyScreen.kt` | `pages/topology.py:TopologyScreen` | both | verified | h_advanced::topology_is_what_was_heard | links only from NeighborInfo reports (/api/neighbors) and nodes heard 0 hops away (/api/nodes), never inferred; the force layout of 90 steps; pinch and drag are GTK gestures (a finger proves them, not the suite); numbers rounded half up as Kotlin writes them |
+| audit | screen | `ui/screens/AuditScreen.kt` | `pages/audit.py:AuditScreen` | both | verified | h_advanced::audit_counts_filters_checks_and_saves | count, signing key, a chip per link, the check and its words, Save a copy (the whole log, page by page: Bridge MESHSAT-1402), Show older entries; the saved copy's hash chain checks against a real Bridge (s_advanced::a_passed_on_text_is_an_audit_entry_the_copy_can_check) |
+| credentials | screen | `ui/screens/CredentialsScreen.kt` | `pages/credentials.py:CredentialsScreen` | both | verified | h_advanced::credentials_cards_import_and_delete | the Bridge's credential store; Import PEM through the file dialog; a real certificate's subject, SHA-256 and expiry as the Bridge stores them (s_advanced::a_certificate_is_the_one_the_bridge_stores) |
+| decrypt | screen | `ui/screens/DecryptScreen.kt` | `pages/decrypt.py:DecryptScreen` | both | verified | h_advanced::decrypt_with_the_links_key | AES-256-GCM (python3-cryptography), the key from the Bridge's encrypt transform (the key Setup > Messaging saves, 0.9.1); a vector made with the Bridge's own construction opens (AesGcmWireFormatTest.test_a_text_the_bridge_encrypted_opens) |
+| setup.diagnostics | screen | `ui/screens/SettingsScreen.kt:1069-1130, 2226-2311` | `pages/diagnostics.py:DiagnosticsScreen` | both | verified | h_advanced::diagnostics_health_and_the_service | Link health and Background service; the restart and the boot switch through polkit (dry under test); "Start after a phone restart" keeps Android's first sentence only (its second is about Android); Crash reports excluded (row setup.diagnostics.telemetry) |
+| nodelog | screen | `ui/screens/NodeLogScreen.kt` | `pages/nodelog.py:NodeLogScreen` | cover | verified | h_advanced::node_log_follows_pauses_clears_and_shares | cover mode: the daemon's journal followed (the package adds the phone's people to systemd-journal), lines as NodeLog.format, 2000 kept, Pause/Resume, Clear, Share = copy and save (the share sheet is the approved exclusion); the Bluetooth node's log: row nodelog.bluetooth |
 | about | screen | `ui/screens/AboutScreen.kt` | `setup.py:AboutScreen` | both | partial |  | Android's sections come with 0.12.0 |
 | welcome | screen | `ui/screens/Onboarding.kt:90-149` | `` | both | missing |  | 0.12.0 |
 | notification.message | notification | `GatewayService message notifications` | `notify.py` | both | verified | h_notify::one_notification_per_text_in_android_words |  |
@@ -118,44 +118,50 @@ States: `missing` (not there), `partial` (some of it), `built` (there, untested)
 | rules.delete | dialog | `ui/screens/RulesScreen.kt:358-390` | `pages/rules.py:delete_asked` | both | verified | h_rules::a_save_keeps_every_column_and_delete_asks_first | what deleting changes, then You cannot undo this. |
 | rules.queue | tab | `ui/screens/RulesScreen.kt:QueueTabContent` | `pages/rules.py:queue_tab` | both | verified | h_rules::the_queue_tab_cancels_and_retries | Waiting to go out (N) with Cancel, Did not go out (N) with Retry |
 | rules.words | strings | `ui/screens/RulesScreen.kt:98-154, 402-413, 591-623, 711-764` | `model/rules.py` | both | verified | RuleLinkChoicesTest.test_a_switched_off_link_is_not_offered | RuleLinkChoicesTest and DuplicatesTheHubTest ported; the tabs, routes, filters, consequences, hidden settings, the record |
+| topology.empty | behaviour | `ui/screens/TopologyScreen.kt:EmptyTopology` | `pages/topology.py:TopologyScreen.render` | both | verified | h_advanced::topology_without_reports_or_others | the empty mesh and the Neighbor Info notice |
+| audit.check | behaviour | `ui/screens/AuditScreen.kt:357-395` | `model/audit.py:check_words` | both | verified | h_advanced::audit_a_changed_log_says_where | a changed log names the first changed entry by its number |
+| decrypt.words | strings | `crypto/AesGcmCrypto.kt, AesGcmWireFormatTest` | `model/crypto.py` | both | verified | AesGcmWireFormatTest.test_encrypted_output_has_a_12_byte_nonce_and_a_16_byte_tag | AesGcmWireFormatTest ported |
+| setup.diagnostics.telemetry | card | `ui/screens/SettingsScreen.kt:2226-2246` | `` | both | excluded |  | Android's local telemetry server (LocalApiServer, localhost:6051): the approved exclusion; the Bridge is a system service with its own journal |
+| nodelog.bluetooth | behaviour | `ui/screens/NodeLogScreen.kt:63-129, ble/NodeLog.kt` | `pages/nodelog.py (a note)` | bluetooth | missing |  | 0.9.0: the Bridge relays LogRadio (B11) and sets security.debug_log_api_enabled, which needs B1's safe config writes |
+| nodelog.words | strings | `ble/NodeLog.kt` | `model/nodelog.py` | both | verified | NodeLogTest.test_the_buffer_holds_while_paused_and_keeps_2000 | the line format, the levels, the buffer that holds while paused |
 
 ## Words, per Android file
 
 | file | carried | excluded | missing |
 |---|---|---|---|
-| `ui/screens/SettingsScreen.kt` | 25/251 | 0 | 226 |
-| `ui/screens/RadioConfigScreen.kt` | 31/146 | 0 | 115 |
-| `ui/screens/AuditScreen.kt` | 9/43 | 0 | 34 |
+| `ui/screens/SettingsScreen.kt` | 36/251 | 0 | 215 |
+| `ui/screens/RadioConfigScreen.kt` | 32/146 | 0 | 114 |
 | `ui/screens/GeofenceScreen.kt` | 13/46 | 0 | 33 |
 | `ui/screens/ContactCards.kt` | 12/34 | 0 | 22 |
-| `ui/screens/TopologyScreen.kt` | 7/29 | 0 | 22 |
-| `ui/screens/MessagesScreen.kt` | 52/73 | 0 | 21 |
+| `ui/screens/MessagesScreen.kt` | 55/73 | 0 | 18 |
 | `ui/screens/AboutScreen.kt` | 16/32 | 0 | 16 |
 | `ui/screens/MapScreen.kt` | 15/30 | 0 | 15 |
 | `ui/screens/Onboarding.kt` | 12/27 | 0 | 15 |
 | `ui/components/CheckMailboxButton.kt` | 3/18 | 0 | 15 |
 | `ui/components/ProvisionClaimHost.kt` | 3/17 | 0 | 14 |
-| `ui/screens/CredentialsScreen.kt` | 2/15 | 0 | 13 |
 | `ui/screens/DashboardScreen.kt` | 18/31 | 0 | 13 |
-| `ui/screens/NodeLogScreen.kt` | 1/13 | 0 | 12 |
-| `ui/screens/DecryptScreen.kt` | 3/14 | 0 | 11 |
 | `sos/SosController.kt` | 17/26 | 0 | 9 |
 | `ui/components/NodeDetailSheet.kt` | 8/16 | 0 | 8 |
 | `ui/screens/PassPredictorScreen.kt` | 32/39 | 0 | 7 |
 | `ui/screens/SosScreens.kt` | 65/72 | 0 | 7 |
 | `ui/components/ProvisionLinkDialog.kt` | 2/9 | 0 | 7 |
+| `ui/screens/NodeLogScreen.kt` | 7/13 | 0 | 6 |
 | `ui/components/RegionCheck.kt` | 0/5 | 0 | 5 |
-| `ui/screens/SetupScreen.kt` | 51/55 | 0 | 4 |
+| `ui/screens/TopologyScreen.kt` | 25/29 | 0 | 4 |
 | `ui/components/PermissionAsk.kt` | 0/4 | 0 | 4 |
 | `sos/SosRun.kt` | 12/16 | 0 | 4 |
 | `ui/screens/HomeLanes.kt` | 34/37 | 0 | 3 |
+| `ui/screens/SetupScreen.kt` | 52/55 | 0 | 3 |
 | `sos/SosMessages.kt` | 8/11 | 0 | 3 |
+| `ui/screens/AuditScreen.kt` | 41/43 | 0 | 2 |
 | `ui/screens/InterfacesScreen.kt` | 57/59 | 0 | 2 |
-| `ui/components/Lane.kt` | 1/3 | 0 | 2 |
 | `ui/components/MapChrome.kt` | 1/3 | 0 | 2 |
 | `ui/Peers.kt` | 5/6 | 0 | 1 |
+| `ui/screens/CredentialsScreen.kt` | 14/15 | 0 | 1 |
+| `ui/screens/DecryptScreen.kt` | 13/14 | 0 | 1 |
 | `ui/screens/DeliveryScreen.kt` | 68/69 | 0 | 1 |
 | `ui/components/HoldToSend.kt` | 0/1 | 0 | 1 |
+| `ui/components/Lane.kt` | 2/3 | 0 | 1 |
 | `ui/components/NodeLinkBanner.kt` | 6/7 | 0 | 1 |
 | `ui/MeshSatUI.kt` | 23/23 | 0 | 0 |
 | `ui/Words.kt` | 26/26 | 0 | 0 |

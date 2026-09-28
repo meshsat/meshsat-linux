@@ -27,6 +27,10 @@ class App:
         self.tree = None
         self.stderr_path = os.path.join(work, "app.stderr")
         self.trace_path = os.path.join(work, "trace.jsonl")
+        self.journal_path = os.path.join(work, "journal.log")
+        self.saved_dir = os.path.join(work, "saved")
+        self.pick_path = os.path.join(work, "pick", "picked.pem")
+        self.enabled = "meshsat-bridge.service=enabled"
         self._trace_seen = 0
 
     def environment(self) -> dict:
@@ -53,6 +57,14 @@ class App:
                 state = subprocess.run(["systemctl", "is-active", unit], capture_output=True, text=True, timeout=5).stdout.strip() or "inactive"
                 states.append(f"{unit}={state}")
             units = ",".join(states)
+        # The system's other seams: the node's journal is a file the case writes, a file the person
+        # "picks" is one path the case fills (or leaves absent), a saved copy lands in a folder.
+        for folder in ("saved", "pick"):
+            os.makedirs(os.path.join(self.work, folder), exist_ok=True)
+        journal = self.journal_path
+        if not os.path.exists(journal):
+            open(journal, "w", encoding="utf-8").close()
+        env.update({"MESHSAT_APP_JOURNAL": journal, "MESHSAT_APP_SAVE_DIR": self.saved_dir, "MESHSAT_APP_PICK": self.pick_path, "MESHSAT_APP_ENABLED": self.enabled})
         env.update({"MESHSAT_APP_ID": self.app_id, "MESHSAT_APP_TEST": "1", "MESHSAT_APP_BRIDGE": self.bridge_url, "MESHSAT_APP_TRACE": self.trace_path,
                     "MESHSAT_APP_UNITS": units, "MESHSAT_APP_HARDWARE": hardware, "MESHSAT_APP_STATUS": status, "MESHSAT_APP_POLL": str(self.poll),
                     "PYTHONPATH": self.app_dir, "GTK_A11Y": "atspi", "GSK_RENDERER": os.environ.get("GSK_RENDERER", "cairo"), "LC_ALL": "C.UTF-8", "TZ": os.environ.get("TZ", "UTC")})
@@ -131,6 +143,34 @@ class App:
 
     def http_since_mark(self, method: str | None = None, path_prefix: str = "") -> list:
         return [e for e in self.trace_since_mark() if e.get("kind") == "http" and (method is None or e.get("method") == method) and str(e.get("path", "")).startswith(path_prefix)]
+
+    def journal(self, lines: list) -> None:
+        """Lines the node's service writes to its journal, as the app reads it."""
+        with open(self.journal_path, "a", encoding="utf-8") as handle:
+            for line in lines:
+                handle.write(line + "\n")
+
+    def pick(self, content: bytes | None) -> None:
+        """What the person picks next: this content, or nothing (None)."""
+        if content is None:
+            if os.path.exists(self.pick_path):
+                os.remove(self.pick_path)
+            return
+        with open(self.pick_path, "wb") as handle:
+            handle.write(content)
+
+    def saved(self) -> dict:
+        """The copies the app saved: {name: text}."""
+        out = {}
+        for name in sorted(os.listdir(self.saved_dir)):
+            with open(os.path.join(self.saved_dir, name), encoding="utf-8") as handle:
+                out[name] = handle.read()
+        return out
+
+    def commands(self, since_mark: bool = True) -> list:
+        """The privileged commands the app would have run (dry under test)."""
+        events = self.trace_since_mark() if since_mark else self.trace()
+        return [e["command"] for e in events if e.get("kind") == "command"]
 
     def stderr(self) -> str:
         try:

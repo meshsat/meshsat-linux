@@ -5,7 +5,7 @@ Priority: optional
 Architecture: @ARCH@
 Maintainer: MeshSat <hello@meshsat.net>
 Installed-Size: @SIZE@
-Depends: python3, python3-venv, python3-gi, gir1.2-gtk-4.0, gir1.2-adw-1, gir1.2-graphene-1.0, gir1.2-shumate-1.0, gir1.2-geoclue-2.0, gir1.2-webkit-6.0, systemd, adduser, openssl, curl, libc6@NODE_DEPENDS@
+Depends: python3, python3-venv, python3-gi, gir1.2-gtk-4.0, gir1.2-adw-1, gir1.2-graphene-1.0, gir1.2-shumate-1.0, gir1.2-geoclue-2.0, python3-cryptography, systemd, adduser, openssl, curl, libc6@NODE_DEPENDS@
 Recommends: libnotify-bin, bluez
 Homepage: https://meshsat.net
 Description: MeshSat for Linux phones: the mesh, the satellite and the Hub in your pocket

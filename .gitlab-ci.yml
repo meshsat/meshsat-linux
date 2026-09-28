@@ -11,6 +11,7 @@ unit-3.11:
   image: python:3.11-slim
   tags: [multiarch]
   script:
+    - pip install -q cryptography  # the package depends on python3-cryptography (AES-256-GCM)
     - python3 -m unittest discover tests
     - python3 tools/parity-check.py
 
@@ -19,6 +20,7 @@ unit-3.13:
   image: python:3.13-slim
   tags: [multiarch]
   script:
+    - pip install -q cryptography
     - python3 -m unittest discover tests
 
 # docker:27 on the multiarch runner reaches the host's daemon, as the Bridge's own image job
@@ -49,7 +51,8 @@ install-amd64:
     - apt-get update -qq
     - apt-get install -y -qq --no-install-recommends ./build/meshsat_*_amd64.deb > install.log 2>&1 || { tail -40 install.log; exit 1; }
     - meshsat-app --version
-    - PYTHONPATH=/usr/lib/meshsat/app python3 -c 'import meshsat.api, meshsat.model.words, meshsat.routes; print("modules import")'
+    - PYTHONPATH=/usr/lib/meshsat/app python3 -c 'import meshsat.api, meshsat.model.words, meshsat.model.crypto, meshsat.routes; print("modules import")'
+    - PYTHONPATH=/usr/lib/meshsat/app python3 -c 'from meshsat.model import crypto; k = "00" * 32; assert crypto.decrypt_from_base64(crypto.encrypt_to_base64("x", k), k) == "x"; print("AES-256-GCM works")'
     - /usr/bin/meshsat --version || true
     - systemd-analyze verify /lib/systemd/system/meshsat-bridge.service /lib/systemd/system/meshsat-hardware.service || true
     - dpkg -L meshsat | wc -l

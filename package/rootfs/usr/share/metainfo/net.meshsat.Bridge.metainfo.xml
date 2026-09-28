@@ -36,6 +36,11 @@
   </recommends>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.8.0" date="2026-09-29">
+      <description>
+        <p>The rest of Setup > Advanced as native screens in MeshSat Android's words, and the Bridge's web pages gone from the app: the mesh as it was heard, drawn as a graph that lays itself out, with who hears whom and every node; the Bridge's signed audit log with its count, a filter per link, a check of its hash chain and a copy saved where you choose; the certificates and keys the Bridge keeps, imported from a PEM file and deleted after a question; AES-256-GCM by hand with the key the links encrypt with; the links' health and the background service (start after a restart, restart after a question); the node's own log, paused, cleared and saved.</p>
+      </description>
+    </release>
     <release version="0.7.0" date="2026-09-28">
       <description>
         <p>Message queue, Links and Routing rules as native screens, in MeshSat Android's words: the queue with its counts by state, a filter per link, the details of every message and a retry or cancel that is always confirmed; the six Links tabs (a link switched off after a question, reconnected on request, its capabilities, groups, backup links and health); the five Routing rules tabs with the rule editor, the delete that says what it changes, and the queue. The chat's compose bar says how a message goes and what a satellite message costs before it is sent, the bubbles carry a delivery mark and take Android's measures, and All Messages has a search.</p>

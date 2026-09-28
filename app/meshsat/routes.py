@@ -14,7 +14,11 @@ ROUTES = {
     "people": ("people", None, None),
     "setup": ("setup", None, None),
     "passes": ("home", "passes", "PassesScreen"),
-    "topology": ("people", "setup", "AdvancedScreen"),
+    "topology": ("people", "pages.topology", "TopologyScreen"),
+    "audit": ("setup", "pages.audit", "AuditScreen"),
+    "credentials": ("setup", "pages.credentials", "CredentialsScreen"),
+    "decrypt": ("setup", "pages.decrypt", "DecryptScreen"),
+    "setup/diagnostics": ("setup", "pages.diagnostics", "DiagnosticsScreen"),
     "setup/node": ("setup", "setup", "NodeScreen"),
     "setup/satellite": ("setup", "setup", "SatelliteScreen"),
     "setup/hub": ("setup", "setup", "HubScreen"),
@@ -27,7 +31,7 @@ ROUTES = {
     "setup/about": ("setup", "setup", "AboutScreen"),
     "radio-config": ("setup", "setup", "RadioScreen"),
     "about": ("setup", "setup", "AboutScreen"),
-    "nodelog": ("setup", "setup", "NodeLogScreen"),
+    "nodelog": ("setup", "pages.nodelog", "NodeLogScreen"),
     "sos": ("setup", "pages.sos", "SosScreen"),
     "rules": ("setup", "pages.rules", "RulesScreen"),
     "interfaces": ("setup", "pages.links", "LinksScreen"),
@@ -37,7 +41,7 @@ ROUTES = {
 # The names the `open` action took before the routes were Android's (kept for the tools).
 ALIASES = {"node": "setup/node", "satellite": "setup/satellite", "hub": "setup/hub", "sms": "setup/sms", "safety": "setup/safety",
            "messaging": "setup/messaging", "maps": "setup/maps", "integrations": "setup/integrations", "radio": "radio-config",
-           "advanced": "setup/advanced", "everyone": "chat/!ffffffff", "links": "interfaces", "queue": "deliveries"}
+           "advanced": "setup/advanced", "everyone": "chat/!ffffffff", "links": "interfaces", "queue": "deliveries", "diagnostics": "setup/diagnostics"}
 
 # Which routes a notification may open (MainActivity.kt OPENABLE_ROUTES), and where a lane leads.
 OPENABLE = ("sos", "messages", "home")
