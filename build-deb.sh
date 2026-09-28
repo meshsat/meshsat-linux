@@ -9,12 +9,13 @@
 #   $INPUTS/meshtasticd          built on a PinePhone from meshsat-firmware (packaging/build-daemon.sh
 #                                of meshsat-lora-backplate), stripped
 #   $INPUTS/lora-listen, bridge-selftest   built there from meshsat-lora-backplate
-#   $INPUTS/meshsat-arm64        the Bridge, from the `build` job of meshsat's pipeline
+#   $INPUTS/meshsat-arm64        the Bridge, out of its container image (fetch-bridge.sh <tag>): the
+#                                pipeline's bare `build` artifact lacks the web interface
 #   $INPUTS/web-build-<ver>.tar  meshtastic/web release bundle
 #   $BACKPLATE                   a checkout of meshsat-lora-backplate at the pinned commit
 set -eu
 
-VERSION=0.1.0
+VERSION=0.2.0
 ARCH=arm64
 INPUTS=$HOME/build/meshsat-linux/inputs
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -59,7 +60,10 @@ install -D -m 0755 "$HERE/bin/meshsat-app" "$ROOT/usr/bin/meshsat-app"
 install -D -m 0755 "$P/bin/meshsat-node-channels" "$ROOT/usr/bin/meshsat-node-channels"
 install -D -m 0755 "$INPUTS/lora-listen" "$ROOT/usr/lib/meshsat/bin/lora-listen"
 install -D -m 0755 "$INPUTS/bridge-selftest" "$ROOT/usr/lib/meshsat/bin/bridge-selftest"
-install -D -m 0644 "$HERE/app/meshsat_app.py" "$ROOT/usr/lib/meshsat/app/meshsat_app.py"
+mkdir -p "$ROOT/usr/lib/meshsat/app"
+cp -r "$HERE/app/meshsat" "$ROOT/usr/lib/meshsat/app/meshsat"
+find "$ROOT/usr/lib/meshsat/app" -name "__pycache__" -prune -exec rm -rf {} +
+chmod -R go+rX "$ROOT/usr/lib/meshsat/app"
 install -D -m 0644 "$P/watchdog/meshsat_radio_watch.py" "$ROOT/usr/lib/meshsat/watchdog/meshsat_radio_watch.py"
 install -D -m 0644 "$BACKPLATE/tools/node-setup/set-channels.py" "$ROOT/usr/lib/meshsat/node-setup/set-channels.py"
 
@@ -85,7 +89,15 @@ find "$ROOT/usr/share/meshtasticd/web" -name '*.gz' -exec gunzip -f {} \;
 # The app in the app grid
 install -D -m 0644 "$HERE/package/rootfs/usr/share/applications/net.meshsat.Bridge.desktop" "$ROOT/usr/share/applications/net.meshsat.Bridge.desktop"
 install -D -m 0644 "$HERE/package/rootfs/usr/share/metainfo/net.meshsat.Bridge.metainfo.xml" "$ROOT/usr/share/metainfo/net.meshsat.Bridge.metainfo.xml"
-python3 "$HERE/package/make-icons.py" "$HERE/docs/images/mark-dark.png" "$ROOT/usr/share/icons/hicolor" >/dev/null
+python3 "$HERE/package/make-icons.py" "$HERE/app/meshsat/brand/app-icon-1024.png" "$ROOT/usr/share/icons/hicolor" >/dev/null
+# The apps' symbolic icons (Material and MeshSat's own), in the icon theme so GTK recolours them
+install -d "$ROOT/usr/share/icons/hicolor/scalable/actions"
+install -m 0644 "$HERE"/app/meshsat/icons/hicolor/scalable/actions/meshsat-*-symbolic.svg "$ROOT/usr/share/icons/hicolor/scalable/actions/"
+
+# IBM Plex, the apps' typeface (OFL), the same files the Android and iOS apps carry
+install -d "$ROOT/usr/share/fonts/truetype/meshsat"
+install -m 0644 "$HERE"/package/fonts/*.ttf "$ROOT/usr/share/fonts/truetype/meshsat/"
+install -D -m 0644 "$HERE/package/fonts/LICENSE.txt" "$ROOT/usr/share/doc/meshsat/IBM-Plex-LICENSE.txt"
 
 # Documentation
 install -D -m 0644 "$HERE/LICENSE" "$ROOT/usr/share/doc/meshsat/copyright"
