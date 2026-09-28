@@ -195,6 +195,16 @@ toast label {{ color: {TEXT_PRIMARY}; font-size: {px(14)}; }}
 .tab-chip label.count {{ color: {TEXT_SECONDARY}; background-color: {BORDER}; font-weight: 400; }}
 .card-tight {{ padding: {px(8)} {px(4)} {px(4)} {px(12)}; }}
 .card-tap {{ padding: {px(12)}; border-radius: {px(8)}; }}
+.stats-card {{ padding: {px(10)} {px(12)}; }}
+.log-view {{ background-color: {SURFACE}; border: 1px solid {BORDER}; border-radius: {px(8)}; padding: {px(8)}; }}
+.log-line {{ font-family: "{MONO}", monospace; font-size: {px(11)}; }}
+.output-card {{ padding: {px(12)}; }}
+.field.multiline {{ padding: {px(8)} {px(14)}; min-height: {px(96)}; }}
+.filled.tonal-surface {{ background-color: {SURFACE}; border: 1px solid {BORDER}; }}
+.filled.tonal-surface label {{ color: {TEXT_PRIMARY}; }}
+.filled.amber-fill {{ background-color: {AMBER}; }}
+.outlined.red-outline {{ border-color: alpha({RED}, 0.6); }}
+.outlined.red-outline label {{ color: {RED}; }}
 .dot {{ border-radius: {px(4)}; min-width: {px(8)}; min-height: {px(8)}; }}
 .dot-small {{ border-radius: {px(3)}; min-width: {px(6)}; min-height: {px(6)}; }}
 .segments {{ background-color: {SURFACE}; border: 1px solid {BORDER}; border-radius: {px(8)}; padding: {px(3)}; min-height: {px(30)}; }}

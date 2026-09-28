@@ -29,6 +29,14 @@ case "$1" in
             if lsmod | grep -q "^$m "; then modprobe -r "$m" 2>/dev/null || true; fi
         done
 
+        # The node's log is the daemon's journal: the people who use this phone read it in the
+        # app (Setup > Advanced > Node log), which takes effect at their next login.
+        if getent group systemd-journal >/dev/null; then
+            getent passwd | awk -F: '$3 >= 1000 && $3 < 60000 && $7 !~ /(nologin|false)$/ {print $1}' | while read -r person; do
+                adduser "$person" systemd-journal >/dev/null 2>&1 || true
+            done
+        fi
+
         # A certificate for the daemon's web server: it cannot make its own on Linux.
         if [ ! -f /etc/meshtasticd/ssl/certificate.pem ]; then
             install -d -o meshtasticd -g meshtasticd -m 0750 /etc/meshtasticd/ssl

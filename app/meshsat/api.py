@@ -56,10 +56,15 @@ class Answer:
         return f"Answer({self.status}, error={self.error!r})"
 
 
-def request(method: str, path: str, body: dict | None = None, timeout: float = 8.0) -> Answer:
-    """One call to the Bridge, on the calling thread."""
-    data = json.dumps(body or {}).encode() if method != "GET" else None
-    req = urllib.request.Request(BRIDGE + path, data=data, headers={"Content-Type": "application/json"} if data is not None else {}, method=method)
+def request(method: str, path: str, body: dict | None = None, timeout: float = 8.0, raw: bytes | None = None, content_type: str | None = None) -> Answer:
+    """One call to the Bridge, on the calling thread. `raw` sends those bytes as they are
+    (a multipart upload), under `content_type`."""
+    if raw is not None:
+        data, headers = raw, {"Content-Type": content_type or "application/octet-stream"}
+    else:
+        data = json.dumps(body or {}).encode() if method != "GET" else None
+        headers = {"Content-Type": "application/json"} if data is not None else {}
+    req = urllib.request.Request(BRIDGE + path, data=data, headers=headers, method=method)
     started = time.time()
     try:
         with urllib.request.urlopen(req, timeout=timeout) as response:
@@ -78,6 +83,25 @@ def request(method: str, path: str, body: dict | None = None, timeout: float = 8
         answer = Answer(0, None, f"The Bridge is not answering: {getattr(error, 'reason', error)}")
     trace.event("http", method=method, path=path, status=answer.status, ms=int((time.time() - started) * 1000), error=answer.error)
     return answer
+
+
+def upload(path: str, fields: dict, file_field: str, filename: str, data: bytes, on_done, timeout: float = 20.0) -> None:
+    """A file to the Bridge as multipart/form-data (the credential upload), off the main loop."""
+    import uuid  # noqa: PLC0415
+
+    from .model.credentials import multipart  # noqa: PLC0415
+
+    boundary = "meshsat" + uuid.uuid4().hex
+    body = multipart(fields, file_field, filename, data, boundary)
+
+    def run() -> None:
+        answer = request("POST", path, raw=body, content_type=f"multipart/form-data; boundary={boundary}", timeout=timeout)
+        if GLib is not None:
+            GLib.idle_add(lambda: on_done(answer) or False)
+        else:
+            on_done(answer)
+
+    threading.Thread(target=run, daemon=True).start()
 
 
 def fetch(path: str, on_done, method: str = "GET", body: dict | None = None, timeout: float = 8.0) -> None:

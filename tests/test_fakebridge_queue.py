@@ -65,5 +65,43 @@ class QueueAndRulesTest(unittest.TestCase):
         self.assertEqual(call(self.fake.url, "POST", "/api/interfaces/iridium_0/bind", {})[0], 400)
 
 
+class AuditAndCredentialsTest(unittest.TestCase):
+    def setUp(self):
+        self.fake = FakeBridge(load_scenario("advanced")).start()
+
+    def tearDown(self):
+        self.fake.stop()
+
+    def test_the_audit_log_pages_like_the_bridge(self):
+        self.assertEqual(call(self.fake.url, "GET", "/api/audit/count"), (200, {"count": 120}))
+        page = call(self.fake.url, "GET", "/api/audit?limit=100")[1]
+        self.assertEqual((len(page), page[0]["id"], page[-1]["id"]), (100, 120, 21))
+        rest = call(self.fake.url, "GET", "/api/audit?limit=100&before=21")[1]
+        self.assertEqual((len(rest), rest[0]["id"]), (20, 20))
+        mesh = call(self.fake.url, "GET", "/api/audit?interface_id=mesh_0")[1]
+        self.assertTrue(all(e["interface_id"] == "mesh_0" for e in mesh))
+        self.assertEqual(call(self.fake.url, "GET", "/api/audit/verify?limit=1000")[1], {"verified": True, "valid": 120, "checked": 1000, "broken_at": -1})
+
+    def test_credentials_upload_and_delete(self):
+        import uuid
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "app"))
+        from meshsat.model.credentials import multipart
+
+        boundary = uuid.uuid4().hex
+        body = multipart({"provider": "local", "name": "e2e.pem"}, "file", "e2e.pem", b"-----BEGIN CERTIFICATE-----\nMII\n-----END CERTIFICATE-----\n", boundary)
+        req = urllib.request.Request(self.fake.url + "/api/credentials/upload", data=body, method="POST", headers={"Content-Type": f"multipart/form-data; boundary={boundary}"})
+        with urllib.request.urlopen(req, timeout=5) as response:
+            self.assertEqual(response.status, 201)
+        names = [c["name"] for c in call(self.fake.url, "GET", "/api/credentials")[1]["credentials"]]
+        self.assertIn("e2e.pem", names)
+        bad = multipart({"provider": "local", "name": "x"}, "file", "x.txt", b"hello", boundary)
+        req = urllib.request.Request(self.fake.url + "/api/credentials/upload", data=bad, method="POST", headers={"Content-Type": f"multipart/form-data; boundary={boundary}"})
+        with self.assertRaises(urllib.error.HTTPError) as caught:
+            urllib.request.urlopen(req, timeout=5)
+        self.assertEqual(caught.exception.code, 400)
+        self.assertEqual(call(self.fake.url, "DELETE", "/api/credentials/cred-old"), (200, {"status": "deleted"}))
+        self.assertEqual(call(self.fake.url, "DELETE", "/api/credentials/cred-old")[0], 404)
+
+
 if __name__ == "__main__":
     unittest.main()

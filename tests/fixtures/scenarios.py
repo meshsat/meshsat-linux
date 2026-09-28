@@ -99,6 +99,10 @@ def base() -> dict:
         "GET /api/iridium/signal/history": [],
         "GET /api/position/fixed": {"latitude": 0, "longitude": 0},
         "POST /api/sos/test": {"status": "sent"},
+        "GET /api/neighbors": {"neighbors": None, "source": "database"},
+        "GET /api/audit/signer": rec("audit_signer", {"signer_id": "082d35bc64aa838a5cb8dd189b75c94ae2cdcaebe8855731203ffb01c761483c"}),
+        "_audit": [],
+        "_credentials": [],
     }
 
 
@@ -245,9 +249,56 @@ def queue_busy() -> dict:
     return routes
 
 
+KEY = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+EVENTS = ("dispatch", "deliver", "forward", "deny", "connect", "sos_activated", "oob_reject")
+
+
+def advanced() -> dict:
+    """The rest of Advanced in use: a node heard directly and one two hops away that another
+    reported hearing; 120 audit entries; three certificates (valid, expiring, expired); the
+    links' key for encrypting; health scores."""
+    routes = queue_busy()
+    me = node(ME, "meshsat-pinephone-pro", "MSPP", NOW - 5, hw_model=255, hw_model_name="PORTDUINO", battery_level=101, rssi=0, snr=0)
+    near = node(OTHER, "MSPA", "MSPA", NOW - 120, hw_model=50, hw_model_name="T_DECK", snr=5.5, rssi=-60, battery_level=78)
+    far = node(THIRD, "Far Hill", "FARH", NOW - 1800, hw_model=43, hw_model_name="HELTEC_V3", battery_level=40, hops_away=2, snr=0, rssi=0)
+    routes["GET /api/nodes"] = {"nodes": [me, near, far]}
+    routes["GET /api/neighbors"] = {"neighbors": [{"node_id": int(OTHER[1:], 16), "last_sent_by_id": int(OTHER[1:], 16), "node_broadcast_interval_secs": 900,
+                                                   "neighbors": [{"node_id": int(THIRD[1:], 16), "snr": -3.25}],
+                                                   "last_updated": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(NOW - 300))}], "source": "live"}
+    audit = []
+    for i in range(1, 121):
+        event = EVENTS[i % len(EVENTS)]
+        entry = {"id": i, "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(NOW - (121 - i) * 60)), "event_type": event, "detail": f"e2e entry {i}",
+                 "prev_hash": f"h{i - 1}", "hash": f"h{i}"}
+        if i % 2 == 0:
+            entry["interface_id"] = "mesh_0"
+            entry["direction"] = "egress"
+        elif i % 3 == 0:
+            entry["interface_id"] = "iridium_0"
+            entry["direction"] = "ingress"
+        if i % 4 == 0:
+            entry["delivery_id"] = i
+            entry["rule_id"] = 1
+        audit.append(entry)
+    routes["_audit"] = audit
+    day = 86400
+    routes["_credentials"] = [
+        {"id": "cred-hub", "provider": "hub_mqtt", "name": "hub.meshsat.net", "cred_type": "mqtt_bundle", "cert_not_after": time.strftime("%Y-%m-%d", time.gmtime(NOW + 400 * day)),
+         "cert_subject": "CN=hub.meshsat.net", "cert_fingerprint": "0a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f9", "version": 2, "source": "hub", "applied": 1},
+        {"id": "cred-soon", "provider": "local", "name": "soon.pem", "cred_type": "x509_cert", "cert_not_after": time.strftime("%Y-%m-%d", time.gmtime(NOW + 10 * day)),
+         "cert_subject": "CN=soon.example", "cert_fingerprint": "ff" * 32, "version": 1, "source": "local", "applied": 0},
+        {"id": "cred-old", "provider": "local", "name": "old.pem", "cred_type": "x509_cert", "cert_not_after": time.strftime("%Y-%m-%d", time.gmtime(NOW - 10 * day)),
+         "cert_subject": "CN=old.example", "cert_fingerprint": "00" * 32, "version": 1, "source": "local", "applied": 0},
+    ]
+    for iface in routes["GET /api/interfaces"]:
+        if iface["id"] == "mesh_0":
+            iface["egress_transforms"] = '[{"type":"encrypt","params":{"key":"' + KEY + '"}},{"type":"base64"}]'
+    return routes
+
+
 SCENARIOS = {"fresh": fresh, "mesh-only": mesh_only, "one-node": one_node, "nameless-node": nameless_node, "satellite-3-bars": satellite_3_bars, "sim-ready": sim_ready,
              "all-four": all_four, "hub-set-up": hub_set_up, "sos-active": sos_active, "bluetooth-pairing": bluetooth_pairing, "bluetooth-connected": bluetooth_connected,
-             "queue-busy": queue_busy}
+             "queue-busy": queue_busy, "advanced": advanced}
 
 
 def build(name: str) -> dict:

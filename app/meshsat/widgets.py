@@ -1017,7 +1017,8 @@ def dot(lane: str, size: int = 10) -> Gtk.Box:
 
 
 def tone_colour(tone: str) -> str:
-    return {"green": theme.GREEN, "amber": theme.AMBER, "red": theme.RED, "teal": theme.SIGNAL_ORANGE, "primary": theme.TEXT_PRIMARY}.get(tone, theme.TEXT_MUTED)
+    return {"green": theme.GREEN, "amber": theme.AMBER, "red": theme.RED, "teal": theme.SIGNAL_ORANGE, "primary": theme.TEXT_PRIMARY, "secondary": theme.TEXT_SECONDARY,
+            "blue": theme.BLUE}.get(tone, theme.TEXT_MUTED)
 
 
 def state_tag(value: str, tone: str, style: str = "label-large") -> Gtk.Label:

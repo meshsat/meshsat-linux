@@ -26,6 +26,11 @@ ROUTES = {
     "rules": "Rules decide which messages are passed from one link to another.",
     "interfaces": "Each way this phone can send and receive messages, and how well it is working.",
     "deliveries": "No messages here yet. Messages you send, and messages your rules pass on, show up here.",
+    "topology": "Pinch to zoom, drag to move.",
+    "audit": "Nothing in the audit log yet.",
+    "credentials": "No credentials stored",
+    "decrypt": "No encryption key configured. Go to Settings to set one.",
+    "setup/diagnostics": "Restart Gateway Service",
 }
 
 

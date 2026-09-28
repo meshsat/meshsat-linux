@@ -13,7 +13,7 @@ from .model import words
 from .pages.safety import SafetyScreen  # noqa: F401  (the Setup row and the route table use it)
 from .passes import PassesScreen
 from .screen import Screen, SubScreen
-from .widgets import KeyValue, NavRow, SubHeader, clear, filled_button, group_title, outlined_button, page, scroller, spacer, text, text_button, when
+from .widgets import KeyValue, NavRow, clear, filled_button, group_title, outlined_button, page, scroller, spacer, text, text_button, when
 
 # Meshtastic's LoRa config, as the Bridge relays it: protobuf field numbers of Config.LoRaConfig.
 REGIONS = {0: "Unset", 1: "US", 2: "EU_433", 3: "EU_868", 4: "CN", 5: "JP", 6: "ANZ", 7: "KR", 8: "TW", 9: "RU", 10: "IN", 11: "NZ_865", 12: "TH", 13: "LORA_24", 14: "UA_433", 15: "UA_868", 16: "MY_433", 17: "MY_919", 18: "SG_923"}
@@ -603,91 +603,40 @@ class RadioScreen(Page):
 
 
 class AdvancedScreen(Page):
+    """Setup > Advanced (SetupScreen.kt's AdvancedSection): every row a native page, opened by
+    Android's route over this one."""
+
+    ROWS = (
+        ("outlined-alt-route", "Routing rules", "Which messages go where, automatically", "rules"),
+        ("outlined-link", "Links", "Every way out, its state and its health", "interfaces"),
+        ("outlined-outbox", "Message queue", "Everything waiting, sent or given up", "deliveries"),
+        ("outlined-hub", "Mesh topology", "How the nodes you hear are linked", "topology"),
+        ("outlined-history", "Audit log", "A signed record of what the gateway did", "audit"),
+        ("outlined-key", "Certificates and keys", "The Hub certificate and imported keys", "credentials"),
+        ("outlined-lock-open", "Encrypt or decrypt text", "By hand, with a conversation key", "decrypt"),
+        # Android's row says "Link health, batch queue, crash reports, service": this edition's
+        # page has the link health and the service (no batch queue, no local crash telemetry).
+        ("outlined-monitor-heart", "Diagnostics", "Link health, service", "setup/diagnostics"),
+        ("outlined-terminal", "Node log", "The node's live log, on demand", "nodelog"),
+    )
+
     def __init__(self, app):
         super().__init__(app, "Advanced")
-        rows = (
-            ("outlined-alt-route", "Routing rules", "Which messages go where, automatically", "/rules"),
-            ("outlined-link", "Links", "Every way out, its state and its health", "/interfaces"),
-            ("outlined-outbox", "Message queue", "Everything waiting, sent or given up", "/deliveries"),
-            ("outlined-hub", "Mesh topology", "How the nodes you hear are linked", "/topology"),
-            ("outlined-history", "Audit log", "A signed record of what the gateway did", "/audit"),
-            ("outlined-key", "Certificates and keys", "The Hub certificate and imported keys", "/credentials"),
-            ("outlined-lock-open", "Encrypt or decrypt text", "By hand, with a conversation key", "/decrypt"),
-            ("outlined-monitor-heart", "Diagnostics", "Link health, crash reports, service", "/diagnostics"),
-            ("outlined-terminal", "Node log", "The node's live log, on demand", "/nodelog"),
-        )
         self.column.set_margin_start(theme.dp(0))
         self.column.set_margin_end(theme.dp(0))
         self.column.set_margin_top(theme.dp(0))
-        for name, title_text, detail, route in rows:
+        for name, title_text, detail, route in self.ROWS:
             row = NavRow(name, title_text, lambda t=title_text, r=route: self.open(t, r))
             row.set_detail(detail)
             self.column.append(row)
 
     def open(self, title_text: str, route: str) -> None:
-        if route == "/nodelog":
-            self.app.push(NodeLogScreen(self.app))
-            return
         # The native pages, pushed over this one as Android's navigation does.
         from .routes import screen_of  # noqa: PLC0415
 
-        screen = screen_of(route.strip("/"))
-        if screen is not None:
-            page = screen(self.app)
-            page.route = route.strip("/")
-            self.app.push(page, title_text)
-        else:
-            self.app.push(BridgePage(self.app, title_text, route))
-
-
-class BridgePage(Screen):
-    """An expert page of the Bridge's own interface, inside the app. The Bridge's dashboard is
-    the operator console of a MeshSat kit; here it serves the expert screens only."""
-
-    def __init__(self, app, title: str, route: str):
-        super().__init__(app)
-        self.append(SubHeader(title, app.pop))
-        try:
-            import gi
-            gi.require_version("WebKit", "6.0")
-            from gi.repository import WebKit
-            web = WebKit.WebView()
-            web.set_vexpand(True)
-            web.load_uri(api.BRIDGE + "/" + ("#" + route if route else ""))
-            self.append(web)
-        except (ValueError, ImportError):
-            self.append(text("The Bridge's interface needs WebKitGTK.", "body-medium", theme.TEXT_SECONDARY))
-
-
-class NodeLogScreen(Page):
-    def __init__(self, app):
-        super().__init__(app, "Node log")
-        self.column.set_margin_start(theme.dp(8))
-        self.column.set_margin_end(theme.dp(8))
-        self.log = text("", "body-small", mono=True, wrap=True)
-        self.log.set_selectable(True)
-        self.column.append(self.log)
-
-    def on_show(self) -> None:
-        self.every(5, self.refresh)
-
-    def refresh(self) -> None:
-        # The journal is read off the main loop; the lines land on it, while the page is on view.
-        def run() -> None:
-            out = system.journal("meshtasticd", 80)
-            GLib.idle_add(lambda: self.show_lines(out) or False)
-
-        threading.Thread(target=run, daemon=True).start()
-
-    def show_lines(self, out: str) -> None:
-        if not self.alive:
-            return
-        # The app's own asks for the name of a node the phone has no NodeInfo from.
-        asks = self.app.state.name_requests
-        if asks:
-            lines = [f"{when(a['time'])} asked {a['node']} for its name: {a['outcome']}" for a in asks[-20:]]
-            out = (out or "").rstrip() + "\n\n" + "\n".join(lines)
-        self.log.set_text(out or "No lines yet.")
+        page = screen_of(route)(self.app)
+        page.route = route
+        self.app.push(page, title_text)
 
 
 class AboutScreen(Page):

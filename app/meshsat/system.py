@@ -55,6 +55,55 @@ def privileged(*command: str) -> None:
         pass
 
 
+def unit_enabled(unit: str) -> bool:
+    """Whether a unit starts at boot. Under test from MESHSAT_APP_ENABLED ("unit=enabled,...")."""
+    if TEST:
+        for item in os.environ.get("MESHSAT_APP_ENABLED", "").split(","):
+            if "=" in item and item.split("=", 1)[0].strip() == unit:
+                return item.split("=", 1)[1].strip() == "enabled"
+        return False
+    try:
+        run = subprocess.run(["systemctl", "is-enabled", unit], capture_output=True, text=True, timeout=3)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return run.stdout.strip() == "enabled"
+
+
+def journal_follow(unit: str, cursor: str | None, lines: int = 200, timeout: float = 5.0) -> tuple:
+    """The unit's journal lines since `cursor` (the last `lines` the first time), and the
+    cursor to ask from next time: (lines, cursor, why not). Under test the journal is the file
+    MESHSAT_APP_JOURNAL and the cursor its line count."""
+    if TEST:
+        path = os.environ.get("MESHSAT_APP_JOURNAL", "")
+        try:
+            with open(path, encoding="utf-8") as handle:
+                all_lines = handle.read().splitlines()
+        except OSError:
+            return [], cursor, None
+        start = int(cursor) if cursor and cursor.isdigit() else max(0, len(all_lines) - lines)
+        return all_lines[start:], str(len(all_lines)), None
+    command = ["journalctl", "-u", unit, "--no-pager", "-o", "cat", "--show-cursor"]
+    command += ["--after-cursor", cursor] if cursor else ["-n", str(lines)]
+    try:
+        run = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.SubprocessError) as error:
+        return [], cursor, str(error)
+    out, new_cursor = [], cursor
+    for line in run.stdout.splitlines():
+        if line.startswith("-- cursor: "):
+            new_cursor = line[len("-- cursor: "):].strip()
+        elif line.startswith("-- No entries --"):
+            continue
+        elif line.startswith("Hint: ") or line.startswith("      Users in groups") or line.startswith("      Pass -q"):
+            continue
+        else:
+            out.append(line)
+    why = None
+    if not out and not new_cursor and "not seeing messages from other users" in (run.stdout + run.stderr):
+        why = "not in systemd-journal"
+    return out, new_cursor, why
+
+
 def journal(unit: str, lines: int = 80, timeout: float = 5.0) -> str:
     """The last lines of a unit's journal, or the reason there are none."""
     if TEST:

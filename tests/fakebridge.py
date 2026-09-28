@@ -8,6 +8,7 @@ runs on the phone and in the unit tests alike."""
 import json
 import os
 import queue
+import re
 import threading
 import time
 import urllib.parse
@@ -40,6 +41,9 @@ class FakeBridge:
         self.sent = []  # POST /api/messages/send bodies, also appended to the packet feed
         self.deliveries = None  # the queue, when the scenario has one (`_deliveries`): cancel and retry change it as the Bridge does
         self.rules = None  # the routing rules, when the scenario has them (`_rules`): create, replace, delete, switch
+        self.audit = None  # the audit log, newest last (`_audit`); `_audit_broken_at` makes the check fail there
+        self.audit_broken_at = -1
+        self.credentials = None  # the credential store (`_credentials`): upload, delete
         self.apply(scenario or {})
         fake = self
 
@@ -116,6 +120,11 @@ class FakeBridge:
         self.deliveries = [dict(d) for d in deliveries] if deliveries is not None else None
         rules = routes.pop("_rules", None)
         self.rules = [dict(r) for r in rules] if rules is not None else None
+        audit = routes.pop("_audit", None)
+        self.audit = [dict(e) for e in audit] if audit is not None else None
+        self.audit_broken_at = int(routes.pop("_audit_broken_at", -1))
+        creds = routes.pop("_credentials", None)
+        self.credentials = [dict(c) for c in creds] if creds is not None else None
         self.routes = routes
 
     # Life
@@ -143,7 +152,7 @@ class FakeBridge:
             entry = self.routes.get(key)
             if isinstance(entry, dict) and "_status" in entry:
                 return entry["_status"], entry.get("_body")
-        reduced = self.reduce(method, bare, body)
+        reduced = self.reduce(method, bare, body, path)
         if reduced is not None:
             return reduced
         for key in (f"{method} {path}", f"{method} {bare}"):
@@ -156,7 +165,7 @@ class FakeBridge:
             self.unexpected.append({"method": method, "path": path})
         return 404, {"error": f"the scenario has no answer for {method} {bare}"}
 
-    def reduce(self, method: str, path: str, body):
+    def reduce(self, method: str, path: str, body, full_path: str = ""):
         """The few calls whose answer depends on what the app did before."""
         if path == "/api/sos/status" and method == "GET":
             return 200, dict(self.sos)
@@ -250,6 +259,42 @@ class FakeBridge:
                 row["enabled"] = parts[4] == "enable"
                 row["updated_at"] = stamp
                 return 200, {"status": f"{parts[4]}d"}
+        # The audit log, as the Bridge's audit.go: newest first, at most 1000, by link, before an id.
+        if self.audit is not None and path.startswith("/api/audit") and method == "GET":
+            query = urllib.parse.parse_qs(urllib.parse.urlparse(full_path).query)
+            if path == "/api/audit/count":
+                return 200, {"count": len(self.audit)}
+            if path == "/api/audit/verify":
+                limit = min(int(query.get("limit", ["1000"])[0]), 10000)
+                checked = min(limit, len(self.audit))
+                broken = self.audit_broken_at
+                return 200, {"verified": broken == -1, "valid": broken if broken >= 0 else checked, "checked": limit, "broken_at": broken}
+            if path == "/api/audit":
+                limit = min(max(int(query.get("limit", ["100"])[0]), 1), 1000)
+                before = int(query.get("before", ["0"])[0] or 0)
+                link = query.get("interface_id", [""])[0]
+                rows = [e for e in reversed(self.audit) if (not before or e["id"] < before) and (not link or e.get("interface_id") == link)]
+                return 200, rows[:limit]
+        # The credential store, as the Bridge's credentials_local.go.
+        if self.credentials is not None and path.startswith("/api/credentials"):
+            parts = path.split("/")
+            if path == "/api/credentials" and method == "GET":
+                return 200, {"credentials": [dict(c) for c in self.credentials]}
+            if path == "/api/credentials/upload" and method == "POST":
+                raw = (body or {}).get("_raw", "") if isinstance(body, dict) else ""
+                fields = dict(re.findall(r'name="(provider|name)"\r\n\r\n([^\r]*)\r\n', raw))
+                if not fields.get("provider"):
+                    return 400, {"error": "provider is required"}
+                if "BEGIN CERTIFICATE" not in raw and "PRIVATE KEY" not in raw:
+                    return 400, {"error": "no certificates or keys found in uploaded files"}
+                cred = {"id": f"cred-{len(self.credentials) + 1}", "provider": fields["provider"], "name": fields.get("name") or fields["provider"], "cred_type": "x509_cert",
+                        "cert_not_after": "2030-01-01T00:00:00Z", "cert_subject": "CN=e2e.meshsat.net", "cert_fingerprint": "ab" * 32, "version": 1, "source": "local", "applied": 0}
+                self.credentials.append(cred)
+                return 201, {"id": cred["id"], "provider": cred["provider"], "name": cred["name"], "cred_type": "x509_cert", "files_found": 1}
+            if len(parts) == 4 and method == "DELETE":
+                before = len(self.credentials)
+                self.credentials = [c for c in self.credentials if c["id"] != parts[3]]
+                return (200, {"status": "deleted"}) if len(self.credentials) < before else (404, {"error": "credential not found"})
         # A link switched on or off changes the interface list the scenario serves; a bind is taken.
         if path.startswith("/api/interfaces/") and method == "POST":
             parts = path.split("/")
@@ -298,7 +343,8 @@ class FakeBridge:
                 self.deadman = {"enabled": False, "timeout_min": 240, "last_activity": "", "triggered": False}
                 return 200, {"ok": True}
             if order == "state":
-                return 200, {"sos": self.sos, "deadman": self.deadman, "down": self.down, "delay": self.delay, "deliveries": self.deliveries, "rules": self.rules}
+                return 200, {"sos": self.sos, "deadman": self.deadman, "down": self.down, "delay": self.delay, "deliveries": self.deliveries, "rules": self.rules,
+                             "credentials": self.credentials, "audit_count": len(self.audit) if self.audit is not None else None}
         if order == "event":
             self.push(body)
             return 200, {"listeners": len(self.listeners)}

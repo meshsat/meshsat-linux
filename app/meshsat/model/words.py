@@ -128,6 +128,39 @@ def in_time(epoch_s: float, now_s: float | None = None) -> str:
     return f"in {s // 3600} h {(s % 3600) // 60} min"
 
 
+# MeshtasticProtocol.hardwareNames: the models people know by another name than the proto's.
+HARDWARE_NAMES = {4: "LilyGO T-Beam", 7: "LilyGO T-Echo", 9: "RAK WisBlock 4631", 12: "LilyGO T-Beam Supreme", 43: "Heltec V3", 44: "Heltec Wireless Stick Lite V3",
+                  48: "Heltec Wireless Tracker", 50: "LilyGO T-Deck", 51: "LilyGO T-Watch S3", 65: "Heltec Capsule Sensor V3", 69: "Heltec Mesh Node T114",
+                  71: "Seeed Card Tracker T1000-E", 80: "M5Stack CoreS3", 81: "Seeed XIAO ESP32-S3", 88: "Seeed XIAO nRF52840 kit", 89: "ThinkNode M1", 90: "ThinkNode M2",
+                  94: "Heltec Mesh Pocket", 95: "Seeed Solar Node", 99: "Seeed Wio Tracker L1", 102: "LilyGO T-Deck Pro", 103: "LilyGO T-Lora Pager", 110: "Heltec V4",
+                  255: "Custom hardware"}
+
+
+def hardware_name(code, proto_name: str = "") -> str:
+    """A node's hardware model as people recognise it (MeshtasticProtocol.hardwareName): the
+    table, else the proto's enum name in words ("HELTEC_V3" -> "Heltec V3"), else the code."""
+    try:
+        code = int(code or 0)
+    except (TypeError, ValueError):
+        code = 0
+    if code == 0 and not proto_name:
+        return "Unknown model"
+    if code in HARDWARE_NAMES:
+        return HARDWARE_NAMES[code]
+    if proto_name:
+        return " ".join(w if any(c.isdigit() for c in w) or len(w) <= 3 else w.lower().capitalize() for w in proto_name.split("_"))
+    return f"Unknown model (code {code})"
+
+
+def fixed(value, digits: int = 1) -> str:
+    """A number with `digits` decimals as Kotlin's "%.1f".format writes it: the double's exact
+    value rounded half up (-3.25 is "-3.3"; Python's own format would write "-3.2")."""
+    from decimal import ROUND_HALF_UP, Decimal  # noqa: PLC0415
+
+    quantum = Decimal(1).scaleb(-digits)
+    return str(Decimal(float(value)).quantize(quantum, rounding=ROUND_HALF_UP))
+
+
 def stamp_epoch(value) -> float | None:
     """A time stamp of the Bridge as seconds since the epoch: RFC 3339 ("2026-09-28T17:00:00Z",
     with or without fractions), SQLite's "2026-09-28 17:00:00" (UTC), or a number already;
