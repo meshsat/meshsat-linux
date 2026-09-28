@@ -114,7 +114,12 @@ toast label {{ color: {TEXT_PRIMARY}; font-size: {px(14)}; }}
 .banner {{ background-color: {AMBER}; padding: {px(12)} {px(16)}; border-radius: 0; border: none; box-shadow: none; }}
 .banner label {{ color: {SPACE_BLACK}; font-size: {px(16)}; }}
 .banner.sos {{ background-color: {RED}; }}
+.banner.sos.test {{ background-color: {AMBER}; }}
 .card {{ background-color: {SURFACE}; border: 1px solid {BORDER}; border-radius: {px(8)}; }}
+.card.sos-on {{ border-color: {RED}; }}
+.card.sos-test {{ border-color: {AMBER}; }}
+.tonal {{ background-color: {SURFACE_LIGHT}; border-radius: {px(20)}; padding: 0 {px(16)}; min-height: {px(40)}; border: none; box-shadow: none; }}
+.tonal label {{ color: {OFF_WHITE}; font-size: {px(14)}; font-weight: 500; }}
 .card-pad {{ padding: {px(12)}; }}
 .lane-row {{ padding: {px(12)} {px(12)} {px(8)} {px(12)}; min-height: {px(76)}; }}
 .lane-sep {{ background-color: {BORDER}; min-height: 1px; }}
@@ -198,6 +203,9 @@ toast label {{ color: {TEXT_PRIMARY}; font-size: {px(14)}; }}
 .radio.on {{ border-color: {SIGNAL_ORANGE}; background: radial-gradient(circle, {SIGNAL_ORANGE} 0%, {SIGNAL_ORANGE} 45%, transparent 50%); }}
 .hold {{ background: none; border: 2px solid {SIGNAL_ORANGE}; border-radius: {px(12)}; padding: 0; box-shadow: none; min-height: {px(64)}; }}
 .hold.danger {{ border-color: {RED}; }}
+.timeout-row {{ border-radius: {px(4)}; padding: {px(8)} {px(12)}; }}
+.timeout-row.selected {{ background-color: alpha({GREEN}, 0.15); }}
+.contact-row {{ background-color: {SURFACE_LIGHT}; border-radius: {px(6)}; padding-left: {px(12)}; }}
 .status-banner {{ border-radius: {px(8)}; padding: {px(10)} {px(12)}; }}
 .status-banner.amber {{ background-color: alpha({AMBER}, 0.12); border: 1px solid alpha({AMBER}, 0.4); }}
 .status-banner.red {{ background-color: {ERROR_CONTAINER}; border: 1px solid alpha({RED}, 0.4); }}

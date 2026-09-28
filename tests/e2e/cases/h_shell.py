@@ -13,7 +13,7 @@ ROUTES = {
     "setup/satellite": "Satellite passes",
     "setup/hub": "Hub connection",
     "setup/sms": "Text messages",
-    "setup/safety": "Emergency contacts",
+    "setup/safety": "Check-in timer (dead man's switch)",
     "setup/messaging": "Message compression",
     "setup/maps": "Offline maps",
     "setup/integrations": "Ham radio (APRS)",

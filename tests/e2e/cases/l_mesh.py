@@ -45,7 +45,7 @@ def case_text_both_ways_with_a_tdeck(ctx):
         raise AssertionError(f"the Bridge's packet feed never showed {nonce!r} going out")
     expect = os.environ.get("MESHSAT_E2E_EXPECT_FILE", "")
     if expect:
-        with open(expect, "w", encoding="utf-8") as handle:
+        with open(expect, "a", encoding="utf-8") as handle:
             handle.write(nonce + "\n")
     ctx.note(f"inbound {inbound!r} shown; outbound {nonce!r} left through the Bridge")
     ctx.shot("outbound")

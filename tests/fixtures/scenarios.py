@@ -95,6 +95,7 @@ def base() -> dict:
         "GET /api/iridium/passes": {"passes": [], "tle_source": "none", "tle_age": -1, "cache_age": -1, "error": "no orbit data"},
         "GET /api/iridium/signal/history": [],
         "GET /api/position/fixed": {"latitude": 0, "longitude": 0},
+        "POST /api/sos/test": {"status": "sent"},
     }
 
 

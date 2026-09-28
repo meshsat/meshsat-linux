@@ -1,23 +1,41 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""The words of an SOS, as sos/SosMessages.kt on Android: the same texts on the mesh, by SMS
-to the emergency contacts, and when the alarm is cancelled."""
+"""What an SOS says on each route, as sos/SosMessages.kt on Android. The Hub raises an alarm for
+any incoming text that contains one of HUB_ALARM_WORDS, anywhere and in any case, and a
+MeshSat kit on the same mesh forwards what it hears to the Hub: so an SOS says "SOS", and a
+test or a cancellation must never contain one of those words, not even inside the sender's
+name."""
 import datetime
 import time
 
-STALE_FIX = 30 * 60  # a position older than this is "Last position", not "At"
+HUB_ALARM_WORDS = ("SOS", "MAYDAY", "EMERGENCY")
+MAX_NAME = 24  # longest name used in a message, so an SMS stays in one part
+STALE_FIX = 2 * 60  # a fix older than this is called the last known position
+
+
+def contains_alarm_word(text: str) -> bool:
+    upper = (text or "").upper()
+    return any(word in upper for word in HUB_ALARM_WORDS)
 
 
 def clean_name(name: str) -> str:
-    name = " ".join((name or "").split())
-    return name[:40] if name else "A MeshSat user"
+    """The user's name as it goes into a message: printable, trimmed, short."""
+    printable = "".join(ch for ch in (name or "") if ch.isprintable() and ch not in "\t\n\r").strip()
+    printable = " ".join(printable.split())
+    return printable[:MAX_NAME].strip() or "A MeshSat user"
 
 
 def quiet_name(name: str) -> str:
-    return clean_name(name)
+    """The name for a message that must not raise an alarm."""
+    clean = clean_name(name)
+    return "This phone" if contains_alarm_word(clean) else clean
+
+
+def coordinates(lat: float, lon: float) -> str:
+    return f"{lat:.5f}, {lon:.5f}"
 
 
 def utc_time(ts) -> str:
-    return datetime.datetime.fromtimestamp(ts, datetime.timezone.utc).strftime("%H:%M UTC")
+    return datetime.datetime.fromtimestamp(ts, datetime.timezone.utc).strftime("%H:%M") + " UTC"
 
 
 def where_text(position, now=None) -> str:
@@ -28,22 +46,22 @@ def where_text(position, now=None) -> str:
     lat, lon = position[0], position[1]
     accuracy = position[3] if len(position) > 3 else None
     at = position[4] if len(position) > 4 else None
-    now = now or time.time()
+    now = time.time() if now is None else now
     within = f" (within {round(accuracy)} m)" if accuracy and accuracy > 0 else ""
-    lead = "Last position" if at and now - at > STALE_FIX else "At"
-    return f"{lead} {lat:.5f}, {lon:.5f}{within} at {utc_time(at or now)}."
+    lead = "Last position" if at is not None and now - at > STALE_FIX else "At"
+    return f"{lead} {coordinates(lat, lon)}{within} at {utc_time(at if at is not None else now)}."
 
 
-def mesh_text(name: str, position) -> str:
+def mesh_text(name: str, position, now=None) -> str:
     """Broadcast on the mesh."""
-    return f"SOS: {clean_name(name)} needs help. {where_text(position)}"
+    return f"SOS: {clean_name(name)} needs help. {where_text(position, now)}"
 
 
-def sms_text(name: str, position) -> str:
+def sms_text(name: str, position, now=None) -> str:
     """To each emergency contact, from the phone's own SIM: plain ASCII with a map link, at
     most 160 characters so it goes as one SMS whatever the name and the position."""
     ascii_name = "".join(ch for ch in clean_name(name) if 32 <= ord(ch) <= 126).strip() or "A MeshSat user"
-    base = f"SOS: {ascii_name} needs help. {where_text(position)}"
+    base = f"SOS: {ascii_name} needs help. {where_text(position, now)}"
     if not position:
         return f"{base} Sent by MeshSat."
     return f"{base} https://osm.org/?mlat={position[0]:.5f}&mlon={position[1]:.5f}"

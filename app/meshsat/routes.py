@@ -19,7 +19,7 @@ ROUTES = {
     "setup/satellite": ("setup", "setup", "SatelliteScreen"),
     "setup/hub": ("setup", "setup", "HubScreen"),
     "setup/sms": ("setup", "setup", "SmsScreen"),
-    "setup/safety": ("setup", "setup", "SafetyScreen"),
+    "setup/safety": ("setup", "pages.safety", "SafetyScreen"),
     "setup/messaging": ("setup", "setup", "MessagingScreen"),
     "setup/maps": ("setup", "setup", "MapsScreen"),
     "setup/integrations": ("setup", "setup", "IntegrationsScreen"),
@@ -28,7 +28,7 @@ ROUTES = {
     "radio-config": ("setup", "setup", "RadioScreen"),
     "about": ("setup", "setup", "AboutScreen"),
     "nodelog": ("setup", "setup", "NodeLogScreen"),
-    "sos": ("setup", "setup", "SafetyScreen"),
+    "sos": ("setup", "pages.sos", "SosScreen"),
 }
 
 # The names the `open` action took before the routes were Android's (kept for the tools).

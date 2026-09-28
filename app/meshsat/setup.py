@@ -9,11 +9,11 @@ from gi.repository import Adw, GLib, Gtk
 
 from . import __version__ as VERSION
 from . import api, system, theme
-from . import sos as sos_words
 from .model import words
+from .pages.safety import SafetyScreen  # noqa: F401  (the Setup row and the route table use it)
 from .passes import PassesScreen
 from .screen import Screen, SubScreen
-from .widgets import Chip, KeyValue, NavRow, SubHeader, SwitchRow, clear, filled_button, group_title, hscroll, outlined_button, page, scroller, spacer, text, text_button, when
+from .widgets import KeyValue, NavRow, SubHeader, clear, filled_button, group_title, outlined_button, page, scroller, spacer, text, text_button, when
 
 # Meshtastic's LoRa config, as the Bridge relays it: protobuf field numbers of Config.LoRaConfig.
 REGIONS = {0: "Unset", 1: "US", 2: "EU_433", 3: "EU_868", 4: "CN", 5: "JP", 6: "ANZ", 7: "KR", 8: "TW", 9: "RU", 10: "IN", 11: "NZ_865", 12: "TH", 13: "LORA_24", 14: "UA_433", 15: "UA_868", 16: "MY_433", 17: "MY_919", 18: "SG_923"}
@@ -513,123 +513,6 @@ class SmsScreen(Page):
                      ("Network", (c.get("operator") or "-") + (f", {c['network_type']}" if c.get("network_type") else "")), ("Number", c.get("phone_number") or "-"),
                      ("Sent, received", f"{c.get('sms_sent', 0)}, {c.get('sms_received', 0)}")):
             self.details.append(KeyValue(k, v, mono=k == "Number"))
-
-
-class SafetyScreen(Page):
-    def __init__(self, app):
-        super().__init__(app, "Safety")
-        zones = NavRow("outlined-fence", "Zones", lambda: app.toast("Zones are not on this device yet."))
-        zones.set_detail("Not on this device yet")
-        self.column.append(zones)
-        sos = self.card("SOS")
-        self.sos_status = text("No SOS has been sent from this phone.", "body-medium", theme.TEXT_SECONDARY, wrap=True)
-        sos.append(self.sos_status)
-        self.sos_reach = text("An SOS goes out by satellite, the mesh and the Hub, with your position, and keeps trying until you cancel.", "body-medium", theme.TEXT_SECONDARY, wrap=True)
-        sos.append(self.sos_reach)
-        sos.append(text("Your name in an SOS", "label-medium", theme.TEXT_SECONDARY))
-        self.name = Gtk.Entry(placeholder_text="A MeshSat user")
-        self.name.add_css_class("field")
-        self.name.set_text(app.state.sos_name)
-        self.name.connect("changed", lambda e: app.set_sos_name(e.get_text()))
-        sos.append(self.name)
-        self.cancel = outlined_button("Cancel SOS: I am safe", self.cancel_sos)
-        sos.append(self.cancel)
-
-        contacts = self.card("Emergency contacts")
-        contacts.append(text("Who an SOS goes to by SMS, from this phone's own SIM, with your position and a map link.", "body-medium", theme.TEXT_SECONDARY, wrap=True))
-        self.sms_note = text("", "body-small", theme.AMBER, wrap=True)
-        contacts.append(self.sms_note)
-        self.contact_rows = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(4))
-        contacts.append(self.contact_rows)
-        self.contact_name = Gtk.Entry(placeholder_text="Name")
-        self.contact_name.add_css_class("field")
-        contacts.append(self.contact_name)
-        self.contact_phone = Gtk.Entry(placeholder_text="Phone number, with country code: +31 6 1234 5678", input_purpose=Gtk.InputPurpose.PHONE)
-        self.contact_phone.add_css_class("field")
-        contacts.append(self.contact_phone)
-        self.add_contact = filled_button("Add this contact", self.add_a_contact)
-        contacts.append(self.add_contact)
-        timer = self.card("Check-in timer (dead man's switch)")
-        # A poll moves the switch without posting anything back: every POST to the Bridge
-        # resets the timer, and opening this page must never count as a check-in.
-        self.enabled = SwitchRow("Enabled", self.set_enabled)
-        timer.append(self.enabled)
-        choices = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
-        self.timeouts = {}
-        for minutes, label_text in ((30, "30 min"), (60, "1 hour"), (120, "2 hours"), (240, "4 hours"), (480, "8 hours")):
-            chip = Chip(label_text, lambda c, m=minutes: self.set_timeout(m))
-            self.timeouts[minutes] = chip
-            choices.append(chip)
-        timer.append(hscroll(choices))
-        timer.append(text("If you do not touch the phone within the time, an SOS goes out by itself.", "body-medium", theme.TEXT_SECONDARY, wrap=True))
-        self.update(app.state)
-
-    def cancel_sos(self) -> None:
-        self.call("/api/sos/cancel", lambda a: self.app.poller.poll_now())
-
-    MAX_CONTACTS = 10  # as Android's EmergencyContact.MAX
-
-    def add_a_contact(self) -> None:
-        name = self.contact_name.get_text().strip()
-        phone = "".join(ch for ch in self.contact_phone.get_text() if ch.isdigit() or ch == "+")
-        if not phone.startswith("+") or len(phone) < 8:
-            self.app.toast("A phone number with its country code, like +31612345678.")
-            return
-        contacts = [c for c in self.app.state.contacts if c.get("phone") != phone]
-        if len(contacts) >= self.MAX_CONTACTS:
-            self.app.toast(f"Up to {self.MAX_CONTACTS} contacts.")
-            return
-        contacts.append({"name": name, "phone": phone})
-        self.app.set_contacts(contacts)
-        self.contact_name.set_text("")
-        self.contact_phone.set_text("")
-        self.update(self.app.state)
-
-    def remove_contact(self, phone: str) -> None:
-        self.app.set_contacts([c for c in self.app.state.contacts if c.get("phone") != phone])
-        self.update(self.app.state)
-
-    def set_enabled(self, state: bool) -> None:
-        current = self.app.state.deadman or {}
-        self.call("/api/deadman", lambda a: self.app.poller.poll_now(), body={"enabled": bool(state), "timeout_min": current.get("timeout_min", 240)})
-
-    def set_timeout(self, minutes: int) -> None:
-        current = self.app.state.deadman or {}
-        self.call("/api/deadman", lambda a: self.app.poller.poll_now(), body={"enabled": current.get("enabled", False), "timeout_min": minutes})
-
-    def update(self, s: api.State) -> None:
-        sos = s.sos or {}
-        if sos.get("active"):
-            self.sos_status.set_text(f"SOS is on since {utc_clock(sos.get('started_at'))}, sent {sos.get('sends', 0)} times. Tap Cancel when you are safe.")
-            self.cancel.set_visible(True)
-        else:
-            self.sos_status.set_text("No SOS has been sent from this phone.")
-            self.cancel.set_visible(False)
-        d = s.deadman or {}
-        self.enabled.set_active(bool(d.get("enabled")))
-        for minutes, chip in self.timeouts.items():
-            chip.set_selected(d.get("timeout_min") == minutes)
-        names = [c.get("name") or c["phone"] for c in s.contacts]
-        ways = "satellite, the mesh" + (f", SMS to {sos_words.join_and(names)}" if names else "") + " and the Hub"
-        self.sos_reach.set_text(f"An SOS goes out by {ways}, with your position, and keeps trying until you cancel.")
-        reason = s.sms_reason()
-        self.sms_note.set_text(f"SMS is not available: {reason[0].lower() + reason[1:]}" if reason and names else "")
-        self.sms_note.set_visible(bool(reason and names))
-        clear(self.contact_rows)
-        if not s.contacts:
-            self.contact_rows.append(text("No contacts yet.", "body-medium", theme.TEXT_MUTED))
-        for c in s.contacts:
-            row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
-            texts = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
-            texts.set_hexpand(True)
-            texts.append(text(c.get("name") or c["phone"], "body-medium"))
-            if c.get("name"):
-                texts.append(text(c["phone"], "body-small", theme.TEXT_SECONDARY, mono=True))
-            row.append(texts)
-            from .widgets import icon_button
-            row.append(icon_button("outlined-delete", lambda phone=c["phone"]: self.remove_contact(phone), 20, theme.TEXT_SECONDARY, "Remove"))
-            self.contact_rows.append(row)
-        self.add_contact.set_sensitive(len(s.contacts) < self.MAX_CONTACTS)
 
 
 class MessagingScreen(Page):

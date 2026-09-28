@@ -57,16 +57,17 @@ remote "bash /tmp/meshsat-e2e/tree/tools/e2e-remote.sh $TIERS $INSTALLED \"$INBO
 remote "cat /tmp/meshsat-e2e/out.tgz" </dev/null > "$OUT/out.tgz"
 tar xzf "$OUT/out.tgz" -C "$OUT" && rm -f "$OUT/out.tgz"
 if [ -n "$FAREND" ]; then
-    EXPECT=$(cat "$OUT/out/farend-expect.txt" 2>/dev/null || true)
     # [f]arend: a pattern that does not match this very command line (pkill -f would end it)
     hop "pkill -f [f]arend.py; sleep 1; cat ~/meshsat-e2e/heard.jsonl 2>/dev/null" </dev/null > "$OUT/out/farend-heard.jsonl"
-    if [ -n "$EXPECT" ]; then
-        if grep -q "\"text\": \"$EXPECT\"" "$OUT/out/farend-heard.jsonl"; then
+    # every line a live case wrote is a text the far end must have heard
+    while IFS= read -r EXPECT; do
+        [ -n "$EXPECT" ] || continue
+        if grep -qF "\"text\": \"$EXPECT\"" "$OUT/out/farend-heard.jsonl"; then
             echo "far end: heard '$EXPECT'" | tee -a "$OUT/out/summary.txt"
         else
             echo "FAIL far end never heard '$EXPECT' (heard: $(wc -l < "$OUT/out/farend-heard.jsonl") texts)" | tee -a "$OUT/out/summary.txt"
         fi
-    fi
+    done < <(cat "$OUT/out/farend-expect.txt" 2>/dev/null)
 fi
 echo "report: $OUT/out/summary.txt"
 cat "$OUT/out/summary.txt" 2>/dev/null
