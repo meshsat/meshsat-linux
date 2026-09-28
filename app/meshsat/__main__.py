@@ -369,8 +369,12 @@ class MeshSatApp(Adw.Application):
             self.node_banner.show("node", "The Bridge is not running on this phone. Tap to start it.")
         elif verdict in ("radio-not-answering", "cover-unreachable"):
             self.node_banner.show("node", s.watchdog.get("message") or "The radio in the back cover stopped answering. Re-seat the cover.")
-        elif not s.mesh_connected() and s.unreachable_since and s.polled_at - s.unreachable_since > 12:
-            self.node_banner.show("node", "Your MeshSat node cannot be reached. Tap to see why.")
+        elif not s.mesh_connected() and s.unreachable_since and s.polled_at - s.unreachable_since > 12 and (s.node_mode() != "bluetooth" or (s.ble or {}).get("address")):
+            # NodeLinkBanner.kt: "Cannot reach your MeshSat node[ since HH:mm][ (N min)]. Nothing
+            # goes out by mesh or satellite. Tap to see." (shown once a node has ever been chosen)
+            since = time.strftime("%H:%M", time.localtime(s.unreachable_since))
+            minutes = int((s.polled_at - s.unreachable_since) // 60)
+            self.node_banner.show("node", f"Cannot reach your MeshSat node since {since}" + (f" ({minutes} min)" if minutes >= 1 else "") + ". Nothing goes out by mesh or satellite. Tap to see.")
         else:
             self.node_banner.show(None)
 

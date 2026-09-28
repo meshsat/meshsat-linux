@@ -1,0 +1,15 @@
+[Unit]
+Description=Find this device's MeshSat node: the LoRa back cover, or a node over Bluetooth
+Documentation=https://github.com/meshsat/meshsat-linux/blob/main/docs/INSTALL.md
+After=local-fs.target systemd-modules-load.service systemd-udev-settle.service
+Before=meshtasticd.service meshsat-radio-watch.timer meshsat-bridge.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/meshsat/bin/meshsat-hardware --apply
+RuntimeDirectory=meshsat
+RuntimeDirectoryPreserve=yes
+RuntimeDirectoryMode=0755
+
+[Install]
+WantedBy=multi-user.target

@@ -4,8 +4,9 @@ in three groups, and one page of cards per row. This edition: the node is the Lo
 cover driven by meshtasticd on this phone, the satellite modem is a RockBLOCK on USB-C, and
 there is no SMS row (the phone's own modem is not the app's)."""
 import subprocess
+import threading
 
-from gi.repository import GLib, Gtk
+from gi.repository import Adw, GLib, Gtk
 
 from . import __version__ as VERSION
 from . import api, theme
@@ -56,8 +57,15 @@ class SetupScreen(Gtk.Box):
         self.append(scroller(column))
 
     def update(self, s: api.State) -> None:
+        ble = s.ble or {}
         if s.mesh_connected():
             self.node.set_detail("Connected", "green")
+        elif s.node_mode() == "bluetooth":
+            # SetupScreen.kt: "Connecting" while scanning or connecting, else "Not connected. Pair it here."
+            if ble.get("mode") in ("scanning", "pairing", "connecting"):
+                self.node.set_detail("Connecting", "amber")
+            else:
+                self.node.set_detail("Not connected. Pair it here.", "muted")
         elif s.node_service:
             self.node.set_detail("Connecting", "amber")
         else:
@@ -102,24 +110,72 @@ class Page(Gtk.Box):
 
 
 class NodeScreen(Page):
+    """Your MeshSat node: the LoRa back cover this phone carries, or a node over Bluetooth
+    (the "Bluetooth connection" card of SettingsScreen.kt, word for word). Which of the two,
+    the package's meshsat-hardware decided when the phone booted; the last card asks it again."""
+
     def __init__(self, app):
         super().__init__(app, "Your MeshSat node")
-        card = self.card("The LoRa back cover")
+        self.devices = None
+        self.scanning = False
+        self.pin_asked_for = None
+        # The LoRa back cover, when this phone has one.
+        self.cover = self.card("The LoRa back cover")
         self.status = KeyValue("Status", "Disconnected")
-        card.append(self.status)
+        self.cover.append(self.status)
         self.details = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(0))
-        card.append(self.details)
+        self.cover.append(self.details)
         self.action = filled_button("Start the node", self.start)
-        card.append(self.action)
+        self.cover.append(self.action)
         self.note = text("The node is meshtasticd on this phone, driving the Pine64 LoRa back cover through its pogo pins. It starts with the phone.", "body-medium", theme.TEXT_SECONDARY, wrap=True)
-        card.append(self.note)
+        self.cover.append(self.note)
+        # A node over Bluetooth, as on the other apps.
+        self.bt = self.card("Bluetooth connection")
+        self.bt_status = KeyValue("Status", "Disconnected")
+        self.bt.append(self.bt_status)
+        self.bt_body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(8))
+        self.bt.append(self.bt_body)
+        # Which of the two this device has.
+        self.device = self.card("This device")
+        self.device_node = KeyValue("Node", "")
+        self.device.append(self.device_node)
+        self.device_why = text("", "body-medium", theme.TEXT_SECONDARY, wrap=True)
+        self.device.append(self.device_why)
+        self.device.append(outlined_button("Look for a LoRa back cover again", self.check_hardware))
         self.update(app.state)
 
     def start(self) -> None:
         subprocess.Popen(["pkexec", "systemctl", "restart", "meshtasticd.service", "meshsat-bridge.service"])
         self.app.toast("Starting the node")
 
+    def check_hardware(self) -> None:
+        self.app.toast("Looking for the cover")
+
+        def run() -> None:
+            error = api.check_hardware()
+            found = api.hardware().get("node", "")
+            GLib.idle_add(lambda: self.app.toast(error or {"cover": "The LoRa back cover is this phone's node.", "bluetooth": "No LoRa back cover: connect a node over Bluetooth."}.get(found, "Checked.")) or False)
+
+        threading.Thread(target=run, daemon=True).start()
+
     def update(self, s: api.State) -> None:
+        mode = s.node_mode()
+        self.cover.set_visible(mode == "cover")
+        self.bt.set_visible(mode == "bluetooth")
+        hw = s.hardware
+        self.device_node.value.set_text("The LoRa back cover" if mode == "cover" else "A node over Bluetooth")
+        why = hw.get("why", "")
+        why = why[:1].upper() + why[1:]
+        if hw.get("model"):
+            why = f"{why} ({hw['model']})" if why else hw["model"]
+        self.device_why.set_text(why)
+        self.device_why.set_visible(bool(why))
+        if mode == "cover":
+            self.update_cover(s)
+        else:
+            self.update_bluetooth(s)
+
+    def update_cover(self, s: api.State) -> None:
         clear(self.details)
         if s.mesh_connected():
             self.status.value.set_text("Connected")
@@ -138,6 +194,159 @@ class NodeScreen(Page):
         radio = s.watchdog.get("radio")
         if radio in ("radio-not-answering", "cover-unreachable"):
             self.details.append(text(s.watchdog.get("message", ""), "body-medium", theme.AMBER, wrap=True))
+
+    # SettingsScreen.kt:384-525: Status; "Scan for Meshtastic devices"; "Found devices:" with
+    # name, address and Connect; when connected Firmware, Node ID, Battery, Reboots, Mesh Nodes
+    # and Disconnect. The PIN dialog is this app's: Android's system shows it there.
+    def update_bluetooth(self, s: api.State) -> None:
+        ble = s.ble or {}
+        b = s.bridge or {}
+        state = ble.get("mode", "idle")
+        if s.mesh_connected():
+            status = "Connected"
+        elif self.scanning:
+            status = "Scanning..."
+        elif state in ("scanning", "pairing", "connecting") or (state == "ready" and not ble.get("connected")):
+            status = "Connecting..."
+        else:
+            status = "Disconnected"
+        self.bt_status.value.set_text(status)
+        if ble.get("pairing_pending") and self.pin_asked_for != ble.get("pairing_since"):
+            self.pin_asked_for = ble.get("pairing_since")
+            self.ask_pin(ble)
+        clear(self.bt_body)
+        if s.mesh_connected():
+            own = s.own_node() or {}
+            battery = own.get("battery_level") or 0
+            rows = [("Firmware", b.get("firmware_version", "")), ("Node ID", b.get("node_id", ""))]
+            if battery:
+                rows.append(("Battery", "On USB power" if battery > 100 else f"{battery}%"))
+            if b.get("reboot_count"):
+                rows.append(("Reboots", str(b["reboot_count"])))
+            names = [(n.get("long_name") or n.get("user_id", "")) + (f" ({n['short_name']})" if n.get("short_name") else "") for n in s.nodes[:8]]
+            rows.append((f"Mesh Nodes ({len(s.nodes)})", ", ".join(names) or "none yet"))
+            for k, v in rows:
+                if v:
+                    self.bt_body.append(KeyValue(k, v, mono=k in ("Node ID", "Firmware")))
+            disconnect = outlined_button("Disconnect", self.disconnect)
+            disconnect.add_css_class("danger")
+            self.bt_body.append(disconnect)
+            return
+        if state == "pairing" or ble.get("pairing_pending"):
+            self.bt_body.append(text(f"Pairing with {ble.get('name') or ble.get('address') or 'the node'}: enter the PIN shown on its screen.", "body-medium", theme.TEXT_SECONDARY, wrap=True))
+            self.bt_body.append(outlined_button("Enter the PIN", lambda: self.ask_pin(ble)))
+        elif ble.get("address"):
+            who = ble.get("name") or ble["address"]
+            if state in ("scanning", "connecting"):
+                self.bt_body.append(text(f"Connecting to {who}.", "body-medium", theme.TEXT_SECONDARY, wrap=True))
+            else:
+                self.bt_body.append(text(f"{who} cannot be reached." + (f" {ble['error'].capitalize()}." if ble.get("error") else ""), "body-medium", theme.AMBER, wrap=True))
+        if not self.scanning:
+            self.bt_body.append(filled_button("Scan for Meshtastic devices", self.scan))
+        if self.devices is not None and not self.scanning:
+            if self.devices:
+                self.bt_body.append(text("Found devices:", "title-medium"))
+                for dev in self.devices:
+                    self.bt_body.append(self.device_row(dev))
+            else:
+                self.bt_body.append(text("No Meshtastic devices found. Is the node on, with Bluetooth enabled?", "body-medium", theme.TEXT_SECONDARY, wrap=True))
+        if ble.get("address"):
+            forget = text_button("Forget this node", self.forget)
+            self.bt_body.append(forget)
+
+    def device_row(self, dev: dict) -> Gtk.Widget:
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(12))
+        names = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(2))
+        names.set_hexpand(True)
+        names.append(text(dev.get("name") or "Unknown", "title-medium", ellipsize=True))
+        detail = dev.get("address", "")
+        if dev.get("rssi"):
+            detail += f"  {dev['rssi']} dBm"
+        if dev.get("chosen"):
+            detail += "  (your node)"
+        names.append(text(detail, "body-medium", theme.TEXT_SECONDARY, mono=True))
+        row.append(names)
+        row.append(text_button("Connect", lambda: self.connect(dev)))
+        return row
+
+    def scan(self) -> None:
+        if self.scanning:
+            return
+        self.scanning = True
+        self.update(self.app.state)
+
+        def run() -> None:
+            result = api.ble_scan(8)
+
+            def done() -> bool:
+                self.scanning = False
+                if result is None or result.get("error"):
+                    self.devices = []
+                    self.app.toast((result or {}).get("error") or "The Bridge is not answering.")
+                else:
+                    self.devices = result.get("devices") or []
+                self.update(self.app.state)
+                return False
+
+            GLib.idle_add(done)
+
+        threading.Thread(target=run, daemon=True).start()
+
+    def connect(self, dev: dict) -> None:
+        result = api.ble_connect(dev.get("address", ""))
+        if result and result.get("error"):
+            self.app.toast(result["error"])
+            return
+        self.devices = None
+        self.app.toast(f"Connecting to {dev.get('name') or dev.get('address')}")
+        self.app.poller.poll_now()
+
+    def disconnect(self) -> None:
+        result = api.ble_forget(bond=False)
+        self.app.toast(result.get("error") if result and result.get("error") else "Disconnected")
+        self.app.poller.poll_now()
+
+    def forget(self) -> None:
+        result = api.ble_forget(bond=True)
+        self.app.toast(result.get("error") if result and result.get("error") else "The node is forgotten")
+        self.devices = None
+        self.app.poller.poll_now()
+
+    def ask_pin(self, ble: dict) -> None:
+        """The node shows a six-digit PIN ("Enter this code" on its screen); the Bridge's
+        pairing waits for it."""
+        who = ble.get("name") or ble.get("address") or "the node"
+        dialog = Adw.Dialog(title=f"Pair with {who}", content_width=340)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(12))
+        box.add_css_class("sheet")
+        box.append(text(f"Pair with {who}", "dialog-title"))
+        box.append(text("Enter the PIN shown on the node's screen.", "body-medium", theme.TEXT_SECONDARY, wrap=True))
+        entry = Gtk.Entry(placeholder_text="6 digits", input_purpose=Gtk.InputPurpose.DIGITS, max_length=6)
+        entry.add_css_class("field")
+        box.append(entry)
+        buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
+        buttons.set_halign(Gtk.Align.END)
+        cancel = text_button("Cancel", dialog.close)
+        buttons.append(cancel)
+
+        def pair() -> None:
+            pin = "".join(ch for ch in entry.get_text() if ch.isdigit())
+            if len(pin) != 6:
+                self.app.toast("Enter 6 digits.")
+                return
+            result = api.ble_pair(pin)
+            if result and result.get("error"):
+                self.app.toast(result["error"])
+                return
+            dialog.close()
+            self.app.toast("Pairing")
+            self.app.poller.poll_now()
+
+        buttons.append(text_button("Pair", pair))
+        entry.connect("activate", lambda *_: pair())
+        box.append(buttons)
+        dialog.set_child(box)
+        dialog.present(self.app.window)
 
 
 class SatelliteScreen(Page):

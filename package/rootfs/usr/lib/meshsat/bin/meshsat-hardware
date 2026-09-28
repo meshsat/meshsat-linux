@@ -1,0 +1,91 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Which node this device has, decided before the daemon and the Bridge start, and again when the
+# app asks (systemctl start meshsat-hardware.service): a PinePhone with the Pine64 LoRa back
+# cover answering on its pogo bus runs the daemon and the Bridge talks TCP to it; anything else
+# runs the Bridge in Bluetooth mode, where the app adopts a node as MeshSat Android and iOS do.
+#
+# Writes, under /run/meshsat:
+#   hardware.env   MESHSAT_NODE=cover|bluetooth and the Bridge's mesh port, read by
+#                  meshsat-bridge.service after /etc/meshsat/bridge.env
+#   cover          present only when the cover answered: the condition of meshtasticd.service
+#                  and of the radio watchdog's timer
+#   hardware.json  what was found and why, for the app's Node page
+#
+# The probe (lora-listen --seconds 1) shares the I2C bus with nobody: it never runs while the
+# daemon is running, and a running daemon is the answer "cover" by itself.
+set -u
+RUN=/run/meshsat
+PROBE=/usr/lib/meshsat/bin/lora-listen
+mkdir -p "$RUN"
+before=$(cat "$RUN/hardware.env" 2>/dev/null || true)
+
+node=bluetooth
+why=""
+# /etc/meshsat/hardware.conf may force the answer (MESHSAT_NODE=cover|bluetooth): a person
+# with a cover who wants a node over Bluetooth anyway, or a bench that tests without one.
+forced=$(sed -n 's/^MESHSAT_NODE=//p' /etc/meshsat/hardware.conf 2>/dev/null | tail -1)
+if [ "$forced" = cover ] || [ "$forced" = bluetooth ]; then
+    node=$forced
+    why="forced by /etc/meshsat/hardware.conf"
+elif systemctl is-active --quiet meshtasticd.service 2>/dev/null; then
+    node=cover
+    why="the node daemon is running on it"
+elif [ ! -x "$PROBE" ]; then
+    why="this package has no probe for a LoRa back cover on this architecture"
+else
+    # The pogo-pin bus: /dev/i2c-5 on the PinePhone Pro, /dev/i2c-2 on the original PinePhone.
+    tried=""
+    for bus in /dev/i2c-5 /dev/i2c-2; do
+        [ -e "$bus" ] || continue
+        tried="$tried $bus"
+        out=$("$PROBE" "$bus" --seconds 1 2>&1)
+        if [ $? -eq 0 ]; then
+            node=cover
+            why="the cover's radio answered on $bus"
+            break
+        fi
+        why=$(printf '%s\n' "$out" | grep -v '^$' | tail -1)
+    done
+    if [ "$node" != cover ]; then
+        if [ -z "$tried" ]; then
+            why="no pogo-pin I2C bus: not a PinePhone, or i2c-dev is not loaded"
+        else
+            [ -n "$why" ] || why="the cover's radio did not answer on$tried"
+        fi
+    fi
+fi
+model=$(tr -d '\0' < /proc/device-tree/model 2>/dev/null || true)
+[ -n "$model" ] || model=$(cat /sys/devices/virtual/dmi/id/product_name 2>/dev/null || echo unknown)
+
+if [ "$node" = cover ]; then
+    : > "$RUN/cover"
+    printf 'MESHSAT_NODE=cover\nMESHSAT_MESHTASTIC_PORT=tcp://127.0.0.1:4403\n' > "$RUN/hardware.env"
+else
+    rm -f "$RUN/cover"
+    printf 'MESHSAT_NODE=bluetooth\nMESHSAT_MESHTASTIC_PORT=ble\n' > "$RUN/hardware.env"
+fi
+esc() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
+printf '{"node": "%s", "why": "%s", "model": "%s", "checked_at": %d}\n' "$node" "$(esc "$why")" "$(esc "$model")" "$(date +%s)" > "$RUN/hardware.json"
+chmod 0644 "$RUN/hardware.env" "$RUN/hardware.json"
+echo "meshsat-hardware: $node ($why; $model)"
+
+# Asked again after boot (the cover put on or taken off): the units follow. --no-block keeps
+# this from waiting on units that are ordered after this one at boot.
+if [ "${1:-}" = "--apply" ]; then
+    if [ "$node" = cover ]; then
+        # A node adopted over Bluetooth before is let go: while this phone holds the link the
+        # node does not advertise, and no other phone can reach it.
+        adopted=$(sed -n 's/.*"address":"\([0-9A-Fa-f:]*\)".*/\1/p' /var/lib/meshsat/ble-node.json 2>/dev/null)
+        if [ -n "$adopted" ] && command -v bluetoothctl >/dev/null 2>&1; then
+            timeout 10 bluetoothctl disconnect "$adopted" >/dev/null 2>&1 || true
+        fi
+        systemctl start --no-block meshtasticd.service meshsat-radio-watch.timer 2>/dev/null || true
+    else
+        systemctl stop --no-block meshsat-radio-watch.timer meshtasticd.service 2>/dev/null || true
+    fi
+    if [ "$before" != "$(cat "$RUN/hardware.env")" ]; then
+        systemctl try-restart --no-block meshsat-bridge.service 2>/dev/null || true
+    fi
+fi
+exit 0

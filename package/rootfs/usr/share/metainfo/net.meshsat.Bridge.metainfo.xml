@@ -36,6 +36,11 @@
   </recommends>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.4.0" date="2026-09-28">
+      <description>
+        <p>Your node over Bluetooth, as on the other apps: a phone without the LoRa back cover scans for Meshtastic nodes under Setup > Your MeshSat node, pairs with the PIN the node shows, and keeps the node across restarts. The package finds out at boot whether this phone carries the cover and runs the node daemon only then.</p>
+      </description>
+    </release>
     <release version="0.3.1" date="2026-09-28">
       <description>
         <p>The name of a mesh node: "Node !id" until the phone has heard its NodeInfo, as on the other apps; a name heard once is kept across Bridge restarts; a node that has not told its name is asked again on the cadence its firmware accepts. New message lists the nodes heard recently.</p>

@@ -15,7 +15,7 @@
 #   $BACKPLATE                   a checkout of meshsat-lora-backplate at the pinned commit
 set -eu
 
-VERSION=0.3.1
+VERSION=0.4.0
 ARCH=arm64
 INPUTS=$HOME/build/meshsat-linux/inputs
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -82,6 +82,12 @@ install -D -m 0644 "$P/systemd/meshtasticd.service" "$ROOT/lib/systemd/system/me
 install -D -m 0644 "$P/systemd/meshsat-radio-watch.service" "$ROOT/lib/systemd/system/meshsat-radio-watch.service"
 install -D -m 0644 "$P/systemd/meshsat-radio-watch.timer" "$ROOT/lib/systemd/system/meshsat-radio-watch.timer"
 install -D -m 0644 "$HERE/package/rootfs/lib/systemd/system/meshsat-bridge.service" "$ROOT/lib/systemd/system/meshsat-bridge.service"
+# Which node this device has (the LoRa back cover, or a node over Bluetooth), decided before the
+# daemon and the Bridge start; the daemon and the watchdog run only when a cover answered.
+install -D -m 0755 "$HERE/package/rootfs/usr/lib/meshsat/bin/meshsat-hardware" "$ROOT/usr/lib/meshsat/bin/meshsat-hardware"
+install -D -m 0644 "$HERE/package/rootfs/lib/systemd/system/meshsat-hardware.service" "$ROOT/lib/systemd/system/meshsat-hardware.service"
+install -D -m 0644 "$HERE/package/rootfs/lib/systemd/system/meshtasticd.service.d/meshsat-hardware.conf" "$ROOT/lib/systemd/system/meshtasticd.service.d/meshsat-hardware.conf"
+install -D -m 0644 "$HERE/package/rootfs/lib/systemd/system/meshsat-radio-watch.timer.d/meshsat-hardware.conf" "$ROOT/lib/systemd/system/meshsat-radio-watch.timer.d/meshsat-hardware.conf"
 
 # Meshtastic's web client, uncompressed: the Linux web server serves the path it is asked for
 mkdir -p "$ROOT/usr/share/meshtasticd/web"
