@@ -105,7 +105,9 @@ case "$1" in
                 systemctl --user --machine="$user@.host" restart meshsat-notify.service >/dev/null 2>&1 || true
             done
         fi
-        node=$(sed -n 's/^MESHSAT_NODE=//p' /run/meshsat/hardware.env 2>/dev/null)
+        # No verdict yet (a container, or meshsat-hardware not run): sed exits 2 on a missing
+        # file, which under set -e ended the script before its last words (pipeline 56799).
+        node=$(sed -n 's/^MESHSAT_NODE=//p' /run/meshsat/hardware.env 2>/dev/null || true)
         if [ "$node" = cover ]; then
             echo "meshsat: the LoRa back cover is this device's node; the node and the Bridge are starting. The MeshSat app is in the app grid (or run meshsat-app)."
         else
