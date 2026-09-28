@@ -155,6 +155,23 @@ toast label {{ color: {TEXT_PRIMARY}; font-size: {px(14)}; }}
 .bubble {{ background-color: {SURFACE}; border: 1px solid {BORDER}; border-radius: {px(8)}; padding: {px(12)}; }}
 .bubble.mine {{ background-color: {PRIMARY_CONTAINER}; border-color: {PRIMARY_CONTAINER}; }}
 .dot {{ border-radius: {px(4)}; min-width: {px(8)}; min-height: {px(8)}; }}
+.dot-small {{ border-radius: {px(3)}; min-width: {px(6)}; min-height: {px(6)}; }}
+.segments {{ background-color: {SURFACE}; border: 1px solid {BORDER}; border-radius: {px(8)}; padding: {px(3)}; min-height: {px(30)}; }}
+.segment {{ background: none; border: none; box-shadow: none; border-radius: {px(6)}; padding: 0; min-height: {px(28)}; font-family: "{MONO}", monospace; font-size: {px(14)}; font-weight: 500; color: {TEXT_MUTED}; }}
+.segment.on {{ background-color: alpha({IRIDIUM}, 0.22); color: {IRIDIUM}; }}
+.preset {{ background-color: {SURFACE}; border: 1px solid {BORDER}; border-radius: {px(8)}; padding: {px(8)} 0; box-shadow: none; }}
+.preset label {{ color: {TEXT_SECONDARY}; }}
+.preset label.label-small {{ color: {TEXT_MUTED}; }}
+.preset.on {{ background-color: alpha({IRIDIUM}, 0.18); border-color: alpha({IRIDIUM}, 0.5); }}
+.preset.on label {{ color: {IRIDIUM}; }}
+.chart-card {{ padding: {px(8)} {px(6)}; }}
+.pass-banner {{ border-radius: {px(12)}; padding: {px(16)}; }}
+.pass-banner-iridium {{ background-color: alpha({IRIDIUM}, 0.05); border: 1px solid alpha({IRIDIUM}, 0.2); }}
+.pass-banner-green {{ background-color: alpha({GREEN}, 0.05); border: 1px solid alpha({GREEN}, 0.2); }}
+.pass-row {{ background-color: alpha({SURFACE}, 0.5); border-radius: {px(8)}; padding: {px(10)} {px(12)}; }}
+.pass-row.active {{ background-color: alpha({IRIDIUM}, 0.1); border: 1px solid alpha({IRIDIUM}, 0.2); }}
+.pass-row.past {{ opacity: 0.4; }}
+.label-small {{ font-size: {px(11)}; font-weight: 500; }}
 .dot-green {{ background-color: {GREEN}; }}
 .dot-amber {{ background-color: {AMBER}; }}
 .dot-red {{ background-color: {RED}; }}

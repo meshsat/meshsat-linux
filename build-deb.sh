@@ -15,7 +15,7 @@
 #   $BACKPLATE                   a checkout of meshsat-lora-backplate at the pinned commit
 set -eu
 
-VERSION=0.2.0
+VERSION=0.2.1
 ARCH=arm64
 INPUTS=$HOME/build/meshsat-linux/inputs
 HERE=$(cd "$(dirname "$0")" && pwd)

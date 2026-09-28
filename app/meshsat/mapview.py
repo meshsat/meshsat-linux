@@ -177,11 +177,11 @@ class MapScreen(Gtk.Box):
         self.map.go_to(latitude, longitude)
 
     def centre_on_me(self) -> None:
-        own = self.app.state.own_node()
-        if Shumate is None or not own or not own.get("latitude"):
-            self.app.toast("Waiting for a position. Your node needs a view of the sky.")
+        position = self.app.state.position()
+        if Shumate is None or not position:
+            self.app.toast("Waiting for a position. Allow location, or enter one under Satellite passes.")
             return
-        self.go_to(own["latitude"], own["longitude"], HERE_ZOOM)
+        self.go_to(position[0], position[1], HERE_ZOOM)
 
     def show_everyone(self) -> None:
         if Shumate is None or not self.positions:
@@ -196,18 +196,19 @@ class MapScreen(Gtk.Box):
         self.map.go_to((min(lats) + max(lats)) / 2, (min(lons) + max(lons)) / 2)
 
     def update(self, s: api.State) -> None:
-        nodes = [n for n in s.nodes if n.get("latitude") and n.get("longitude")]
-        positioned = [(n["latitude"], n["longitude"]) for n in nodes]
+        me = (s.bridge or {}).get("node_id")
+        nodes = [n for n in s.nodes if n.get("latitude") and n.get("longitude") and n.get("user_id") != me]
+        phone = s.position()  # this phone: its own fix, the node's position, or the one typed in
+        positioned = [(n["latitude"], n["longitude"]) for n in nodes] + ([(phone[0], phone[1])] if phone else [])
         first_fix = positioned and not self.positions
         self.positions = positioned
-        me = (s.bridge or {}).get("node_id")
-        others = [n for n in nodes if n.get("user_id") != me]
-        self.summary.set_text("No node positions yet" if not nodes else f"{len(others)} of {len(others)} node{'s' if len(others) != 1 else ''} shown" if others else "This phone only")
+        others = nodes
+        self.summary.set_text("No node positions yet" if not positioned else f"{len(others)} of {len(others)} node{'s' if len(others) != 1 else ''} shown" if others else "This phone only")
         if Shumate is not None and self.markers is not None:
             self.markers.remove_all()
             now = time.time()
-            for n in nodes:
-                mine = n.get("user_id") == me
+            for n in ([{"latitude": phone[0], "longitude": phone[1], "mine": True}] if phone else []) + nodes:
+                mine = n.get("mine", False)
                 marker = Shumate.Marker()
                 box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(2))
                 box.set_halign(Gtk.Align.CENTER)
@@ -226,12 +227,11 @@ class MapScreen(Gtk.Box):
                 marker.set_child(box)
                 marker.set_location(n["latitude"], n["longitude"])
                 self.markers.add_marker(marker)
-            own = s.own_node()
-            if first_fix and own and own.get("latitude"):
-                self.go_to(own["latitude"], own["longitude"], HERE_ZOOM)
+            if first_fix and phone:
+                self.go_to(phone[0], phone[1], HERE_ZOOM)
         clear(self.panel_body)
         self.panel_body.append(text("Layers", "label-medium", theme.TEXT_SECONDARY))
-        for title, on in (("This phone", bool(s.own_node() and s.own_node().get("latitude"))), ("Nodes", True), ("Tracks from the last 24 hours", False)):
+        for title, on in (("This phone", bool(phone)), ("Nodes", True), ("Tracks from the last 24 hours", False)):
             row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
             check = Gtk.CheckButton(active=on)
             row.append(check)
