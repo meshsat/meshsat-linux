@@ -21,14 +21,12 @@ unit-3.13:
   script:
     - python3 -m unittest discover tests
 
+# docker:27 on the multiarch runner reaches the host's daemon, as the Bridge's own image job
+# does (no dind service: the runner has none, pipeline 56792).
 package-amd64:
   stage: package
   image: docker:27
   tags: [multiarch]
-  services: [docker:27-dind]
-  variables:
-    DOCKER_HOST: tcp://docker:2375
-    DOCKER_TLS_CERTDIR: ""
   before_script:
     - apk add --no-cache bash coreutils dpkg python3 py3-pillow binutils git
   script:
