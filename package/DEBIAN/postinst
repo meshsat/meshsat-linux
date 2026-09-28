@@ -1,0 +1,77 @@
+#!/bin/sh
+# postinst of the meshsat package: what packaging/install.sh of meshsat-lora-backplate does
+# for a source install, done by the package. Every step checks before it changes.
+set -e
+
+case "$1" in
+    configure)
+        # Users: the daemon on the I2C bus, the Bridge on the USB serial ports.
+        getent group i2c >/dev/null || addgroup --system i2c
+        getent passwd meshtasticd >/dev/null || adduser --system --group --home /var/lib/meshtasticd --no-create-home --shell /usr/sbin/nologin meshtasticd
+        adduser meshtasticd i2c >/dev/null 2>&1 || true
+        getent passwd meshsat >/dev/null || adduser --system --group --home /var/lib/meshsat --no-create-home --shell /usr/sbin/nologin meshsat
+        adduser meshsat dialout >/dev/null 2>&1 || true
+        install -d -o meshtasticd -g meshtasticd -m 0750 /var/lib/meshtasticd
+        install -d -o meshsat -g meshsat -m 0750 /var/lib/meshsat
+        chown -R meshtasticd:meshtasticd /usr/share/meshtasticd
+
+        # The bus: the module now (and at boot through modules-load.d), the permissions,
+        # the keyboard case's drivers out of the way.
+        modprobe i2c-dev 2>/dev/null || true
+        udevadm control --reload 2>/dev/null || true
+        udevadm trigger --subsystem-match=i2c-dev 2>/dev/null || true
+        for m in pinephone_keyboard ip5xxx_power; do
+            if lsmod | grep -q "^$m "; then modprobe -r "$m" 2>/dev/null || true; fi
+        done
+
+        # A certificate for the daemon's web server: it cannot make its own on Linux.
+        if [ ! -f /etc/meshtasticd/ssl/certificate.pem ]; then
+            install -d -o meshtasticd -g meshtasticd -m 0750 /etc/meshtasticd/ssl
+            openssl req -x509 -newkey rsa:2048 -nodes -days 3650 -subj "/CN=meshtastic.local/O=MeshSat" \
+                -keyout /etc/meshtasticd/ssl/private_key.pem -out /etc/meshtasticd/ssl/certificate.pem 2>/dev/null
+            chown meshtasticd:meshtasticd /etc/meshtasticd/ssl/private_key.pem /etc/meshtasticd/ssl/certificate.pem
+            chmod 0600 /etc/meshtasticd/ssl/private_key.pem
+        fi
+
+        # A node that was run by hand on this phone keeps its identity (keys, channels, node
+        # database): the first such prefs directory found is copied, once.
+        if [ ! -d /var/lib/meshtasticd/.portduino/default/prefs ]; then
+            for home in "$( [ -n "${SUDO_USER:-}" ] && getent passwd "$SUDO_USER" | cut -d: -f6 )" /home/*; do
+                if [ -n "$home" ] && [ -d "$home/.portduino/default/prefs" ]; then
+                    install -d -o meshtasticd -g meshtasticd /var/lib/meshtasticd/.portduino/default
+                    cp -a "$home/.portduino/default/prefs" /var/lib/meshtasticd/.portduino/default/prefs
+                    chown -R meshtasticd:meshtasticd /var/lib/meshtasticd/.portduino
+                    echo "meshsat: node identity taken from $home/.portduino/default/prefs"
+                    break
+                fi
+            done
+        fi
+        # A bench daemon started by hand gives way to the service.
+        for home in /home/*; do
+            if [ -f "$home/pinedio/daemon/run.sh" ]; then touch "$home/pinedio/daemon/stop" 2>/dev/null || true; fi
+        done
+        if pgrep -x meshtasticd >/dev/null 2>&1 && ! systemctl is-active --quiet meshtasticd 2>/dev/null; then
+            pkill -TERM -x meshtasticd || true
+            sleep 2
+        fi
+
+        # The app in the app grid.
+        if command -v gtk-update-icon-cache >/dev/null 2>&1; then gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor 2>/dev/null || true; fi
+        if command -v update-desktop-database >/dev/null 2>&1; then update-desktop-database -q 2>/dev/null || true; fi
+
+        # The services, now and at boot.
+        if [ -d /run/systemd/system ]; then
+            systemctl daemon-reload
+            systemctl enable meshtasticd.service meshsat-radio-watch.timer meshsat-bridge.service >/dev/null 2>&1 || true
+            systemctl restart meshtasticd.service || true
+            systemctl start meshsat-radio-watch.timer || true
+            systemctl restart meshsat-bridge.service || true
+        fi
+        echo "meshsat: the node and the Bridge are starting; the MeshSat app is in the app grid (or run meshsat-app)."
+        if [ ! -d /var/lib/meshtasticd/.portduino/default/prefs ]; then
+            echo "meshsat: a new node: give it its channels with  cat channel-url.txt | meshsat-node-channels --owner <name> --short <ABCD> --role CLIENT_MUTE"
+        fi
+        ;;
+esac
+
+exit 0

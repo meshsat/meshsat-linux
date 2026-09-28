@@ -1,0 +1,6 @@
+/etc/meshtasticd/config.yaml
+/etc/meshtasticd/config.d/lora-pinedio-backcover.yaml
+/etc/meshsat/bridge.env
+/etc/modprobe.d/meshsat-no-keyboard.conf
+/etc/modules-load.d/meshsat-node.conf
+/etc/udev/rules.d/60-meshsat-node.rules

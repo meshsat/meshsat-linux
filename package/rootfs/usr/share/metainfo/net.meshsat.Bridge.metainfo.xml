@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>net.meshsat.Bridge</id>
+  <name>MeshSat</name>
+  <summary>Mesh and satellite gateway in your pocket</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <developer id="net.meshsat">
+    <name>MeshSat</name>
+  </developer>
+  <description>
+    <p>
+      MeshSat keeps people connected when the network is not. On a PinePhone with the Pine64 LoRa
+      back cover it makes the phone a Meshtastic node and runs the MeshSat Bridge beside it: the
+      messages of the LoRa mesh, a RockBLOCK satellite modem on USB, and the MeshSat Hub, routed
+      between each other. This app is the Bridge's interface in a window of its own, with a status
+      page while a service is down.
+    </p>
+    <p>
+      Pre-release. The radio in the back cover is qualified at 0 dBm only, and a radio that stops
+      answering has to be re-seated by hand; the app says so when it happens.
+    </p>
+  </description>
+  <launchable type="desktop-id">net.meshsat.Bridge.desktop</launchable>
+  <url type="homepage">https://meshsat.net</url>
+  <url type="bugtracker">https://github.com/meshsat/meshsat-linux/issues</url>
+  <url type="vcs-browser">https://github.com/meshsat/meshsat-linux</url>
+  <requires>
+    <display_length compare="ge">320</display_length>
+  </requires>
+  <recommends>
+    <control>touch</control>
+    <control>keyboard</control>
+    <control>pointing</control>
+  </recommends>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.1.0" date="2026-09-28">
+      <description>
+        <p>First package: the node daemon for the LoRa back cover at 0 dBm, its watchdog, the MeshSat Bridge over TCP to the daemon, and this app.</p>
+      </description>
+    </release>
+  </releases>
+</component>

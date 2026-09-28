@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=MeshSat
+GenericName=Mesh and satellite gateway
+Comment=The MeshSat Bridge on this device: the LoRa mesh, the satellite, and the messages between them
+Exec=meshsat-app
+Icon=net.meshsat.Bridge
+Terminal=false
+Categories=Network;Chat;
+Keywords=LoRa;Meshtastic;Iridium;mesh;satellite;off-grid;
+StartupNotify=true
+X-Purism-FormFactor=Workstation;Mobile;
