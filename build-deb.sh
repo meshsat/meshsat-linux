@@ -15,7 +15,7 @@
 #   $BACKPLATE                   a checkout of meshsat-lora-backplate at the pinned commit
 set -eu
 
-VERSION=0.2.1
+VERSION=0.3.0
 ARCH=arm64
 INPUTS=$HOME/build/meshsat-linux/inputs
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -74,6 +74,8 @@ install -D -m 0644 "$HERE/package/rootfs/etc/meshsat/bridge.env" "$ROOT/etc/mesh
 install -D -m 0644 "$P/modules-load.d/meshsat-node.conf" "$ROOT/etc/modules-load.d/meshsat-node.conf"
 install -D -m 0644 "$P/udev/60-meshsat-node.rules" "$ROOT/etc/udev/rules.d/60-meshsat-node.rules"
 install -D -m 0644 "$P/modprobe.d/meshsat-no-keyboard.conf" "$ROOT/etc/modprobe.d/meshsat-no-keyboard.conf"
+# The Bridge's service user may use ModemManager (SMS through the phone's SIM)
+install -D -m 0644 "$HERE/package/rootfs/etc/polkit-1/rules.d/50-meshsat.rules" "$ROOT/etc/polkit-1/rules.d/50-meshsat.rules"
 
 # Units
 install -D -m 0644 "$P/systemd/meshtasticd.service" "$ROOT/lib/systemd/system/meshtasticd.service"

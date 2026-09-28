@@ -7,8 +7,8 @@ For a PinePhone or PinePhone Pro with the Pine64 LoRa back cover, running Mobian
 Download the package from the [releases](https://github.com/meshsat/meshsat-linux/releases) (the release page lists its sha256), then, on the phone:
 
 ```
-wget https://github.com/meshsat/meshsat-linux/releases/download/v0.2.1/meshsat_0.2.1_arm64.deb
-sudo apt install ./meshsat_0.2.1_arm64.deb
+wget https://github.com/meshsat/meshsat-linux/releases/download/v0.3.0/meshsat_0.3.0_arm64.deb
+sudo apt install ./meshsat_0.3.0_arm64.deb
 ```
 
 That is all. The package installs the Meshtastic daemon for the back cover, its configuration (0 dBm, the one power the radio is qualified at), Meshtastic's web client, the radio watchdog, the MeshSat Bridge and the MeshSat app, and starts the services. The **MeshSat** icon is in the app grid; tap it and the app opens: the same screens as MeshSat Android and iOS, Home, Messages, Map, People and Setup, with this phone's node, a satellite modem on USB-C and the MeshSat Hub. The moon on Home is night mode. A banner at the top says when the Bridge or the node cannot be reached, and what to do.
@@ -25,8 +25,9 @@ cat channel-url.txt | meshsat-node-channels --owner my-phone --short MYPH --role
 
 The first run makes a private Python environment for the Meshtastic client library (needs the network once).
 
-## Two optional steps
+## Three optional steps
 
+- **SMS.** With a SIM in the phone, texts go out and come in through it, as on MeshSat Android: the SMS lane on Home, SMS chats under Messages, and the emergency contacts under Setup > Safety, who get an SOS by SMS with your position and a map link. The Bridge reaches the modem through ModemManager (the package installs the polkit rule for that); nothing to set up beyond the SIM, and `MESHSAT_SIM_PIN=` in `/etc/meshsat/bridge.env` if it has a PIN. Your carrier's normal rates apply.
 - **The MeshSat Hub.** Setup > Hub in the app takes the Hub's QR code text, or put an API key from your tenant's Fleet page at [hub.meshsat.net](https://hub.meshsat.net) into `/etc/meshsat/bridge.env` (`HUB_API_KEY=`), then `sudo systemctl restart meshsat-bridge`. Without it the mesh works and the Hub is simply not reached.
 - **The satellite.** A RockBLOCK 9603 on USB-C (through a USB-C to USB-A adapter) is found by the Bridge by itself; `MESHSAT_IRIDIUM_PORT=` in the same file pins its port if you want. Setup > Satellite shows the modem and its signal; Satellite passes predicts when a satellite is overhead for your position, which comes from the phone's location service (Settings > Privacy > Location Services, then allow MeshSat), from the node, or from a position you type in there (the node then carries it as its fixed position).
 

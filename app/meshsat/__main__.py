@@ -20,14 +20,14 @@ from .messages import ChatScreen, MessagesScreen  # noqa: E402
 from .people import PeopleScreen  # noqa: E402
 from .passes import PassesScreen  # noqa: E402
 from .setup import (AboutScreen, AdvancedScreen, HubScreen, IntegrationsScreen, MapsScreen, MessagingScreen, NodeScreen, RadioScreen,  # noqa: E402
-                    SafetyScreen, SatelliteScreen, SetupScreen, utc_clock)
+                    SafetyScreen, SatelliteScreen, SetupScreen, SmsScreen, utc_clock)
 from .widgets import Banner, Filtered, KeyValue, NavBar, StatusStrip, ago, filled_button, outlined_button, text  # noqa: E402
 
 APP_ID = "net.meshsat.Bridge"
 PREFS = os.path.join(GLib.get_user_config_dir(), "meshsat", "app.json")
 TABS = (("home", "Home", HomeScreen), ("messages", "Messages", MessagesScreen), ("map", "Map", MapScreen), ("people", "People", PeopleScreen), ("setup", "Setup", SetupScreen))
 # The Setup pages by name, for the `open` action (gapplication action net.meshsat.Bridge open "'node'").
-SCREENS = {"node": NodeScreen, "satellite": SatelliteScreen, "passes": PassesScreen, "hub": HubScreen, "safety": SafetyScreen, "messaging": MessagingScreen,
+SCREENS = {"node": NodeScreen, "satellite": SatelliteScreen, "passes": PassesScreen, "hub": HubScreen, "sms": SmsScreen, "safety": SafetyScreen, "messaging": MessagingScreen,
            "maps": MapsScreen, "integrations": IntegrationsScreen, "radio": RadioScreen, "advanced": AdvancedScreen, "about": AboutScreen}
 TABS_BY_KEY = {key for key, _title, _cls in TABS}
 
@@ -64,7 +64,19 @@ class MeshSatApp(Adw.Application):
         entered = prefs.get("position")
         if isinstance(entered, list) and len(entered) == 2:
             self.state.entered = (float(entered[0]), float(entered[1]))
+        contacts = prefs.get("contacts")
+        if isinstance(contacts, list):
+            self.state.contacts = [c for c in contacts if isinstance(c, dict) and c.get("phone")]
+        self.state.sos_name = str(prefs.get("sos_name", ""))
         self.locate()
+
+    def set_contacts(self, contacts: list) -> None:
+        self.state.contacts = contacts
+        self.save_prefs(contacts=contacts)
+
+    def set_sos_name(self, name: str) -> None:
+        self.state.sos_name = name.strip()
+        self.save_prefs(sos_name=self.state.sos_name)
 
     # The phone's own position, as Android asks the phone for its GPS: geoclue, which asks the
     # user once (Phosh's location dialog) and follows the Location switch in Settings.
@@ -243,7 +255,7 @@ class MeshSatApp(Adw.Application):
             nav.pop_to_page(stack.get_item(0))
 
     def open_lane(self, lane: str) -> None:
-        self.open_screen({"mesh": "node", "satellite": "satellite", "hub": "hub"}.get(lane, ""))
+        self.open_screen({"mesh": "node", "satellite": "satellite", "hub": "hub", "sms": "sms"}.get(lane, ""))
 
     def open_screen(self, name: str) -> None:
         if name in TABS_BY_KEY:
@@ -341,6 +353,7 @@ class MeshSatApp(Adw.Application):
             self.strip.set_lane("mesh", "off")
         hub = s.hub or {}
         self.strip.set_lane("hub", "working" if hub.get("bridge_id") else "trying" if hub.get("url") else "off")
+        self.strip.set_lane("sms", "working" if s.sms_ready() else "off")
         self.strip.set_lane("location", "working" if s.position() else "off")
 
         sos = s.sos or {}

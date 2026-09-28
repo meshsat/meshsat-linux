@@ -9,6 +9,7 @@ from gi.repository import GLib, Gtk
 
 from . import __version__ as VERSION
 from . import api, theme
+from . import sos as sos_words
 from .passes import PassesScreen
 from .widgets import Card, Chip, KeyValue, NavRow, SubHeader, clear, filled_button, group_title, hscroll, outlined_button, page, scroller, spacer, text, text_button, when
 
@@ -30,7 +31,8 @@ class SetupScreen(Gtk.Box):
         self.node = NavRow("outlined-bluetooth", "Your MeshSat node", lambda: app.push(NodeScreen(app)), theme.MESH)
         self.satellite = NavRow("transport-satellite", "Satellite", lambda: app.push(SatelliteScreen(app)), theme.IRIDIUM)
         self.hub = NavRow("outlined-cloud", "Hub", lambda: app.push(HubScreen(app)), theme.HUB)
-        for row in (self.node, self.satellite, self.hub):
+        self.sms = NavRow("outlined-sms", "SMS", lambda: app.push(SmsScreen(app)), theme.SMS)
+        for row in (self.node, self.satellite, self.hub, self.sms):
             column.append(row)
         column.append(group_title("Using MeshSat"))
         rows = (
@@ -72,6 +74,10 @@ class SetupScreen(Gtk.Box):
             self.hub.set_detail("Connected" if (s.hub or {}).get("bridge_id") else "Connecting", "green" if (s.hub or {}).get("bridge_id") else "amber")
         else:
             self.hub.set_detail("Not set up. Paste the Hub's QR code.", "muted")
+        if s.sms_ready():
+            self.sms.set_detail("Allowed", "green")
+        else:
+            self.sms.set_detail(s.sms_reason() or "Not allowed yet", "muted")
 
 
 class Page(Gtk.Box):
@@ -264,6 +270,43 @@ class HubScreen(Page):
             self.details.append(KeyValue(k, v, mono=k in ("Bridge ID",)))
 
 
+class SmsScreen(Page):
+    """Setup > SMS, as the Android SMS section: the phone's SIM as a way out, and its state."""
+
+    def __init__(self, app):
+        super().__init__(app, "SMS")
+        card = self.card("Text messages")
+        status = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
+        self.dot = Gtk.Box()
+        self.dot.add_css_class("dot")
+        self.dot.set_valign(Gtk.Align.CENTER)
+        status.append(self.dot)
+        self.status = text("Not allowed yet", "body-large")
+        status.append(self.status)
+        card.append(status)
+        card.append(text("MeshSat sends and receives texts through this phone's SIM when the network works. Your carrier's normal rates apply.", "body-medium", theme.TEXT_SECONDARY, wrap=True))
+        self.details = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        card.append(self.details)
+        card.append(text("SOS texts go to your emergency contacts under Safety. A text you write carries its own number.", "body-medium", theme.TEXT_SECONDARY, wrap=True))
+        self.update(app.state)
+
+    def update(self, s: api.State) -> None:
+        for c in ("dot-green", "dot-amber", "dot-muted"):
+            self.dot.remove_css_class(c)
+        c = s.cellular or {}
+        if s.sms_ready():
+            self.dot.add_css_class("dot-green")
+            self.status.set_text("Allowed")
+        else:
+            self.dot.add_css_class("dot-amber" if c.get("connected") else "dot-muted")
+            self.status.set_text(s.sms_reason() or "Not allowed yet")
+        clear(self.details)
+        for k, v in (("Modem", c.get("model") or "-"), ("SIM", {"READY": "Ready", "NOT_INSERTED": "None", "PIN_REQUIRED": "Locked", "SIM_ERROR": "Faulty"}.get(c.get("sim_state", ""), c.get("sim_state") or "-")),
+                     ("Network", (c.get("operator") or "-") + (f", {c['network_type']}" if c.get("network_type") else "")), ("Number", c.get("phone_number") or "-"),
+                     ("Sent, received", f"{c.get('sms_sent', 0)}, {c.get('sms_received', 0)}")):
+            self.details.append(KeyValue(k, v, mono=k == "Number"))
+
+
 class SafetyScreen(Page):
     def __init__(self, app):
         super().__init__(app, "Safety")
@@ -273,9 +316,31 @@ class SafetyScreen(Page):
         sos = self.card("SOS")
         self.sos_status = text("No SOS has been sent from this phone.", "body-medium", theme.TEXT_SECONDARY, wrap=True)
         sos.append(self.sos_status)
-        sos.append(text("An SOS goes out by satellite, the mesh and the Hub, with your node's position, and keeps trying until you cancel.", "body-medium", theme.TEXT_SECONDARY, wrap=True))
+        self.sos_reach = text("An SOS goes out by satellite, the mesh and the Hub, with your position, and keeps trying until you cancel.", "body-medium", theme.TEXT_SECONDARY, wrap=True)
+        sos.append(self.sos_reach)
+        sos.append(text("Your name in an SOS", "label-medium", theme.TEXT_SECONDARY))
+        self.name = Gtk.Entry(placeholder_text="A MeshSat user")
+        self.name.add_css_class("field")
+        self.name.set_text(app.state.sos_name)
+        self.name.connect("changed", lambda e: app.set_sos_name(e.get_text()))
+        sos.append(self.name)
         self.cancel = outlined_button("Cancel SOS: I am safe", self.cancel_sos)
         sos.append(self.cancel)
+
+        contacts = self.card("Emergency contacts")
+        contacts.append(text("Who an SOS goes to by SMS, from this phone's own SIM, with your position and a map link.", "body-medium", theme.TEXT_SECONDARY, wrap=True))
+        self.sms_note = text("", "body-small", theme.AMBER, wrap=True)
+        contacts.append(self.sms_note)
+        self.contact_rows = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(4))
+        contacts.append(self.contact_rows)
+        self.contact_name = Gtk.Entry(placeholder_text="Name")
+        self.contact_name.add_css_class("field")
+        contacts.append(self.contact_name)
+        self.contact_phone = Gtk.Entry(placeholder_text="Phone number, with country code: +31 6 1234 5678", input_purpose=Gtk.InputPurpose.PHONE)
+        self.contact_phone.add_css_class("field")
+        contacts.append(self.contact_phone)
+        self.add_contact = filled_button("Add this contact", self.add_a_contact)
+        contacts.append(self.add_contact)
         timer = self.card("Check-in timer (dead man's switch)")
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
         row.append(text("Enabled", "body-large"))
@@ -298,6 +363,28 @@ class SafetyScreen(Page):
     def cancel_sos(self) -> None:
         api.post("/api/sos/cancel")
         self.app.poller.poll_now()
+
+    MAX_CONTACTS = 10  # as Android's EmergencyContact.MAX
+
+    def add_a_contact(self) -> None:
+        name = self.contact_name.get_text().strip()
+        phone = "".join(ch for ch in self.contact_phone.get_text() if ch.isdigit() or ch == "+")
+        if not phone.startswith("+") or len(phone) < 8:
+            self.app.toast("A phone number with its country code, like +31612345678.")
+            return
+        contacts = [c for c in self.app.state.contacts if c.get("phone") != phone]
+        if len(contacts) >= self.MAX_CONTACTS:
+            self.app.toast(f"Up to {self.MAX_CONTACTS} contacts.")
+            return
+        contacts.append({"name": name, "phone": phone})
+        self.app.set_contacts(contacts)
+        self.contact_name.set_text("")
+        self.contact_phone.set_text("")
+        self.update(self.app.state)
+
+    def remove_contact(self, phone: str) -> None:
+        self.app.set_contacts([c for c in self.app.state.contacts if c.get("phone") != phone])
+        self.update(self.app.state)
 
     def set_enabled(self, switch, state) -> bool:
         current = self.app.state.deadman or {}
@@ -322,6 +409,27 @@ class SafetyScreen(Page):
         self.enabled.set_active(bool(d.get("enabled")))
         for minutes, chip in self.timeouts.items():
             chip.set_selected(d.get("timeout_min") == minutes)
+        names = [c.get("name") or c["phone"] for c in s.contacts]
+        ways = "satellite, the mesh" + (f", SMS to {sos_words.join_and(names)}" if names else "") + " and the Hub"
+        self.sos_reach.set_text(f"An SOS goes out by {ways}, with your position, and keeps trying until you cancel.")
+        reason = s.sms_reason()
+        self.sms_note.set_text(f"SMS is not available: {reason[0].lower() + reason[1:]}" if reason and names else "")
+        self.sms_note.set_visible(bool(reason and names))
+        clear(self.contact_rows)
+        if not s.contacts:
+            self.contact_rows.append(text("No contacts yet.", "body-medium", theme.TEXT_MUTED))
+        for c in s.contacts:
+            row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
+            texts = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+            texts.set_hexpand(True)
+            texts.append(text(c.get("name") or c["phone"], "body-medium"))
+            if c.get("name"):
+                texts.append(text(c["phone"], "body-small", theme.TEXT_SECONDARY, mono=True))
+            row.append(texts)
+            from .widgets import icon_button
+            row.append(icon_button("outlined-delete", lambda phone=c["phone"]: self.remove_contact(phone), 20, theme.TEXT_SECONDARY, "Remove"))
+            self.contact_rows.append(row)
+        self.add_contact.set_sensitive(len(s.contacts) < self.MAX_CONTACTS)
 
 
 class MessagingScreen(Page):

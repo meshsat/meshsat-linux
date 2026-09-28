@@ -7,8 +7,8 @@ import time
 import gi
 
 gi.require_version("Graphene", "1.0")
-gi.require_version("Gsk", "4.0")
-from gi.repository import Gdk, GLib, Graphene, Gsk, Gtk, Pango  # noqa: E402
+gi.require_version("GdkPixbuf", "2.0")
+from gi.repository import Gdk, GdkPixbuf, GLib, Graphene, Gtk, Pango  # noqa: E402
 
 from . import theme  # noqa: E402
 
@@ -116,7 +116,7 @@ class StatusStrip(Gtk.Box):
         super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(14))
         self.add_css_class("strip")
         self.parts = {}
-        for lane, name in (("satellite", "transport-satellite"), ("mesh", "transport-mesh"), ("hub", "outlined-cloud"), ("location", "outlined-my-location")):
+        for lane, name in (("satellite", "transport-satellite"), ("mesh", "transport-mesh"), ("sms", "outlined-sms"), ("hub", "outlined-cloud"), ("location", "outlined-my-location")):
             box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(4))
             box.set_valign(Gtk.Align.CENTER)
             image = icon(name, 16, theme.TEXT_MUTED)
@@ -209,26 +209,74 @@ class Filtered(Gtk.Widget):
 
 
 class Wordmark(Gtk.Widget):
-    """The brand lockup, 26 px high, as the Home header shows it: drawn at exactly that
-    size from the shared 600x122 bitmap, sharp on a 2x screen."""
+    """The brand lockup, 26 dp high, as the Home header shows it. The apps' lockup bitmap is
+    600x122 and looked soft on a 2x screen, so this draws it itself: the mark cut from the
+    1024 px app icon, scaled once to the screen's exact pixels (the icon's black is the
+    page's black), and the name set live in IBM Plex Sans Bold, "Mesh" in off-white and
+    "Sat" in orange, at the lockup's proportions (cap height 0.55 of the mark's height)."""
 
     __gtype_name__ = "MeshSatWordmark"
     HEIGHT = theme.dp(26)
+    MARK_BOX = (179, 319, 665, 385)  # x, y, w, h of the mark inside app-icon-1024.png
+    GAP = 0.18  # of the height, between the mark and the name
+    FONT_SIZE = 0.79  # of the height: IBM Plex Sans' cap height is 0.698 em
+    TRACKING = -0.03  # of the height, between letters
+    BASELINE = 0.91  # of the height
 
-    def __init__(self, path: str):
+    def __init__(self, icon_path: str):
         super().__init__()
-        self.texture = Gdk.Texture.new_from_filename(path)
-        self.width = round(self.HEIGHT * self.texture.get_width() / self.texture.get_height())
+        self.icon_path = icon_path
+        self.mark_width = round(self.HEIGHT * self.MARK_BOX[2] / self.MARK_BOX[3])
+        self.texture = None
+        self.texture_scale = 0
+        self.layouts = []
         self.set_halign(Gtk.Align.START)
         self.set_valign(Gtk.Align.CENTER)
 
+    def name_layout(self):
+        """One layout for the whole name, so the letters keep their kerning across the colour
+        change: "Mesh" in the base colour, "Sat" in orange by a foreground attribute."""
+        if not self.layouts:
+            size = self.HEIGHT * self.FONT_SIZE
+            layout = self.create_pango_layout("MeshSat")
+            layout.set_font_description(Pango.FontDescription.from_string(f"IBM Plex Sans Bold {size:.1f}px"))
+            attrs = Pango.AttrList()
+            attrs.insert(Pango.attr_letter_spacing_new(int(self.TRACKING * self.HEIGHT * Pango.SCALE)))
+            orange = Gdk.RGBA()
+            orange.parse(theme.SIGNAL_ORANGE)
+            colour = Pango.attr_foreground_new(int(orange.red * 65535), int(orange.green * 65535), int(orange.blue * 65535))
+            colour.start_index, colour.end_index = len("Mesh"), len("MeshSat")
+            attrs.insert(colour)
+            layout.set_attributes(attrs)
+            self.layouts.append(layout)
+        return self.layouts[0]
+
+    def name_width(self) -> int:
+        return self.name_layout().get_pixel_size()[0]
+
+    def mark_texture(self):
+        scale = max(1, self.get_scale_factor())
+        if self.texture is None or self.texture_scale != scale:
+            x, y, w, h = self.MARK_BOX
+            pixbuf = GdkPixbuf.Pixbuf.new_from_file(self.icon_path).new_subpixbuf(x, y, w, h)
+            pixbuf = pixbuf.scale_simple(self.mark_width * scale, self.HEIGHT * scale, GdkPixbuf.InterpType.HYPER)
+            self.texture = Gdk.Texture.new_for_pixbuf(pixbuf)
+            self.texture_scale = scale
+        return self.texture
+
     def do_measure(self, orientation, for_size):
-        size = self.width if orientation == Gtk.Orientation.HORIZONTAL else self.HEIGHT
+        size = self.mark_width + round(self.GAP * self.HEIGHT) + self.name_width() if orientation == Gtk.Orientation.HORIZONTAL else self.HEIGHT
         return size, size, -1, -1
 
     def do_snapshot(self, snapshot):
-        rect = Graphene.Rect.alloc().init(0, 0, self.width, self.HEIGHT)
-        snapshot.append_scaled_texture(self.texture, Gsk.ScalingFilter.TRILINEAR, rect)
+        snapshot.append_texture(self.mark_texture(), Graphene.Rect.alloc().init(0, 0, self.mark_width, self.HEIGHT))
+        layout = self.name_layout()
+        base = Gdk.RGBA()
+        base.parse(theme.OFF_WHITE)
+        snapshot.save()
+        snapshot.translate(Graphene.Point.alloc().init(self.mark_width + round(self.GAP * self.HEIGHT), self.BASELINE * self.HEIGHT - layout.get_baseline() / Pango.SCALE))
+        snapshot.append_layout(layout, base)
+        snapshot.restore()
 
 
 class LaneRow(Gtk.Button):

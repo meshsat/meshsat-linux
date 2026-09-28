@@ -60,7 +60,7 @@ def record_sent(text: str, to: str | None, lane: str, me: str | None) -> dict:
     """A text this app just sent, in the shape of the Bridge's stored messages, appended to
     the sent log."""
     record = {"id": -int(time.time() * 1000), "from_node": me or "", "to_node": to or EVERYONE, "portnum": 1, "portnum_name": "TEXT_MESSAGE_APP",
-              "decoded_text": text, "rx_time": int(time.time()), "direction": "tx", "transport": "iridium" if lane == "satellite" else "radio",
+              "decoded_text": text, "rx_time": int(time.time()), "direction": "tx", "transport": {"satellite": "iridium", "sms": "sms"}.get(lane, "radio"),
               "delivery_status": "sent", "local": True}
     try:
         os.makedirs(os.path.dirname(SENT_LOG), exist_ok=True)
@@ -139,6 +139,10 @@ class State:
         self.sos = None
         self.deadman = None
         self.keys = None
+        self.cellular = None  # /api/cellular/status: the phone's SIM, through ModemManager
+        self.sms = []  # /api/cellular/sms: texts sent and received through the SIM
+        self.contacts = []  # emergency contacts, [{"name", "phone"}], kept by the app as Android does
+        self.sos_name = ""
         self.node_service = False
         self.bridge_service = False
         self.watchdog = {}
@@ -178,6 +182,42 @@ class State:
 
     def hub_configured(self) -> bool:
         return bool(self.hub and self.hub.get("url"))
+
+    def sms_ready(self) -> bool:
+        """The SIM can send: a modem, a SIM in it, and a network."""
+        c = self.cellular or {}
+        return bool(c.get("connected")) and c.get("sim_state") == "READY" and str(c.get("registration", "")).startswith("registered")
+
+    def sms_reason(self) -> str | None:
+        """Why SMS cannot go, in the words the Android app uses for its own reasons; None when it can."""
+        c = self.cellular or {}
+        if not self.bridge:
+            return "Connect your node first."
+        if not c.get("connected"):
+            return "This phone cannot send SMS."
+        state = c.get("sim_state", "")
+        if state in ("NOT_INSERTED", "NO_MODEM", "", "UNKNOWN"):
+            return "No SIM in this phone."
+        if state == "PIN_REQUIRED":
+            return "The SIM needs its PIN."
+        if state == "SIM_ERROR":
+            return "The SIM does not work."
+        registration = str(c.get("registration", ""))
+        if registration == "denied":
+            return "The network refused the SIM."
+        if not registration.startswith("registered"):
+            return "Waiting for the network."
+        return None
+
+    def sms_today(self) -> int:
+        start = time.time() - (time.time() % 86400)
+        return sum(1 for m in self.sms if (m.get("timestamp") or 0) >= start)
+
+    def contact_name(self, phone: str) -> str:
+        for c in self.contacts:
+            if c.get("phone") == phone and c.get("name"):
+                return c["name"]
+        return phone
 
     def own_node(self) -> dict | None:
         if not self.bridge:
@@ -237,6 +277,9 @@ class Poller:
             s.sos = get("/api/sos/status")
             s.deadman = get("/api/deadman")
             s.keys = get("/api/keys/stats")
+            s.cellular = get("/api/cellular/status")
+            sms = get("/api/cellular/sms?limit=200")
+            s.sms = sms if isinstance(sms, list) else []
         s.node_service = unit_active("meshtasticd.service")
         s.bridge_service = unit_active("meshsat-bridge.service")
         s.watchdog = watchdog_status()

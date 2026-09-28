@@ -22,7 +22,7 @@ rm -rf "$D"; mkdir -p "$D"
     shot home 0
     for tab in messages map people setup; do act tab "'$tab'"; shot "$tab" $([ "$tab" = map ] && echo 7 || echo 2); done
     act open "'everyone'"; shot chat-everyone
-    for page in node satellite passes hub safety messaging maps integrations radio advanced about; do act open "'$page'"; shot "setup-$page"; done
+    for page in node satellite passes hub sms safety messaging maps integrations radio advanced about; do act open "'$page'"; shot "setup-$page"; done
     act tab "'home'"; act night; shot home-night; act night
     echo "== app"; pgrep -fa "[p]ython3 -m meshsat"; meshsat-app --version; dpkg-query -W meshsat
 } > "$D/capture.log" 2>&1

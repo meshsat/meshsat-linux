@@ -7,10 +7,10 @@ import os
 
 from gi.repository import Gdk, GLib, Gtk
 
-from . import api, theme
+from . import api, sos, theme
 from .widgets import Card, LaneRow, Wordmark, clear, icon_button, page, scroller, spacer, text, when
 
-BRAND = os.path.join(os.path.dirname(os.path.abspath(__file__)), "brand", "brand_lockup.png")
+BRAND = os.path.join(os.path.dirname(os.path.abspath(__file__)), "brand", "app-icon-1024.png")
 
 
 class HomeScreen(Gtk.Box):
@@ -34,8 +34,9 @@ class HomeScreen(Gtk.Box):
         lanes = Card(padded=False, spacing=0)
         self.satellite = LaneRow("satellite", "Satellite", lambda: app.open_lane("satellite"))
         self.mesh = LaneRow("mesh", "Mesh", lambda: app.open_lane("mesh"))
+        self.sms = LaneRow("sms", "SMS", lambda: app.open_lane("sms"))
         self.hub = LaneRow("hub", "Hub", lambda: app.open_lane("hub"))
-        for i, row in enumerate((self.satellite, self.mesh, self.hub)):
+        for i, row in enumerate((self.satellite, self.mesh, self.sms, self.hub)):
             if i:
                 sep = Gtk.Box()
                 sep.add_css_class("lane-sep")
@@ -126,12 +127,32 @@ class HomeScreen(Gtk.Box):
 
     def _sos_fire(self):
         self._hold = None
-        if (self.app.state.sos or {}).get("active"):
+        s = self.app.state
+        if (s.sos or {}).get("active"):
             api.post("/api/sos/cancel")
+            self.text_contacts(sos.cancel_text(s.sos_name))
         else:
-            api.post("/api/sos/activate", {"message": "SOS: A MeshSat user needs help."})
+            api.post("/api/sos/activate", {"message": sos.mesh_text(s.sos_name, s.position())})
+            self.text_contacts(sos.sms_text(s.sos_name, s.position()))
         self.app.poller.poll_now()
         return False
+
+    def text_contacts(self, text: str) -> None:
+        """The SOS by SMS to every emergency contact, from the phone's own SIM, as Android
+        sends it; through the Bridge's SMS gateway, each logged as a sent text."""
+        s = self.app.state
+        if not s.contacts:
+            return
+        if not s.sms_ready():
+            self.app.toast(f"SMS to your contacts did not go: {s.sms_reason()}")
+            return
+        me = (s.bridge or {}).get("node_id")
+        for contact in s.contacts:
+            result = api.post("/api/messages/send", {"text": text, "gateway": "cellular", "to": contact["phone"]})
+            if result and result.get("error"):
+                self.app.toast(f"SMS to {contact.get('name') or contact['phone']} failed: {result['error']}")
+            else:
+                api.record_sent(text, contact["phone"], "sms", me)
 
     def draw_chart(self, area, cr, width, height):
         rgba = Gdk.RGBA()
@@ -164,9 +185,16 @@ class HomeScreen(Gtk.Box):
             cr.fill()
 
     def update(self, s: api.State) -> None:
-        mesh_up, modem, hub = s.mesh_connected(), s.modem_connected(), s.hub_configured()
-        lanes = [name for name, up in (("satellite", modem), ("mesh", mesh_up), ("the Hub", hub)) if up]
+        mesh_up, modem, hub, sms_up = s.mesh_connected(), s.modem_connected(), s.hub_configured(), s.sms_ready()
+        lanes = [name for name, up in (("satellite", modem), ("mesh", mesh_up), ("SMS", sms_up), ("the Hub", hub)) if up]
         queued = sum(1 for m in s.messages if m.get("delivery_status") in ("queued", "pending", "sending"))
+        if sms_up:
+            self.sms.set_state("working", "Ready.", f"{s.sms_today()} today")
+        else:
+            self.sms.set_state("off", s.sms_reason() or "Allow SMS to send and receive texts.")
+        names = [c.get("name") or c["phone"] for c in s.contacts]
+        who = f"SMS to {sos.join_and(names)}, " if names else ""
+        self.sos_text.set_text(f"Sends your position by satellite, the mesh, {who}and the Hub, and keeps trying until you cancel." if who else "Sends your position by satellite, the mesh and the Hub, and keeps trying until you cancel.")
         if not lanes:
             self.sentence.set_text("Nothing can send yet.")
             self.second.set_text("Start with your MeshSat node, below.")
