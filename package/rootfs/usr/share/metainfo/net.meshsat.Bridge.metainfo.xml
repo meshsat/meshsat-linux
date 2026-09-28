@@ -35,6 +35,11 @@
   </recommends>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.1.1" date="2026-09-28">
+      <description>
+        <p>The app no longer probes the daemon's API port, which threw the Bridge off its session every few seconds.</p>
+      </description>
+    </release>
     <release version="0.1.0" date="2026-09-28">
       <description>
         <p>First package: the node daemon for the LoRa back cover at 0 dBm, its watchdog, the MeshSat Bridge over TCP to the daemon, and this app.</p>
