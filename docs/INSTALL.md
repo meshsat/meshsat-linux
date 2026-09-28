@@ -4,11 +4,14 @@ For a PinePhone or PinePhone Pro with the Pine64 LoRa back cover, running Mobian
 
 ## One command
 
-Download `meshsat_<version>_arm64.deb` from the [releases](https://github.com/meshsat/meshsat-linux/releases), then, on the phone:
+Download the package from the [releases](https://github.com/meshsat/meshsat-linux/releases), then, on the phone:
 
 ```
-sudo apt install ./meshsat_0.1.0_arm64.deb
+wget https://github.com/meshsat/meshsat-linux/releases/download/v0.1.1/meshsat_0.1.1_arm64.deb
+sudo apt install ./meshsat_0.1.1_arm64.deb
 ```
+
+sha256 of `meshsat_0.1.1_arm64.deb`: `53bcd562515aec81b7ffcf3e49544a878db16d7536f4b7e9faf5eddbb3aa2d6b`.
 
 That is all. The package installs the Meshtastic daemon for the back cover, its configuration (0 dBm, the one power the radio is qualified at), Meshtastic's web client, the radio watchdog, the MeshSat Bridge and the MeshSat app, and starts the services. The **MeshSat** icon is in the app grid; tap it and the Bridge's interface opens in its own window. While a service is still starting, the app shows which one and what the radio watchdog says.
 
