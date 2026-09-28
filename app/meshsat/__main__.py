@@ -292,11 +292,14 @@ class MeshSatApp(Adw.Application):
     def node_sheet(self, node: dict) -> None:
         """A node's card, as the sheet the Android People screen opens: who, how well heard,
         where, and the two things to do with them."""
-        name = node.get("long_name") or node.get("short_name") or node.get("user_id", "?")
+        # NodeDetailSheet.kt: the long name, or the id, and "(your node)" for the phone's own.
+        node_id = node.get("user_id", "?")
+        name = node.get("long_name") or node_id
+        mine = node_id == (self.state.bridge or {}).get("node_id")
         dialog = Adw.Dialog(title=name, content_width=360)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(8))
         box.add_css_class("sheet")
-        box.append(text(name, "title-large"))
+        box.append(text(name + (" (your node)" if mine else ""), "title-large"))
         box.append(text(node.get("user_id", ""), "body-medium", theme.TEXT_SECONDARY, mono=True))
         battery = node.get("battery_level") or 0
         position = f"{node['latitude']:.5f}, {node['longitude']:.5f}" if node.get("latitude") else "Unknown"

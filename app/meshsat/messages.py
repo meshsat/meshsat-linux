@@ -38,7 +38,6 @@ def sms_as_messages(s: api.State) -> list:
 def conversations(s: api.State) -> list:
     texts = [m for m in s.messages if m.get("portnum_name") == "TEXT_MESSAGE_APP" and m.get("decoded_text") and m.get("transport") != "sms"] + sms_as_messages(s)
     me = (s.bridge or {}).get("node_id")
-    names = {n.get("user_id"): n.get("long_name") or n.get("short_name") for n in s.nodes}
     groups = {}
     for m in texts:
         if lane_of(m) == "satellite":
@@ -60,7 +59,7 @@ def conversations(s: api.State) -> list:
         elif key.startswith("sms:"):
             title = s.contact_name(key[4:])
         else:
-            title = names.get(key) or key
+            title = name_of(key, s)
         out.append({"key": key, "title": title, "lane": lane_of(items[0]), "items": items, "last": items[0]})
     out.sort(key=lambda c: c["last"].get("rx_time") or 0, reverse=True)
     return out
@@ -177,7 +176,8 @@ class ChatScreen(Gtk.Box):
         super().__init__(orientation=Gtk.Orientation.VERTICAL)
         self.app, self.key, self.lane = app, key, lane
         lock = icon_button("outlined-lock", lambda: app.toast("Encryption keys are managed by the Bridge."), 24, theme.TEXT_SECONDARY)
-        subtitle = {"satellite": "By satellite, through Rock7 to the Hub", "sms": "SMS"}.get(lane, "Mesh")
+        # Under the name, as the Android header: the node's id, the channel, or the transport.
+        subtitle = detail_of(key) or {"sms": "SMS"}.get(lane, "Mesh")
         self.append(SubHeader(title, app.pop, orange=True, subtitle=subtitle, subtitle_colour=theme.lane_colour(lane), trailing=lock))
         self.bubbles = page(spacing=12)
         self.scroll = scroller(self.bubbles)
@@ -238,7 +238,7 @@ class ChatScreen(Gtk.Box):
             bubble.set_halign(Gtk.Align.END if mine else Gtk.Align.START)
             bubble.set_size_request(theme.dp(220), -1)
             top = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
-            who = text("You" if mine else self.name_of(m.get("from_node"), s), "label-medium", theme.lane_colour(lane_of(m)))
+            who = text("You" if mine else name_of(m.get("from_node"), s), "label-medium", theme.lane_colour(lane_of(m)))
             top.append(who)
             top.append(spacer())
             top.append(text(when(m.get("rx_time")), "label-medium", theme.TEXT_SECONDARY, mono=True))
@@ -249,12 +249,27 @@ class ChatScreen(Gtk.Box):
         adjustment = self.scroll.get_vadjustment()
         GLib.idle_add(lambda: adjustment.set_value(adjustment.get_upper()) or False)
 
-    @staticmethod
-    def name_of(node_id: str | None, s: api.State) -> str:
-        for n in s.nodes:
-            if n.get("user_id") == node_id:
-                return n.get("long_name") or n.get("short_name") or node_id
-        return node_id or "?"
+
+def name_of(node_id: str | None, s: api.State) -> str:
+    """What the user calls a mesh node, as Peers.displayName: its long name, or "Node !id"
+    until the phone has heard a NodeInfo from it."""
+    if node_id == EVERYONE:
+        return "Everyone on the mesh"
+    for n in s.nodes:
+        if n.get("user_id") == node_id and n.get("long_name"):
+            return n["long_name"]
+    return f"Node {node_id}" if node_id else "?"
+
+
+def detail_of(key: str) -> str | None:
+    """The line under the name, as Peers.detail: the id people may need, or what the channel is."""
+    if key == EVERYONE:
+        return "The mesh channel"
+    if key == SATELLITE:
+        return "By satellite, through Rock7 to the Hub"
+    if key.startswith("sms:"):
+        return None
+    return key
 
 
 class NewMessageDialog(Gtk.Window):
@@ -269,9 +284,16 @@ class NewMessageDialog(Gtk.Window):
         box.append(text("New message", "dialog-title"))
         self.choice = "mesh"
         first = None
-        for key, title, detail in (("satellite", "Satellite", "Through Rock7 to the Hub, from anywhere with a view of the sky"),
-                                   ("mesh", "Everyone on the mesh", "Every node on your channel"),
-                                   ("sms", "SMS", "A text from this phone's SIM, to a phone number")):
+        # As the Android dialog: Satellite, everyone, then the twenty nodes heard most recently
+        # ("Node !id" until one has told its name), then a phone number.
+        s = app.state
+        nodes = sorted(s.others(), key=lambda n: -(n.get("last_heard") or 0))[:20]
+        choices = [("satellite", "Satellite", "Through Rock7 to the Hub, from anywhere with a view of the sky"),
+                   ("mesh", "Everyone on the mesh", "Every node on your channel")]
+        choices += [("node:" + n["user_id"], name_of(n["user_id"], s), f"On the mesh, {n['user_id']}") for n in nodes if n.get("user_id")]
+        choices.append(("sms", "SMS", "A text from this phone's SIM, to a phone number"))
+        rows = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(12))
+        for key, title, detail in choices:
             row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(12))
             radio = Gtk.CheckButton(group=first)
             first = first or radio
@@ -279,12 +301,15 @@ class NewMessageDialog(Gtk.Window):
             radio.connect("toggled", lambda b, k=key: setattr(self, "choice", k) if b.get_active() else None)
             row.append(radio)
             texts = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(2))
-            texts.append(text(title, "title-medium"))
+            texts.append(text(title, "title-medium", ellipsize=True))
             texts.append(text(detail, "body-medium", theme.TEXT_SECONDARY, wrap=True))
             row.append(texts)
-            box.append(row)
+            rows.append(row)
             if key == "mesh":
                 radio.set_active(True)
+        scroll = Gtk.ScrolledWindow(propagate_natural_height=True, max_content_height=theme.dp(400), hscrollbar_policy=Gtk.PolicyType.NEVER)
+        scroll.set_child(rows)
+        box.append(scroll)
         self.number = Gtk.Entry(placeholder_text="Phone number, with country code", input_purpose=Gtk.InputPurpose.PHONE)
         self.number.add_css_class("field")
         box.append(self.number)
