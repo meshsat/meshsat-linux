@@ -1,0 +1,22 @@
+[Unit]
+Description=MeshSat Bridge (mesh and satellite gateway) on this device
+Documentation=https://github.com/meshsat/meshsat-linux/blob/main/docs/INSTALL.md
+After=network-online.target meshtasticd.service
+Wants=network-online.target meshtasticd.service
+
+[Service]
+Type=simple
+User=meshsat
+Group=meshsat
+SupplementaryGroups=dialout
+EnvironmentFile=/etc/meshsat/bridge.env
+StateDirectory=meshsat
+WorkingDirectory=/var/lib/meshsat
+ExecStart=/usr/bin/meshsat
+Restart=always
+RestartSec=5
+NoNewPrivileges=yes
+ProtectHome=yes
+
+[Install]
+WantedBy=multi-user.target

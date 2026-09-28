@@ -1,0 +1,3 @@
+#!/bin/sh
+# MeshSat for Linux phones and desktops: the Bridge's interface in its own window.
+exec /usr/bin/python3 /usr/lib/meshsat/app/meshsat_app.py "$@"

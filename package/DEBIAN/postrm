@@ -1,0 +1,13 @@
+#!/bin/sh
+set -e
+case "$1" in
+    purge)
+        # The node's identity and the Bridge's database go with a purge, never with a remove.
+        rm -rf /var/lib/meshtasticd /var/lib/meshsat /etc/meshtasticd/ssl /run/meshsat-node
+        rmdir /etc/meshtasticd/config.d /etc/meshtasticd /etc/meshsat 2>/dev/null || true
+        ;;
+esac
+if [ -d /run/systemd/system ]; then systemctl daemon-reload 2>/dev/null || true; fi
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor 2>/dev/null || true; fi
+if command -v update-desktop-database >/dev/null 2>&1; then update-desktop-database -q 2>/dev/null || true; fi
+exit 0

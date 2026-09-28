@@ -1,0 +1,19 @@
+# Editor state
+.vscode/
+.idea/
+*.swp
+
+# Local secrets
+.env
+
+# Claude Code files are local-only, never committed
+CLAUDE.md
+.claude/
+
+# Python bytecode
+__pycache__/
+
+# Package build output and fetched inputs
+build/
+*.deb
+inputs/
