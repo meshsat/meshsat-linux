@@ -1,0 +1,152 @@
+{
+ "clock": {
+  "source": "unknown",
+  "trusted": true
+ },
+ "enabled": true,
+ "targets": [
+  {
+   "detail": "receive unknown",
+   "external": true,
+   "hard_budget": 0,
+   "hard_resets_last_hour": 0,
+   "interfaces": [
+    "aprs_0",
+    "ax25_0"
+   ],
+   "levels": [],
+   "max_level": 0,
+   "misses": 0,
+   "name": "aprs",
+   "paused": false,
+   "state": "unknown",
+   "step": 0
+  },
+  {
+   "detail": "no GPS port open",
+   "hard_budget": 3,
+   "hard_resets_last_hour": 0,
+   "interfaces": null,
+   "last_probe": "2026-09-28T19:43:00.652237182+02:00",
+   "levels": [
+    1,
+    3
+   ],
+   "max_level": 1,
+   "misses": 0,
+   "name": "gps",
+   "paused": false,
+   "state": "unknown",
+   "step": 0
+  },
+  {
+   "detail": "no serial port assigned",
+   "hard_budget": 3,
+   "hard_resets_last_hour": 0,
+   "interfaces": [
+    "iridium_imt_0"
+   ],
+   "last_probe": "2026-09-28T19:43:00.652202766+02:00",
+   "levels": [
+    1,
+    2
+   ],
+   "max_level": 1,
+   "misses": 0,
+   "name": "imt",
+   "paused": false,
+   "state": "unknown",
+   "step": 0
+  },
+  {
+   "detail": "no serial port assigned",
+   "hard_budget": 3,
+   "hard_resets_last_hour": 0,
+   "interfaces": [
+    "iridium_0"
+   ],
+   "last_probe": "2026-09-28T19:43:00.652220266+02:00",
+   "levels": [
+    1
+   ],
+   "max_level": 1,
+   "misses": 0,
+   "name": "iridium",
+   "paused": false,
+   "state": "unknown",
+   "step": 0
+  },
+  {
+   "detail": "frame 59s ago",
+   "hard_budget": 3,
+   "hard_resets_last_hour": 0,
+   "interfaces": [
+    "mesh_0"
+   ],
+   "last_ok": "2026-09-28T19:43:00.652313304+02:00",
+   "last_probe": "2026-09-28T19:43:00.652313304+02:00",
+   "levels": [
+    1,
+    2,
+    3
+   ],
+   "max_level": 3,
+   "misses": 0,
+   "name": "mesh",
+   "paused": false,
+   "state": "ok",
+   "step": 0
+  },
+  {
+   "detail": "spectrum monitor disabled",
+   "hard_budget": 2,
+   "hard_resets_last_hour": 0,
+   "interfaces": null,
+   "last_probe": "2026-09-28T19:43:00.653104275+02:00",
+   "levels": [
+    1,
+    3
+   ],
+   "max_level": 3,
+   "misses": 0,
+   "name": "rtl_sdr",
+   "paused": false,
+   "state": "unknown",
+   "step": 0
+  },
+  {
+   "detail": "no SMS bundle configured",
+   "external": true,
+   "hard_budget": 0,
+   "hard_resets_last_hour": 0,
+   "interfaces": null,
+   "levels": [],
+   "max_level": 0,
+   "misses": 0,
+   "name": "sms_credit",
+   "paused": false,
+   "state": "unknown",
+   "step": 0
+  },
+  {
+   "detail": "no zigbee coordinator on the bus",
+   "hard_budget": 3,
+   "hard_resets_last_hour": 0,
+   "interfaces": [
+    "zigbee_0"
+   ],
+   "last_probe": "2026-09-28T19:43:00.652092812+02:00",
+   "levels": [
+    1,
+    2,
+    3
+   ],
+   "max_level": 3,
+   "misses": 0,
+   "name": "zigbee",
+   "paused": false,
+   "state": "unknown",
+   "step": 0
+  }
+ ]
+}

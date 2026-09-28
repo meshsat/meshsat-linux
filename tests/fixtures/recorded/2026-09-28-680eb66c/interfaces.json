@@ -1,0 +1,22 @@
+[
+ {
+  "channel_type": "iridium_imt",
+  "egress_transforms": "[]",
+  "enabled": true,
+  "id": "iridium_imt_0",
+  "ingress_transforms": "[]",
+  "label": "Iridium IMT (9704)",
+  "last_activity": "0001-01-01T00:00:00Z",
+  "state": "unbound"
+ },
+ {
+  "channel_type": "mesh",
+  "egress_transforms": "[]",
+  "enabled": true,
+  "id": "mesh_0",
+  "ingress_transforms": "[]",
+  "label": "Meshtastic LoRa",
+  "last_activity": "0001-01-01T00:00:00Z",
+  "state": "unbound"
+ }
+]

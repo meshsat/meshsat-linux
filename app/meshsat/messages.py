@@ -5,7 +5,9 @@ subtitle, lock, bubbles and composer; the New message dialog."""
 from gi.repository import GLib, Gtk
 
 from . import api, theme
-from .widgets import Card, Chip, SubHeader, Tag, clear, hscroll, icon_button, page, scroller, spacer, text, when, when_date
+from .model import words
+from .screen import Screen
+from .widgets import Card, Chip, PickerDialog, SubHeader, Tag, clear, hscroll, icon_button, page, scroller, spacer, text, when, when_date
 
 EVERYONE = "!ffffffff"
 SATELLITE = "satellite"
@@ -65,12 +67,12 @@ def conversations(s: api.State) -> list:
     return out
 
 
-class MessagesScreen(Gtk.Box):
+class MessagesScreen(Screen):
     def __init__(self, app):
-        super().__init__(orientation=Gtk.Orientation.VERTICAL)
-        self.app = app
+        super().__init__(app)
         self.filter = "all"
         self.view = "chats"
+        self._list_key = None
         column = page(spacing=12)
         column.append(text("Messages", "headline-medium"))
 
@@ -94,7 +96,7 @@ class MessagesScreen(Gtk.Box):
             chip = Chip(label_text, lambda c, k=key: self.set_view(k), selected=key == "chats")
             self.view_chips[key] = chip
             views.append(chip)
-        views.append(Chip("New message", lambda c: NewMessageDialog(self.app).present()))
+        views.append(Chip("New message", lambda c: new_message(self.app)))
         column.append(hscroll(views))
 
         self.list = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(12))
@@ -105,22 +107,28 @@ class MessagesScreen(Gtk.Box):
         self.filter = key
         for k, chip in self.filter_chips.items():
             chip.set_selected(k == key)
+        self._list_key = None
         self.update(self.app.state)
 
     def set_view(self, key: str) -> None:
         self.view = key
         for k, chip in self.view_chips.items():
             chip.set_selected(k == key)
+        self._list_key = None
         self.update(self.app.state)
 
     def update(self, s: api.State) -> None:
         stats = s.message_stats or {}
-        self.count_labels[0].set_text(f"{len(s.others())} nodes")
+        self.count_labels[0].set_text(words.count(len(s.others()), "node"))
         self.count_labels[1].set_text(f"{stats.get('today_text', 0)} today")
         self.count_labels[2].set_text(f"{stats.get('total', 0)} stored")
-        clear(self.list)
         if self.view == "chats":
             chats = [c for c in conversations(s) if self.filter == "all" or c["lane"] == self.filter]
+            key = ("chats", tuple((c["key"], c["title"], len(c["items"]), c["last"].get("rx_time"), c["last"].get("decoded_text")) for c in chats))
+            if key == self._list_key:
+                return
+            self._list_key = key
+            clear(self.list)
             if not chats:
                 self.list.append(text("No conversations yet", "body-medium", theme.TEXT_SECONDARY))
             for chat in chats:
@@ -128,10 +136,15 @@ class MessagesScreen(Gtk.Box):
         else:
             texts = [m for m in s.messages if m.get("portnum_name") == "TEXT_MESSAGE_APP" and m.get("decoded_text") and m.get("transport") != "sms"] + sms_as_messages(s)
             texts.sort(key=lambda m: m.get("rx_time") or 0, reverse=True)
-            texts = [m for m in texts if self.filter == "all" or lane_of(m) == self.filter]
+            texts = [m for m in texts if self.filter == "all" or lane_of(m) == self.filter][:100]
+            key = ("all", tuple((m.get("id"), m.get("rx_time"), m.get("decoded_text")) for m in texts))
+            if key == self._list_key:
+                return
+            self._list_key = key
+            clear(self.list)
             if not texts:
                 self.list.append(text("No messages yet", "body-medium", theme.TEXT_SECONDARY))
-            for m in texts[:100]:
+            for m in texts:
                 self.list.append(self.message_row(m))
 
     def chat_card(self, chat: dict) -> Gtk.Widget:
@@ -151,7 +164,8 @@ class MessagesScreen(Gtk.Box):
         card.append(top)
         card.append(text(chat["last"].get("decoded_text", ""), "body-large", theme.TEXT_SECONDARY, ellipsize=True))
         button.set_child(card)
-        button.connect("clicked", lambda *_: self.app.push(ChatScreen(self.app, chat["key"], chat["title"], chat["lane"])))
+        button.update_property([Gtk.AccessibleProperty.LABEL], [f"Chat with {chat['title']}"])
+        button.connect("clicked", lambda *_: self.app.push(ChatScreen(self.app, chat["key"], chat["title"], chat["lane"]), chat["title"]))
         return button
 
     def message_row(self, m: dict) -> Gtk.Widget:
@@ -168,14 +182,17 @@ class MessagesScreen(Gtk.Box):
         return row
 
 
-class ChatScreen(Gtk.Box):
+class ChatScreen(Screen):
     """One conversation, as ChatScreen.kt: orange back arrow, title with the lane under it, a
     lock button, the bubbles, the composer with its footer line."""
 
     def __init__(self, app, key: str, title: str, lane: str):
-        super().__init__(orientation=Gtk.Orientation.VERTICAL)
-        self.app, self.key, self.lane = app, key, lane
-        lock = icon_button("outlined-lock", lambda: app.toast("Encryption keys are managed by the Bridge."), 24, theme.TEXT_SECONDARY)
+        super().__init__(app)
+        self.key, self.lane, self.title = key, lane, title
+        self.route = "chat/" + key
+        self._key = None
+        self.sending = False
+        lock = icon_button("outlined-lock", lambda: app.toast("Encryption keys are managed by the Bridge."), 24, theme.TEXT_SECONDARY, tooltip="Conversation encryption key")
         # Under the name, as the Android header: the node's id, the channel, or the transport.
         subtitle = detail_of(key) or {"sms": "SMS"}.get(lane, "Mesh")
         self.append(SubHeader(title, app.pop, orange=True, subtitle=subtitle, subtitle_colour=theme.lane_colour(lane), trailing=lock))
@@ -190,9 +207,11 @@ class ChatScreen(Gtk.Box):
         self.entry = Gtk.Entry(placeholder_text="Message by satellite" if lane == "satellite" else "Text message")
         self.entry.add_css_class("field")
         self.entry.set_hexpand(True)
+        self.entry.update_property([Gtk.AccessibleProperty.LABEL], ["Message"])
         self.entry.connect("activate", lambda *_: self.send())
         row.append(self.entry)
-        row.append(icon_button("outlined-send", self.send, 24, theme.TEXT_PRIMARY))
+        self.send_button = icon_button("outlined-send", self.send, 24, theme.TEXT_PRIMARY, tooltip="Send")
+        row.append(self.send_button)
         composer.append(row)
         footer = {"satellite": "By satellite, through Rock7 to the Hub.", "sms": "By SMS from this phone."}.get(lane, "By mesh, from your node.")
         composer.append(text(footer, "body-medium", theme.TEXT_SECONDARY))
@@ -201,7 +220,7 @@ class ChatScreen(Gtk.Box):
 
     def send(self) -> None:
         value = self.entry.get_text().strip()
-        if not value:
+        if not value or self.sending:
             return
         body = {"text": value}
         if self.lane == "sms":
@@ -214,19 +233,31 @@ class ChatScreen(Gtk.Box):
             body["to"] = self.key
         if self.lane == "satellite":
             body["gateway"] = "iridium"
-        result = api.post("/api/messages/send", body)
-        if result and result.get("error"):
-            self.app.toast(result["error"])
-        else:
+        self.sending = True
+        self.send_button.set_sensitive(False)
+        me = (self.app.state.bridge or {}).get("node_id")
+
+        def sent(answer: api.Answer) -> None:
+            self.sending = False
+            self.send_button.set_sensitive(True)
+            if not answer.ok:
+                self.app.toast(answer.error or "The message did not go.")
+                return
             self.entry.set_text("")
-            api.record_sent(value, body.get("to"), self.lane, (self.app.state.bridge or {}).get("node_id"))
+            api.record_sent(value, body.get("to"), self.lane, me)
             self.app.poller.poll_now()
 
+        api.fetch("/api/messages/send", sent, method="POST", body=body)
+
     def update(self, s: api.State) -> None:
-        clear(self.bubbles)
         me = (s.bridge or {}).get("node_id")
         chat = next((c for c in conversations(s) if c["key"] == self.key), None)
         messages = list(reversed(chat["items"])) if chat else []
+        key = tuple((m.get("id"), m.get("rx_time"), m.get("decoded_text"), m.get("delivery_status")) for m in messages[-80:])
+        if key == self._key:
+            return  # the same bubbles: no rebuild, no jump to the end under a finger
+        self._key = key
+        clear(self.bubbles)
         if not messages:
             self.bubbles.append(text("No messages yet", "body-medium", theme.TEXT_SECONDARY))
         for m in messages[-80:]:
@@ -242,7 +273,7 @@ class ChatScreen(Gtk.Box):
             top.append(who)
             top.append(spacer())
             top.append(text(when(m.get("rx_time")), "label-medium", theme.TEXT_SECONDARY, mono=True))
-            top.append(icon_button("outlined-content-copy", lambda t=m.get("decoded_text", ""): self.app.copy(t), 16, theme.TEXT_SECONDARY))
+            top.append(icon_button("outlined-content-copy", lambda t=m.get("decoded_text", ""): self.app.copy(t), 16, theme.TEXT_SECONDARY, tooltip="Copy"))
             bubble.append(top)
             bubble.append(text(m.get("decoded_text", ""), "body-large", wrap=True))
             self.bubbles.append(bubble)
@@ -272,72 +303,49 @@ def detail_of(key: str) -> str | None:
     return key
 
 
-class NewMessageDialog(Gtk.Window):
-    """New message, as the Android dialog: Satellite, or everyone on the mesh."""
+def new_message(app) -> None:
+    """New message, as the Android dialog: Satellite, everyone on the mesh, then the twenty
+    nodes heard most recently ("Node !id" until one has told its name), then a phone number.
+    A node opens that node's chat: its texts go to it and nowhere else."""
+    s = app.state
+    nodes = sorted(s.others(), key=lambda n: -(n.get("last_heard") or 0))[:20]
+    choices = [("satellite", "Satellite", "Through Rock7 to the Hub, from anywhere with a view of the sky"),
+               ("mesh", "Everyone on the mesh", "Every node on your channel")]
+    choices += [("node:" + n["user_id"], name_of(n["user_id"], s), f"On the mesh, {n['user_id']}") for n in nodes if n.get("user_id")]
+    choices.append(("sms", "SMS", "A text from this phone's SIM, to a phone number"))
 
-    def __init__(self, app):
-        super().__init__(title="New message", modal=True, transient_for=app.window, decorated=False)
-        self.app = app
-        self.set_default_size(340, -1)
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(12))
-        box.add_css_class("dialog")
-        box.append(text("New message", "dialog-title"))
-        self.choice = "mesh"
-        first = None
-        # As the Android dialog: Satellite, everyone, then the twenty nodes heard most recently
-        # ("Node !id" until one has told its name), then a phone number.
-        s = app.state
-        nodes = sorted(s.others(), key=lambda n: -(n.get("last_heard") or 0))[:20]
-        choices = [("satellite", "Satellite", "Through Rock7 to the Hub, from anywhere with a view of the sky"),
-                   ("mesh", "Everyone on the mesh", "Every node on your channel")]
-        choices += [("node:" + n["user_id"], name_of(n["user_id"], s), f"On the mesh, {n['user_id']}") for n in nodes if n.get("user_id")]
-        choices.append(("sms", "SMS", "A text from this phone's SIM, to a phone number"))
-        rows = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(12))
-        for key, title, detail in choices:
-            row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(12))
-            radio = Gtk.CheckButton(group=first)
-            first = first or radio
-            radio.set_valign(Gtk.Align.CENTER)
-            radio.connect("toggled", lambda b, k=key: setattr(self, "choice", k) if b.get_active() else None)
-            row.append(radio)
-            texts = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(2))
-            texts.append(text(title, "title-medium", ellipsize=True))
-            texts.append(text(detail, "body-medium", theme.TEXT_SECONDARY, wrap=True))
-            row.append(texts)
-            rows.append(row)
-            if key == "mesh":
-                radio.set_active(True)
-        scroll = Gtk.ScrolledWindow(propagate_natural_height=True, max_content_height=theme.dp(400), hscrollbar_policy=Gtk.PolicyType.NEVER)
-        scroll.set_child(rows)
-        box.append(scroll)
-        self.number = Gtk.Entry(placeholder_text="Phone number, with country code", input_purpose=Gtk.InputPurpose.PHONE)
-        self.number.add_css_class("field")
-        box.append(self.number)
-        buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
-        buttons.set_halign(Gtk.Align.END)
-        cancel = Gtk.Button(label="Cancel")
-        cancel.add_css_class("textbutton")
-        cancel.connect("clicked", lambda *_: self.close())
-        buttons.append(cancel)
-        go = Gtk.Button(label="Write")
-        go.add_css_class("textbutton")
-        go.connect("clicked", self.go)
-        buttons.append(go)
-        box.append(buttons)
-        self.set_child(box)
-
-    def go(self, *_):
-        lane = self.choice
-        if lane == "sms":
-            number = "".join(ch for ch in self.number.get_text() if ch.isdigit() or ch == "+")
-            if not number.startswith("+") or len(number) < 8:
-                self.app.toast("A phone number with its country code, like +31612345678.")
-                return
-            self.close()
-            self.app.push(ChatScreen(self.app, "sms:" + number, self.app.state.contact_name(number), "sms"))
-            return
-        self.close()
-        if lane == "mesh":
-            self.app.push(ChatScreen(self.app, EVERYONE, "Everyone on the mesh", "mesh"))
+    def picked(key: str) -> None:
+        if key == "satellite":
+            app.open_route("chat/satellite")
+        elif key == "mesh":
+            app.open_route("chat/" + EVERYONE)
+        elif key.startswith("node:"):
+            app.open_route("chat/" + key[5:])
         else:
-            self.app.push(ChatScreen(self.app, SATELLITE, "Satellite", "satellite"))
+            ask_number(app)
+
+    PickerDialog(app, "New message", choices, "mesh", picked).present()
+
+
+def ask_number(app) -> None:
+    """The phone number for a text by SMS."""
+    from .widgets import Sheet  # noqa: PLC0415
+
+    sheet = Sheet(app, "Text a phone number")
+    entry = Gtk.Entry(placeholder_text="Phone number, with country code", input_purpose=Gtk.InputPurpose.PHONE)
+    entry.add_css_class("field")
+    entry.update_property([Gtk.AccessibleProperty.LABEL], ["Phone number"])
+    sheet.body.append(entry)
+
+    def go() -> None:
+        number = "".join(ch for ch in entry.get_text() if ch.isdigit() or ch == "+")
+        if not number.startswith("+") or len(number) < 8:
+            app.toast("A phone number with its country code, like +31612345678.")
+            return
+        sheet.close()
+        app.open_route("chat/sms:" + number)
+
+    entry.connect("activate", lambda *_: go())
+    sheet.button("Cancel", sheet.close)
+    sheet.button("Write", go)
+    sheet.present()

@@ -1,0 +1,12 @@
+{
+ "connected": true,
+ "imei": "000000000000000",
+ "model": "QUALCOMM INCORPORATED QUECTEL Mobile Broadband Module",
+ "network_type": "",
+ "operator": "",
+ "port": "modemmanager:/org/freedesktop/ModemManager1/Modem/0",
+ "registration": "unknown",
+ "sim_state": "NOT_INSERTED",
+ "sms_received": 0,
+ "sms_sent": 0
+}

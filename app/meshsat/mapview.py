@@ -11,7 +11,8 @@ import gi
 from gi.repository import Gdk, Gtk
 
 from . import api, theme
-from .widgets import Filtered, ago, clear, icon, icon_button, page, scroller, spacer, text
+from .model import words
+from .widgets import CheckRow, Filtered, ago, clear, icon, icon_button, page, scroller, text
 
 try:
     gi.require_version("Shumate", "1.0")
@@ -60,6 +61,13 @@ class MapScreen(Gtk.Box):
         self.app = app
         self.positions = []
         self.panel_open = False
+        # The layers (MapChrome.kt): this phone, the nodes, the tracks; and the nodes hidden one
+        # by one from the list. The list is rebuilt only when the nodes change.
+        self.show_phone = True
+        self.show_nodes = True
+        self.show_tracks = False
+        self.hidden = set()
+        self._panel_key = None
         column = page(spacing=theme.dp(12))
         column.append(text("Map", "headline-medium"))
 
@@ -195,6 +203,14 @@ class MapScreen(Gtk.Box):
         self.map.get_viewport().set_zoom_level(10)
         self.map.go_to((min(lats) + max(lats)) / 2, (min(lons) + max(lons)) / 2)
 
+    def set_layer(self, layer: str, on: bool) -> None:
+        setattr(self, layer, on)
+        self.update(self.app.state)
+
+    def set_hidden(self, node_id: str, hidden: bool) -> None:
+        (self.hidden.add if hidden else self.hidden.discard)(node_id)
+        self.update(self.app.state)
+
     def update(self, s: api.State) -> None:
         me = (s.bridge or {}).get("node_id")
         nodes = [n for n in s.nodes if n.get("latitude") and n.get("longitude") and n.get("user_id") != me]
@@ -203,11 +219,14 @@ class MapScreen(Gtk.Box):
         first_fix = positioned and not self.positions
         self.positions = positioned
         others = nodes
-        self.summary.set_text("No node positions yet" if not positioned else f"{len(others)} of {len(others)} node{'s' if len(others) != 1 else ''} shown" if others else "This phone only")
+        shown = [n for n in others if n.get("user_id") not in self.hidden] if self.show_nodes else []
+        # MapChrome.kt: "N of M nodes shown", "This phone only", or nothing yet.
+        self.summary.set_text("No node positions yet" if not positioned else f"{len(shown)} of {words.count(len(others), 'node')} shown" if others else "This phone only")
         if Shumate is not None and self.markers is not None:
             self.markers.remove_all()
             now = time.time()
-            for n in ([{"latitude": phone[0], "longitude": phone[1], "mine": True}] if phone else []) + nodes:
+            drawn = ([{"latitude": phone[0], "longitude": phone[1], "mine": True}] if phone and self.show_phone else []) + shown
+            for n in drawn:
                 mine = n.get("mine", False)
                 marker = Shumate.Marker()
                 box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(2))
@@ -229,25 +248,31 @@ class MapScreen(Gtk.Box):
                 self.markers.add_marker(marker)
             if first_fix and phone:
                 self.go_to(phone[0], phone[1], HERE_ZOOM)
+        # The panel's rows are rebuilt only when the nodes change: a row a finger is on must
+        # not vanish under it at the next poll.
+        key = (bool(phone), tuple((n.get("user_id"), n.get("long_name"), (n.get("last_heard") or 0) // 60) for n in others))
+        if key == self._panel_key:
+            return
+        self._panel_key = key
         clear(self.panel_body)
         self.panel_body.append(text("Layers", "label-medium", theme.TEXT_SECONDARY))
-        for title, on in (("This phone", bool(phone)), ("Nodes", True), ("Tracks from the last 24 hours", False)):
-            row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
-            check = Gtk.CheckButton(active=on)
-            row.append(check)
-            row.append(text(title, "body-large"))
+        for title, layer, on in (("This phone", "show_phone", self.show_phone), ("Nodes", "show_nodes", self.show_nodes), ("Tracks from the last 24 hours", "show_tracks", self.show_tracks)):
+            row = CheckRow(title, lambda v, k=layer: self.set_layer(k, v), active=on)
+            row.set_sensitive(layer != "show_tracks")  # tracks come with the position log
             self.panel_body.append(row)
         self.panel_body.append(text("Nodes", "label-medium", theme.TEXT_SECONDARY))
         if not others:
             self.panel_body.append(text("No node has shared a position yet.", "body-medium", theme.TEXT_MUTED, wrap=True))
         for n in others:
-            row = Gtk.Button()
-            row.add_css_class("flat")
-            inner = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
-            inner.append(Gtk.CheckButton(active=True))
-            inner.append(text(n.get("long_name") or n.get("user_id", ""), "body-large", ellipsize=True))
-            inner.append(spacer())
-            inner.append(text("Heard " + ago(n.get("last_heard")), "body-medium", theme.TEXT_SECONDARY))
-            row.set_child(inner)
-            row.connect("clicked", lambda _b, lat=n["latitude"], lon=n["longitude"]: self.go_to(lat, lon, HERE_ZOOM))
+            row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(4))
+            check = CheckRow(n.get("long_name") or n.get("user_id", ""), lambda v, i=n.get("user_id"): self.set_hidden(i, not v), active=n.get("user_id") not in self.hidden)
+            check.set_hexpand(True)
+            row.append(check)
+            go = Gtk.Button()
+            go.add_css_class("flat")
+            go.set_child(text("Heard " + ago(n.get("last_heard")), "body-medium", theme.TEXT_SECONDARY))
+            go.set_tooltip_text("Show on map")
+            go.update_property([Gtk.AccessibleProperty.LABEL], [f"Show {n.get('long_name') or n.get('user_id', '')} on map"])
+            go.connect("clicked", lambda _b, lat=n["latitude"], lon=n["longitude"]: self.go_to(lat, lon, HERE_ZOOM))
+            row.append(go)
             self.panel_body.append(row)

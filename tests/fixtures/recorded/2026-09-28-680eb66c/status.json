@@ -1,0 +1,19 @@
+{
+ "address": "tcp://127.0.0.1:4403",
+ "connected": true,
+ "directory": {
+  "hub_version": 0,
+  "last_sync_at": ""
+ },
+ "firmware_version": "2.8.0.2b64568",
+ "hw_model": 37,
+ "hw_model_name": "PORTDUINO",
+ "node_id": "!52cb81e7",
+ "node_name": "meshsat-pinephone-pro",
+ "num_nodes": 3,
+ "own_row_zeroed": false,
+ "radio_last_reset_reason": "",
+ "radio_log_lines": 0,
+ "reboot_count": 0,
+ "transport": "tcp"
+}

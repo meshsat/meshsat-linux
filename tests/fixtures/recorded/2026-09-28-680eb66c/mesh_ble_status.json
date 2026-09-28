@@ -1,0 +1,9 @@
+{
+ "connected": false,
+ "mode": "off",
+ "paired": false,
+ "pairing_pending": false,
+ "pairing_since": "0001-01-01T00:00:00Z",
+ "satellite_pipe": false,
+ "since": "0001-01-01T00:00:00Z"
+}

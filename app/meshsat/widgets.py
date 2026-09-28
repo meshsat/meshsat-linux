@@ -8,9 +8,11 @@ import gi
 
 gi.require_version("Graphene", "1.0")
 gi.require_version("GdkPixbuf", "2.0")
-from gi.repository import Gdk, GdkPixbuf, GLib, Graphene, Gtk, Pango  # noqa: E402
+gi.require_version("PangoCairo", "1.0")
+from gi.repository import Adw, Gdk, GdkPixbuf, GLib, Graphene, Gtk, Pango, PangoCairo  # noqa: E402
 
 from . import theme  # noqa: E402
+from .model import words  # noqa: E402
 
 
 def paint(widget: Gtk.Widget, colour: str, background: bool = False) -> Gtk.Widget:
@@ -87,13 +89,24 @@ def text_button(label_text: str, on_click=None) -> Gtk.Button:
 
 
 def icon_button(name: str, on_click, size: int = 24, colour: str | None = None, tooltip: str | None = None) -> Gtk.Button:
+    """An icon-only button. `tooltip` is also its accessible name (Android's contentDescription):
+    it is how a screen reader and the tests find it, so every one has it."""
     button = Gtk.Button()
     button.add_css_class("icon-button")
     button.set_child(icon(name, size, colour))
     if tooltip:
         button.set_tooltip_text(tooltip)
+        name_widget(button, tooltip)
     button.connect("clicked", lambda *_: on_click())
     return button
+
+
+def name_widget(widget: Gtk.Widget, name: str, description: str | None = None) -> Gtk.Widget:
+    """The accessible name (and description) of a widget, as Android's contentDescription."""
+    widget.update_property([Gtk.AccessibleProperty.LABEL], [name])
+    if description:
+        widget.update_property([Gtk.AccessibleProperty.DESCRIPTION], [description])
+    return widget
 
 
 class Card(Gtk.Box):
@@ -136,13 +149,15 @@ class StatusStrip(Gtk.Box):
         self.clock.set_text(time.strftime("%H:%M UTC", time.gmtime()))
         return True
 
-    def set_lane(self, lane: str, state: str, figure: str = "") -> None:
-        """state: working, trying, off, failed."""
+    def set_lane(self, lane: str, state: str, figure: str = "", description: str | None = None) -> None:
+        """state: working, trying, off, failed. `description` is what a screen reader says for
+        the item (MeshSatUI.kt's StripItem descriptions)."""
         image, label = self.parts[lane]
         colour = {"working": theme.lane_colour(lane), "trying": theme.AMBER, "failed": theme.RED}.get(state, theme.TEXT_MUTED)
         paint(image, colour)
         label.set_text(figure)
         paint(label, colour)
+        name_widget(image, description or {"satellite": "Satellite", "mesh": "Mesh", "sms": "SMS", "hub": "Hub", "location": "Location"}[lane])
 
 
 class Banner(Gtk.Button):
@@ -545,14 +560,460 @@ def when_date(ts) -> str:
 
 
 def ago(ts) -> str:
-    """Relative time, in the apps' words."""
-    if not ts:
-        return "never"
-    delta = int(time.time() - ts)
-    if delta < 60:
-        return "just now"
-    if delta < 3600:
-        return f"{delta // 60} min ago"
-    if delta < 86400:
-        return f"{delta // 3600} h ago"
-    return f"{delta // 86400} d ago"
+    """Relative time, in the apps' words (Words.ago)."""
+    return words.ago(ts or 0)
+
+
+# The building blocks the settings screens are made of, each after its Android counterpart.
+
+
+class Field(Gtk.Box):
+    """A text field as Android's OutlinedTextField: the label above, the entry, a helper or an
+    error line under it, and a counter when there is a limit. The entry's accessible name is
+    the label."""
+
+    def __init__(self, label: str, placeholder: str = "", helper: str = "", max_length: int = 0, purpose=None, mono: bool = False, on_change=None):
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(4))
+        self.label_text = label
+        self.max_length = max_length
+        self.label = text(label, "label-medium", theme.TEXT_SECONDARY)
+        self.append(self.label)
+        self.entry = Gtk.Entry(placeholder_text=placeholder)
+        self.entry.add_css_class("field")
+        if mono:
+            self.entry.add_css_class("mono")
+        if purpose is not None:
+            self.entry.set_input_purpose(purpose)
+        if max_length:
+            self.entry.set_max_length(max_length)
+        name_widget(self.entry, label)
+        self.append(self.entry)
+        under = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
+        self.helper_text = helper
+        self.helper = text(helper, "body-small", theme.TEXT_SECONDARY, wrap=True)
+        self.helper.set_hexpand(True)
+        self.helper.set_visible(bool(helper))
+        under.append(self.helper)
+        self.counter = text("", "body-small", theme.TEXT_SECONDARY, xalign=1.0, mono=True)
+        self.counter.set_visible(bool(max_length))
+        under.append(self.counter)
+        self.append(under)
+        self.entry.connect("changed", self._changed)
+        self.on_change = on_change
+        self._changed(self.entry)
+
+    def _changed(self, entry) -> None:
+        if self.max_length:
+            self.counter.set_text(f"{len(entry.get_text())}/{self.max_length}")
+        if self.on_change is not None:
+            self.on_change(entry.get_text())
+
+    @property
+    def text(self) -> str:
+        return self.entry.get_text()
+
+    def set_text(self, value: str) -> None:
+        if self.entry.get_text() != (value or ""):
+            self.entry.set_text(value or "")
+
+    def set_error(self, message: str | None) -> None:
+        """An error line in red under the field, or the helper back."""
+        if message:
+            self.helper.set_text(message)
+            paint(self.helper, theme.RED)
+            self.helper.set_visible(True)
+            self.entry.add_css_class("error")
+        else:
+            self.helper.set_text(self.helper_text)
+            paint(self.helper, theme.TEXT_SECONDARY)
+            self.helper.set_visible(bool(self.helper_text))
+            self.entry.remove_css_class("error")
+
+    def set_helper(self, message: str) -> None:
+        self.helper_text = message
+        self.set_error(None)
+
+
+class SwitchRow(Gtk.Box):
+    """A row with a title, an optional detail line and a switch at the right. `set_active`
+    moves the switch without telling the handler (a poll never counts as the user's hand)."""
+
+    def __init__(self, title: str, on_change, detail: str = "", active: bool = False):
+        super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(12))
+        self.add_css_class("switch-row")
+        texts = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(2))
+        texts.set_hexpand(True)
+        texts.set_valign(Gtk.Align.CENTER)
+        texts.append(text(title, "body-large"))
+        self.detail = text(detail, "body-medium", theme.TEXT_SECONDARY, wrap=True)
+        self.detail.set_visible(bool(detail))
+        texts.append(self.detail)
+        self.append(texts)
+        self.switch = Gtk.Switch(active=active)
+        self.switch.set_valign(Gtk.Align.CENTER)
+        name_widget(self.switch, title)
+        self.append(self.switch)
+        self._quiet = False
+        self.on_change = on_change
+        self.switch.connect("state-set", self._state_set)
+
+    def _state_set(self, switch, state) -> bool:
+        if not self._quiet and self.on_change is not None:
+            self.on_change(bool(state))
+        return False
+
+    @property
+    def active(self) -> bool:
+        return self.switch.get_active()
+
+    def set_active(self, value: bool) -> None:
+        if self.switch.get_active() == bool(value):
+            return
+        self._quiet = True
+        try:
+            self.switch.set_active(bool(value))
+        finally:
+            self._quiet = False
+
+    def set_detail(self, value: str) -> None:
+        self.detail.set_text(value)
+        self.detail.set_visible(bool(value))
+
+
+class CheckRow(Gtk.ToggleButton):
+    """A row with a check box and a title, as Android's Checkbox rows: one button, so a finger
+    or a screen reader toggles it anywhere on the row."""
+
+    def __init__(self, title: str, on_change=None, active: bool = False, detail: str = ""):
+        super().__init__(active=active)
+        self.add_css_class("flat")
+        self.add_css_class("check-row")
+        name_widget(self, title)
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(12))
+        self.box = Gtk.Box()
+        self.box.add_css_class("check")
+        self.box.set_valign(Gtk.Align.CENTER)
+        self.mark = icon("outlined-done", 14, theme.SPACE_BLACK)
+        self.mark.set_halign(Gtk.Align.CENTER)
+        self.mark.set_valign(Gtk.Align.CENTER)
+        self.box.append(self.mark)
+        row.append(self.box)
+        texts = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(2))
+        texts.set_hexpand(True)
+        texts.append(text(title, "body-large"))
+        if detail:
+            texts.append(text(detail, "body-medium", theme.TEXT_SECONDARY, wrap=True))
+        row.append(texts)
+        self.set_child(row)
+        self._quiet = False
+        self.on_change = on_change
+        self._paint()
+        self.connect("toggled", self._toggled)
+
+    def _paint(self) -> None:
+        (self.box.add_css_class if self.get_active() else self.box.remove_css_class)("on")
+        self.mark.set_visible(self.get_active())
+
+    def _toggled(self, *_) -> None:
+        self._paint()
+        if not self._quiet and self.on_change is not None:
+            self.on_change(self.get_active())
+
+    def set_checked(self, value: bool) -> None:
+        if self.get_active() == bool(value):
+            return
+        self._quiet = True
+        try:
+            self.set_active(bool(value))
+        finally:
+            self._quiet = False
+
+
+class SliderRow(Gtk.Box):
+    """A title, the value in Mono at the right, and a slider under them."""
+
+    def __init__(self, title: str, low: float, high: float, step: float, on_change, fmt=None):
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(2))
+        top = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
+        top.append(text(title, "body-large"))
+        top.append(spacer())
+        self.value_label = text("", "body-medium", theme.TEXT_SECONDARY, xalign=1.0, mono=True)
+        top.append(self.value_label)
+        self.append(top)
+        self.scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, low, high, step)
+        self.scale.set_draw_value(False)
+        self.scale.set_hexpand(True)
+        name_widget(self.scale, title)
+        self.append(self.scale)
+        self.fmt = fmt or (lambda v: f"{v:g}")
+        self._quiet = False
+        self.on_change = on_change
+        self.scale.connect("value-changed", self._changed)
+        self._changed(self.scale)
+
+    def _changed(self, scale) -> None:
+        self.value_label.set_text(self.fmt(scale.get_value()))
+        if not self._quiet and self.on_change is not None:
+            self.on_change(scale.get_value())
+
+    @property
+    def value(self) -> float:
+        return self.scale.get_value()
+
+    def set_value(self, value: float) -> None:
+        self._quiet = True
+        try:
+            self.scale.set_value(value)
+        finally:
+            self._quiet = False
+
+
+class Sheet:
+    """A bottom sheet or dialog on the window, as Android's ModalBottomSheet and AlertDialog:
+    a title, a body to fill, and a row of text buttons. `present()` shows it."""
+
+    def __init__(self, app, title: str, width: int = 360):
+        self.app = app
+        self.dialog = Adw.Dialog(title=title, content_width=width)
+        self.box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(12))
+        self.box.add_css_class("sheet")
+        self.box.append(text(title, "dialog-title", wrap=True))
+        self.body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(12))
+        self.box.append(self.body)
+        self.buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
+        self.buttons.set_halign(Gtk.Align.END)
+        self.box.append(self.buttons)
+        self.dialog.set_child(self.box)
+
+    def button(self, label: str, on_click, kind: str = "text") -> Gtk.Button:
+        maker = {"text": text_button, "filled": filled_button, "outlined": outlined_button}[kind]
+        button = maker(label, on_click) if kind != "filled" else filled_button(label, on_click, expand=False)
+        self.buttons.append(button)
+        return button
+
+    def present(self) -> None:
+        self.dialog.present(self.app.window)
+
+    def close(self) -> None:
+        self.dialog.close()
+
+
+def confirm(app, title: str, body: str, ok: str, on_ok, cancel: str = "Cancel", danger: bool = False, on_cancel=None) -> Adw.AlertDialog:
+    """A question with two answers, as Android's AlertDialog. Its buttons carry their words,
+    so a screen reader and the tests answer it by name."""
+    dialog = Adw.AlertDialog(heading=title, body=body)
+    dialog.add_response("cancel", cancel)
+    dialog.add_response("ok", ok)
+    if danger:
+        dialog.set_response_appearance("ok", Adw.ResponseAppearance.DESTRUCTIVE)
+    else:
+        dialog.set_response_appearance("ok", Adw.ResponseAppearance.SUGGESTED)
+    dialog.set_default_response("cancel")
+    dialog.set_close_response("cancel")
+
+    def answered(d, response) -> None:
+        if response == "ok":
+            on_ok()
+        elif on_cancel is not None:
+            on_cancel()
+
+    dialog.connect("response", answered)
+    dialog.present(app.window)
+    return dialog
+
+
+class PickerDialog(Sheet):
+    """One choice out of a list, as Android's radio-button dialogs: each option a row with its
+    title and a detail line; the chosen one marked. Picking a row answers and closes."""
+
+    def __init__(self, app, title: str, options: list, chosen, on_pick, cancel: str = "Cancel"):
+        super().__init__(app, title, width=340)
+        rows = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(4))
+        for key, name, detail in options:
+            # The row's accessible name is its title and its detail together (GTK reads the
+            # labels inside), so a screen reader hears both and a test can tell "Satellite"
+            # here from a chip of the same name elsewhere.
+            row = Gtk.Button()
+            row.add_css_class("flat")
+            row.add_css_class("pick-row")
+            inner = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(12))
+            radio = Gtk.Box()
+            radio.add_css_class("radio")
+            if key == chosen:
+                radio.add_css_class("on")
+            radio.set_valign(Gtk.Align.CENTER)
+            inner.append(radio)
+            texts = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(2))
+            texts.set_hexpand(True)
+            texts.append(text(name, "title-medium", ellipsize=True))
+            if detail:
+                texts.append(text(detail, "body-medium", theme.TEXT_SECONDARY, wrap=True))
+            inner.append(texts)
+            row.set_child(inner)
+            row.connect("clicked", lambda _b, k=key: (self.close(), on_pick(k)))
+            rows.append(row)
+        scroll = Gtk.ScrolledWindow(propagate_natural_height=True, max_content_height=theme.dp(420), hscrollbar_policy=Gtk.PolicyType.NEVER)
+        scroll.set_child(rows)
+        self.body.append(scroll)
+        self.button(cancel, self.close)
+
+
+class HoldButton(Gtk.Button):
+    """Android's HoldToSend: a 64 dp bar that fills while the finger stays on it and fires
+    after `seconds`; a short tap shows how long to hold; a screen reader's or a test's
+    activation (no press at all) goes to `on_activate`, which asks in a dialog instead."""
+
+    def __init__(self, label: str, on_fire, on_activate, seconds: float = 3.0, danger: bool = True):
+        super().__init__()
+        self.add_css_class("hold")
+        if danger:
+            self.add_css_class("danger")
+        self.label_text = label
+        self.on_fire, self.on_activate = on_fire, on_activate
+        self.seconds = seconds
+        self.progress = 0.0
+        self._started = 0.0
+        self._timer = None
+        self._fired = False
+        self._pressed = False
+        name_widget(self, label)
+        self.area = Gtk.DrawingArea()
+        self.area.set_content_height(theme.dp(64))
+        self.area.set_draw_func(self._draw)
+        self.set_child(self.area)
+        press = Gtk.GestureClick()
+        press.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        press.connect("pressed", self._pressed_at)
+        press.connect("released", self._released)
+        press.connect("cancel", lambda *_: self._released(None, 0, 0, 0))
+        self.add_controller(press)
+        self.connect("clicked", self._clicked)
+
+    def set_label_text(self, label: str) -> None:
+        self.label_text = label
+        name_widget(self, label)
+        self.area.queue_draw()
+
+    def _pressed_at(self, gesture, n, x, y):
+        self._pressed = True
+        self._fired = False
+        self._started = time.monotonic()
+        self.progress = 0.0
+        if self._timer is None:
+            self._timer = GLib.timeout_add(40, self._tick)
+
+    def _tick(self) -> bool:
+        if not self._pressed:
+            self._timer = None
+            return False
+        self.progress = min(1.0, (time.monotonic() - self._started) / self.seconds)
+        self.area.queue_draw()
+        if self.progress >= 1.0:
+            self._fired = True
+            self._pressed = False
+            self._timer = None
+            self.progress = 0.0
+            self.area.queue_draw()
+            self.on_fire()
+            return False
+        return True
+
+    def _released(self, gesture, n, x, y):
+        self._pressed = False
+        self.progress = 0.0
+        self.area.queue_draw()
+
+    def _clicked(self, *_):
+        if self._fired:
+            self._fired = False  # the hold's own release: already sent
+            return
+        if self._started and time.monotonic() - self._started < self.seconds and time.monotonic() - self._started > 0.05:
+            self.on_activate("tap")  # a short tap by a finger
+            return
+        self.on_activate("accessible")  # no press at all: a screen reader or a test
+
+    def _draw(self, area, cr, width, height):
+        colour = Gdk.RGBA()
+        colour.parse(theme.RED if self.has_css_class("danger") else theme.SIGNAL_ORANGE)
+        cr.set_source_rgba(colour.red, colour.green, colour.blue, 0.10)
+        cr.rectangle(0, 0, width, height)
+        cr.fill()
+        if self.progress > 0:
+            cr.set_source_rgba(colour.red, colour.green, colour.blue, 0.55)
+            cr.rectangle(0, 0, width * self.progress, height)
+            cr.fill()
+        layout = self.create_pango_layout(self.label_text if not self._pressed else f"Keep holding ({max(1, int(self.seconds - (time.monotonic() - self._started) + 0.999))})")
+        layout.set_font_description(Pango.FontDescription.from_string(f"{theme.FONT} Semi-Bold {theme.px(18)}"))
+        w, h = layout.get_pixel_size()
+        cr.set_source_rgba(colour.red, colour.green, colour.blue, 1.0)
+        cr.move_to((width - w) / 2, (height - h) / 2)
+        PangoCairo.show_layout(cr, layout)
+
+
+class Tabs(Gtk.Box):
+    """A row of tabs as Android's ScrollableTabRow: chips that slide sideways, one selected,
+    each with a count badge when it has one."""
+
+    def __init__(self, names: list, on_select, selected: str | None = None):
+        super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
+        self.chips = {}
+        self.badges = {}
+        self.on_select = on_select
+        self.selected = selected or names[0]
+        for name in names:
+            chip = Gtk.Button()
+            chip.add_css_class("chip")
+            name_widget(chip, name)
+            inner = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(6))
+            inner.append(text(name, "label-large"))
+            badge = text("", "count")
+            badge.set_visible(False)
+            inner.append(badge)
+            chip.set_child(inner)
+            chip.connect("clicked", lambda _b, n=name: self.select(n))
+            self.chips[name] = chip
+            self.badges[name] = badge
+            self.append(chip)
+        self._paint()
+
+    def _paint(self) -> None:
+        for name, chip in self.chips.items():
+            (chip.add_css_class if name == self.selected else chip.remove_css_class)("selected")
+
+    def select(self, name: str) -> None:
+        if name == self.selected:
+            return
+        self.selected = name
+        self._paint()
+        self.on_select(name)
+
+    def set_badge(self, name: str, count: int) -> None:
+        badge = self.badges[name]
+        badge.set_text(str(count))
+        badge.set_visible(count > 0)
+
+
+class StatusBanner(Gtk.Box):
+    """A line of state inside a page: amber while trying, red when failed, green when done."""
+
+    def __init__(self, message: str = "", tone: str = "amber"):
+        super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
+        self.add_css_class("status-banner")
+        self.label = text(message, "body-medium", wrap=True)
+        self.label.set_hexpand(True)
+        self.append(self.label)
+        self.set_tone(tone)
+        self.set_visible(bool(message))
+
+    def set_tone(self, tone: str) -> None:
+        for c in ("amber", "red", "green", "muted"):
+            self.remove_css_class(c)
+        self.add_css_class(tone)
+
+    def show(self, message: str | None, tone: str = "amber") -> None:
+        if not message:
+            self.set_visible(False)
+            return
+        self.label.set_text(message)
+        self.set_tone(tone)
+        self.set_visible(True)

@@ -171,14 +171,15 @@ class Notifier:
         elif signal == "ActionInvoked":
             number, action = parameters.unpack()
             key = self.keys.get(number, "")
+            # MainActivity.kt: a notification opens "sos", "messages" or "home" (routes.py).
             if action == "cancel-sos":
                 threading.Thread(target=lambda: api.post("/api/sos/cancel"), daemon=True).start()
             elif key == "sos":
-                self.open_app("open", "safety")
+                self.open_app("open", "sos")
             elif key == "signal":
-                self.open_app("open", "satellite")
+                self.open_app("open", "home")
             else:
-                self.open_app("tab", "messages")
+                self.open_app("open", "messages")
 
     # The app
     def open_app(self, action: str, target: str) -> None:
