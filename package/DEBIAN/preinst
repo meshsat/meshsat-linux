@@ -1,0 +1,28 @@
+#!/bin/sh
+# preinst of the meshsat package. A phone prepared by hand (the bench, or a source install
+# from meshsat-lora-backplate) already has some of this package's configuration files, owned
+# by nobody. dpkg would stop and ask what to do with each, which no one-command install can
+# answer. Such a file is set aside as <name>.pre-meshsat, and the package's version takes its
+# place; the old one stays for the user to compare. A file owned by a package is left to dpkg.
+set -e
+case "$1" in
+    install|upgrade)
+        for f in /etc/meshtasticd/config.yaml /etc/meshtasticd/config.d/lora-pinedio-backcover.yaml \
+                 /etc/meshsat/bridge.env /etc/modprobe.d/meshsat-no-keyboard.conf \
+                 /etc/modules-load.d/meshsat-node.conf /etc/udev/rules.d/60-meshsat-node.rules; do
+            if [ -f "$f" ] && ! dpkg -S "$f" >/dev/null 2>&1; then
+                mv -f "$f" "$f.pre-meshsat"
+                echo "meshsat: $f was placed by hand; kept as $f.pre-meshsat, the package's version is installed"
+            fi
+        done
+        # A source install's units under /etc/systemd/system would shadow the package's.
+        for u in meshtasticd.service meshsat-radio-watch.service meshsat-radio-watch.timer meshsat-bridge.service; do
+            if [ -f "/etc/systemd/system/$u" ] && ! dpkg -S "/etc/systemd/system/$u" >/dev/null 2>&1; then
+                systemctl disable --now "$u" >/dev/null 2>&1 || true
+                mv -f "/etc/systemd/system/$u" "/etc/systemd/system/$u.pre-meshsat"
+                echo "meshsat: /etc/systemd/system/$u from a source install set aside as $u.pre-meshsat"
+            fi
+        done
+        ;;
+esac
+exit 0
