@@ -6,3 +6,14 @@ polkit.addRule(function(action, subject) {
         return polkit.Result.YES;
     }
 });
+
+// The person at the screen may ask the device to look for its node again (the LoRa back cover
+// put on or taken off): that is one unit, meshsat-hardware.service, started and nothing else.
+polkit.addRule(function(action, subject) {
+    if (action.id === "org.freedesktop.systemd1.manage-units" &&
+        action.lookup("unit") === "meshsat-hardware.service" &&
+        action.lookup("verb") === "start" &&
+        subject.local && subject.active) {
+        return polkit.Result.YES;
+    }
+});

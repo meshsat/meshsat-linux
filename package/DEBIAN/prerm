@@ -4,7 +4,7 @@ if [ -d /run/systemd/system ]; then
     case "$1" in
         remove)
             systemctl stop meshsat-bridge.service meshsat-radio-watch.timer meshsat-radio-watch.service meshtasticd.service 2>/dev/null || true
-            systemctl disable meshsat-bridge.service meshsat-radio-watch.timer meshtasticd.service >/dev/null 2>&1 || true
+            systemctl disable meshsat-bridge.service meshsat-radio-watch.timer meshtasticd.service meshsat-hardware.service >/dev/null 2>&1 || true
             ;;
         upgrade|deconfigure)
             systemctl stop meshsat-bridge.service meshsat-radio-watch.timer meshtasticd.service 2>/dev/null || true

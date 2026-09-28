@@ -3,7 +3,7 @@ set -e
 case "$1" in
     purge)
         # The node's identity and the Bridge's database go with a purge, never with a remove.
-        rm -rf /var/lib/meshtasticd /var/lib/meshsat /etc/meshtasticd/ssl /run/meshsat-node
+        rm -rf /var/lib/meshtasticd /var/lib/meshsat /etc/meshtasticd/ssl /run/meshsat-node /run/meshsat
         rmdir /etc/meshtasticd/config.d /etc/meshtasticd /etc/meshsat 2>/dev/null || true
         ;;
 esac

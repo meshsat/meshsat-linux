@@ -1,8 +1,8 @@
 [Unit]
 Description=MeshSat Bridge (mesh and satellite gateway) on this device
 Documentation=https://github.com/meshsat/meshsat-linux/blob/main/docs/INSTALL.md
-After=network-online.target meshtasticd.service
-Wants=network-online.target meshtasticd.service
+After=network-online.target meshsat-hardware.service meshtasticd.service
+Wants=network-online.target meshsat-hardware.service meshtasticd.service
 
 [Service]
 Type=simple
@@ -10,6 +10,8 @@ User=meshsat
 Group=meshsat
 SupplementaryGroups=dialout
 EnvironmentFile=/etc/meshsat/bridge.env
+# What meshsat-hardware found: the mesh port is the cover's daemon, or a node over Bluetooth.
+EnvironmentFile=-/run/meshsat/hardware.env
 StateDirectory=meshsat
 WorkingDirectory=/var/lib/meshsat
 ExecStart=/usr/bin/meshsat

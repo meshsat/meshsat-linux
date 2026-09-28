@@ -68,15 +68,22 @@ case "$1" in
         if command -v gtk-update-icon-cache >/dev/null 2>&1; then gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor 2>/dev/null || true; fi
         if command -v update-desktop-database >/dev/null 2>&1; then update-desktop-database -q 2>/dev/null || true; fi
 
-        # The services, now and at boot.
+        # The services, now and at boot. meshsat-hardware decides first whether this device has
+        # the LoRa back cover (then the daemon and the watchdog run) or adopts a node over
+        # Bluetooth (then they stay off); the Bridge follows what it found.
         if [ -d /run/systemd/system ]; then
             systemctl daemon-reload
-            systemctl enable meshtasticd.service meshsat-radio-watch.timer meshsat-bridge.service >/dev/null 2>&1 || true
-            systemctl restart meshtasticd.service || true
-            systemctl start meshsat-radio-watch.timer || true
+            systemctl enable meshsat-hardware.service meshtasticd.service meshsat-radio-watch.timer meshsat-bridge.service >/dev/null 2>&1 || true
+            systemctl stop meshsat-radio-watch.timer meshtasticd.service 2>/dev/null || true
+            systemctl start meshsat-hardware.service || true
             systemctl restart meshsat-bridge.service || true
         fi
-        echo "meshsat: the node and the Bridge are starting; the MeshSat app is in the app grid (or run meshsat-app)."
+        node=$(sed -n 's/^MESHSAT_NODE=//p' /run/meshsat/hardware.env 2>/dev/null)
+        if [ "$node" = cover ]; then
+            echo "meshsat: the LoRa back cover is this device's node; the node and the Bridge are starting. The MeshSat app is in the app grid (or run meshsat-app)."
+        else
+            echo "meshsat: no LoRa back cover on this device; the Bridge is starting in Bluetooth mode. Open the MeshSat app (in the app grid, or meshsat-app) and connect your node under Setup > Node."
+        fi
         if [ ! -d /var/lib/meshtasticd/.portduino/default/prefs ]; then
             echo "meshsat: a new node: give it its channels with  cat channel-url.txt | meshsat-node-channels --owner <name> --short <ABCD> --role CLIENT_MUTE"
         fi

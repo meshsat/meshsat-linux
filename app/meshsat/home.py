@@ -52,6 +52,7 @@ class HomeScreen(Gtk.Box):
         started_top.append(self.started_count)
         self.started.append(started_top)
         self.steps = []
+        self.step_words = []
         for title, detail in (("Start your MeshSat node", "The radio: the LoRa back cover"),
                               ("Paste the Hub's key", "Optional: the control room"),
                               ("Plug the satellite modem", "A RockBLOCK on USB-C")):
@@ -62,11 +63,14 @@ class HomeScreen(Gtk.Box):
             dot.set_valign(Gtk.Align.CENTER)
             row.append(dot)
             texts = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(0))
-            texts.append(text(title, "body-large"))
-            texts.append(text(detail, "body-medium", theme.TEXT_SECONDARY))
+            title_label = text(title, "body-large")
+            detail_label = text(detail, "body-medium", theme.TEXT_SECONDARY)
+            texts.append(title_label)
+            texts.append(detail_label)
             row.append(texts)
             self.started.append(row)
             self.steps.append(dot)
+            self.step_words.append((title_label, detail_label))
         column.append(self.started)
 
         sos = Card()
@@ -212,6 +216,15 @@ class HomeScreen(Gtk.Box):
             if own and own.get("battery_level"):
                 detail += " On USB power." if own["battery_level"] > 100 else f" Battery {own['battery_level']}%."
             self.mesh.set_state("working", detail, f"{len(s.others())} nodes", in_flight=queued > 0)
+        elif s.node_mode() == "bluetooth":
+            # HomeLanes.kt: the node over Bluetooth, as the Android lane words it.
+            ble = s.ble or {}
+            if ble.get("mode") in ("scanning", "pairing", "connecting"):
+                self.mesh.set_state("trying", "Connecting to your node.")
+            elif ble.get("address"):
+                self.mesh.set_state("trying", "Reconnecting to your node.")
+            else:
+                self.mesh.set_state("off", "Connect a MeshSat node or a Meshtastic radio.")
         elif s.node_service:
             self.mesh.set_state("trying", "Connecting to your node." if not s.bridge else "Reconnecting to your node.")
         else:
@@ -224,6 +237,13 @@ class HomeScreen(Gtk.Box):
             self.satellite.set_state("off", "Connect a MeshSat node to use its satellite modem.")
         elif s.modem and s.modem.get("port") not in ("", "supervisor"):
             self.satellite.set_state("trying", "Checking the modem.")
+        elif s.node_mode() == "bluetooth":
+            if not mesh_up:
+                self.satellite.set_state("off", "Connect a MeshSat node to use its satellite modem.")
+            elif (s.ble or {}).get("satellite_pipe"):
+                self.satellite.set_state("off", "The node's satellite modem is not reachable from this phone yet.")
+            else:
+                self.satellite.set_state("off", "This radio has no satellite modem.")
         else:
             self.satellite.set_state("off", "This radio has no satellite modem. Plug a RockBLOCK into USB-C.")
 
@@ -233,7 +253,14 @@ class HomeScreen(Gtk.Box):
         else:
             self.hub.set_state("off", "Not set up. Paste the Hub's key to connect this device.")
 
-        done = [mesh_up, hub, modem]
+        # Onboarding.kt:146: "Pair your MeshSat node / The radios: mesh and satellite", done once a
+        # node has been chosen; with the cover, the node this phone is.
+        bluetooth = s.node_mode() == "bluetooth"
+        title_label, detail_label = self.step_words[0]
+        title_label.set_text("Pair your MeshSat node" if bluetooth else "Start your MeshSat node")
+        detail_label.set_text("The radios: mesh and satellite" if bluetooth else "The radio: the LoRa back cover")
+        node_done = mesh_up or (bluetooth and bool((s.ble or {}).get("address")))
+        done = [node_done, hub, modem]
         self.started_count.set_text(f"{sum(done)} of 3 done")
         for dot, ok in zip(self.steps, done):
             for c in ("dot-green", "dot-muted"):

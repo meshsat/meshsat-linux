@@ -1,17 +1,21 @@
 # Install MeshSat on a Linux phone
 
-For a PinePhone or PinePhone Pro with the Pine64 LoRa back cover, running Mobian (Debian 13, arm64). One package, one command.
+For a Linux phone running Mobian (Debian 13, arm64): a PinePhone or PinePhone Pro with the Pine64 LoRa back cover, or any phone with a Meshtastic node in Bluetooth range. One package, one command.
 
 ## One command
 
 Download the package from the [releases](https://github.com/meshsat/meshsat-linux/releases) (the release page lists its sha256), then, on the phone:
 
 ```
-wget https://github.com/meshsat/meshsat-linux/releases/download/v0.3.1/meshsat_0.3.1_arm64.deb
-sudo apt install ./meshsat_0.3.1_arm64.deb
+wget https://github.com/meshsat/meshsat-linux/releases/download/v0.4.0/meshsat_0.4.0_arm64.deb
+sudo apt install ./meshsat_0.4.0_arm64.deb
 ```
 
 That is all. The package installs the Meshtastic daemon for the back cover, its configuration (0 dBm, the one power the radio is qualified at), Meshtastic's web client, the radio watchdog, the MeshSat Bridge and the MeshSat app, and starts the services. The **MeshSat** icon is in the app grid; tap it and the app opens: the same screens as MeshSat Android and iOS, Home, Messages, Map, People and Setup, with this phone's node, a satellite modem on USB-C and the MeshSat Hub. The moon on Home is night mode. A banner at the top says when the Bridge or the node cannot be reached, and what to do.
+
+## With the LoRa back cover, or with a node over Bluetooth
+
+When the phone boots, the package looks for the Pine64 LoRa back cover on the pogo pins (`meshsat-hardware`). With one, this phone is the node: the daemon drives the cover and the Bridge talks to it. Without one, the daemon stays off and the Bridge starts in Bluetooth mode, as MeshSat Android and iOS work: open the app, go to Setup > Your MeshSat node, tap **Scan for Meshtastic devices**, pick your node under **Found devices**, and enter the PIN the node shows on its screen. From then on the phone reconnects to that node by itself, across restarts. **Disconnect** leaves the node; **Forget this node** also drops the pairing. A phone with a cover that should use a node over Bluetooth anyway says so in `/etc/meshsat/hardware.conf` with `MESHSAT_NODE=bluetooth`; **Look for a LoRa back cover again** on the same page asks the phone to decide again (a cover put on, or taken off).
 
 A node that was already run on this phone by hand keeps its identity: the package copies the keys and channels it finds under `~/.portduino/default/prefs`.
 

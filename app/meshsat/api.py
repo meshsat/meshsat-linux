@@ -291,6 +291,55 @@ class NameAsker:
         return asked
 
 
+HARDWARE_PATH = os.environ.get("MESHSAT_APP_HARDWARE", "/run/meshsat/hardware.json")
+
+
+def hardware() -> dict:
+    """What meshsat-hardware found at boot (or when last asked): {"node": "cover"|"bluetooth",
+    "why", "model", "checked_at"}; {} on a device without the package's detection."""
+    try:
+        with open(HARDWARE_PATH, encoding="utf-8") as handle:
+            data = json.load(handle)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def check_hardware() -> str | None:
+    """Asks the device to look for its node again (the cover put on or taken off): starts
+    meshsat-hardware.service, which polkit allows the person at the screen. None when it
+    worked, else the reason."""
+    try:
+        run = subprocess.run(["systemctl", "start", "meshsat-hardware.service"], capture_output=True, text=True, timeout=20)
+    except (OSError, subprocess.SubprocessError) as error:
+        return str(error)
+    return None if run.returncode == 0 else (run.stderr.strip() or f"systemctl exited {run.returncode}")
+
+
+# The node over Bluetooth: the Bridge scans, pairs, connects and remembers (MESHSAT-1390); the
+# app only shows and asks, as MeshSat Android's screens do over its own BLE stack.
+def ble_scan(seconds: int = 8):
+    return get(f"/api/mesh/ble/scan?seconds={seconds}", timeout=seconds + 6.0)
+
+
+def ble_connect(address: str):
+    return post("/api/mesh/ble/connect", {"address": address}, timeout=45.0)
+
+
+def ble_pair(pin: str):
+    return post("/api/mesh/ble/pair", {"pin": pin}, timeout=10.0)
+
+
+def ble_status():
+    return get("/api/mesh/ble/status")
+
+
+def ble_forget(bond: bool = False):
+    """Disconnect (the bond stays, as Android's Disconnect leaves it); bond=True forgets the
+    node entirely, which clears a stale bond."""
+    return post("/api/mesh/ble" + ("?bond=1" if bond else ""), None, timeout=15.0, method="DELETE")
+
+
 def unit_active(unit: str) -> bool:
     try:
         return subprocess.run(["systemctl", "is-active", "--quiet", unit], timeout=3).returncode == 0
@@ -331,11 +380,18 @@ class State:
         self.unreachable_since = None  # when the Bridge lost the node, for the banner
         self.last_tx = 0.0  # when this phone last transmitted, as far as the app can tell
         self.name_requests = []  # the asks for a nameless node's NodeInfo, newest last
+        self.hardware = {}  # /run/meshsat/hardware.json: the LoRa cover, or a node over Bluetooth
+        self.ble = None  # /api/mesh/ble/status when the node is over Bluetooth
         # Where this phone is, as Android's LocationFixes: geoclue's fix (lat, lon, accuracy_m, at),
         # a position typed in (lat, lon), and what to tell the user when there is neither.
         self.phone = None
         self.entered = None
         self.location_hint = ""
+
+    def node_mode(self) -> str:
+        """"cover" (the PinePhone's LoRa back cover runs the node) or "bluetooth" (a node adopted
+        over Bluetooth, as on the other apps)."""
+        return self.hardware.get("node") or "cover"
 
     def position(self):
         """(latitude, longitude, source) for the passes and the map: the phone's fix first, then
@@ -476,9 +532,13 @@ class Poller:
             s.cellular = get("/api/cellular/status")
             sms = get("/api/cellular/sms?limit=200")
             s.sms = sms if isinstance(sms, list) else []
+        s.hardware = hardware()
+        if bridge is not None and s.node_mode() == "bluetooth":
+            s.ble = ble_status()
         s.node_service = unit_active("meshtasticd.service")
         s.bridge_service = unit_active("meshsat-bridge.service")
-        s.watchdog = watchdog_status()
+        # The radio watchdog watches the cover; its last verdict means nothing to a node over Bluetooth.
+        s.watchdog = watchdog_status() if s.node_mode() == "cover" else {}
         if s.mesh_connected():
             s.unreachable_since = None
         elif s.unreachable_since is None:
