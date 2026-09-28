@@ -1,6 +1,13 @@
 #!/bin/sh
 set -e
 if [ -d /run/systemd/system ]; then
+    # The notifier of the running sessions stops with the package; an upgrade starts it again.
+    for uid in $(loginctl list-users --no-legend 2>/dev/null | awk '{print $1}'); do
+        [ "$uid" -ge 1000 ] 2>/dev/null || continue
+        user=$(id -nu "$uid" 2>/dev/null) || continue
+        systemctl --user --machine="$user@.host" stop meshsat-notify.service >/dev/null 2>&1 || true
+    done
+    case "$1" in remove) systemctl --global disable meshsat-notify.service >/dev/null 2>&1 || true ;; esac
     case "$1" in
         remove)
             systemctl stop meshsat-bridge.service meshsat-radio-watch.timer meshsat-radio-watch.service meshtasticd.service 2>/dev/null || true

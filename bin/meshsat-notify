@@ -1,0 +1,6 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+# MeshSat outside its window: notifications, the satellite signal, the status for the panel.
+# Started with the session by meshsat-notify.service (a systemd user unit).
+export PYTHONPATH=/usr/lib/meshsat/app${PYTHONPATH:+:$PYTHONPATH}
+exec /usr/bin/python3 -m meshsat.notify "$@"

@@ -36,6 +36,11 @@
   </recommends>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.5.0" date="2026-09-28">
+      <description>
+        <p>MeshSat outside its window: notifications for texts that arrive, messages that did not go and an SOS in progress; the satellite signal as a notification kept up to date; on Phosh a MeshSat tile among the quick settings and a widget on the lock screen; a tray icon where the shell has a tray.</p>
+      </description>
+    </release>
     <release version="0.4.0" date="2026-09-28">
       <description>
         <p>Your node over Bluetooth, as on the other apps: a phone without the LoRa back cover scans for Meshtastic nodes under Setup > Your MeshSat node, pairs with the PIN the node shows, and keeps the node across restarts. The package finds out at boot whether this phone carries the cover and runs the node daemon only then.</p>
