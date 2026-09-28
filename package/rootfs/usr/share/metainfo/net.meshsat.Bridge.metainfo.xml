@@ -36,6 +36,11 @@
   </recommends>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.7.0" date="2026-09-28">
+      <description>
+        <p>Message queue, Links and Routing rules as native screens, in MeshSat Android's words: the queue with its counts by state, a filter per link, the details of every message and a retry or cancel that is always confirmed; the six Links tabs (a link switched off after a question, reconnected on request, its capabilities, groups, backup links and health); the five Routing rules tabs with the rule editor, the delete that says what it changes, and the queue. The chat's compose bar says how a message goes and what a satellite message costs before it is sent, the bubbles carry a delivery mark and take Android's measures, and All Messages has a search.</p>
+      </description>
+    </release>
     <release version="0.6.0" date="2026-09-28">
       <description>
         <p>Safety as on MeshSat Android: the SOS goes out with your name and position on every route the phone has, the SOS screen shows where it went ("See where it went"), a cancelled SOS tells every route that carried it, and "Test the alarm" sends a test on every route, says it is a test and raises nothing at the Hub. Emergency contacts and the check-in timer in Android's words, with the timer's triggered state. The Bridge underneath carries the SOS words and the Hub's test event.</p>

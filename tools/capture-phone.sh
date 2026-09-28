@@ -29,6 +29,7 @@ rm -rf "$D"; mkdir -p "$D"
     for page in node satellite hub sms safety messaging maps integrations advanced about; do act open "'setup/$page'"; shot "setup-$page"; done
     act open "'passes'"; shot passes
     act open "'radio-config'"; shot radio-config
+    for page in rules interfaces deliveries; do act open "'$page'"; shot "$page"; done
     act tab "'home'"; act night; shot home-night; act night
     echo "== app"; pgrep -fa "[p]ython3 -m meshsat$"; meshsat-app --version; dpkg-query -W meshsat
 } > "$D/capture.log" 2>&1

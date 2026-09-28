@@ -9,7 +9,7 @@ def case_new_message_to_a_node_opens_that_node(ctx):
     ctx.tree.click("New message")
     ctx.tree.wait_text("New message")
     ctx.tree.click_containing("On the mesh, !a1b3c2ec")  # the node heard most recently, by its row
-    ctx.tree.wait_text("By mesh, from your node.")
+    ctx.tree.wait_text("Directly to this node on the mesh.")
     labels = ctx.tree.texts()
     assert "MSPA" in labels, f"the chat is not the node's: {labels[:12]}"
     assert "Satellite" not in labels[:6], f"the chat opened is the Satellite one: {labels[:12]}"
@@ -30,7 +30,7 @@ def case_new_message_to_everyone_and_by_satellite(ctx):
     ctx.app.open("messages")
     ctx.tree.click("New message")
     ctx.tree.click_containing("Through Rock7 to the Hub, from anywhere")
-    ctx.tree.wait_text("By satellite, through Rock7 to the Hub.")
+    ctx.tree.wait_text("By satellite, when the modem is back.")
     ctx.app.open("messages")
 
 
@@ -38,3 +38,25 @@ def case_counts_have_a_singular(ctx):
     ctx.app.open("messages")
     ctx.tree.wait_text("1 node")
     ctx.tree.wait_text("2 today")
+
+
+def case_search_filters_all_messages(ctx):
+    ctx.app.open("messages")
+    ctx.tree.wait_text("Everyone on the mesh")
+    assert not ctx.tree.find_all("text", name="Search messages"), "the search bar showed on Chats"
+    ctx.tree.click("All Messages")
+    ctx.tree.wait_text("first light")
+    ctx.tree.wait_text("MESH")
+    ctx.tree.wait_text("RX")
+    ctx.tree.wait_text("TX")
+    ctx.tree.set_text("Search messages", "FIRST")
+    ctx.tree.wait_text("first light")
+    ctx.tree.wait_gone("mew")
+    ctx.shot("search")
+    ctx.tree.click("Clear")
+    ctx.tree.wait_text("mew")
+    ctx.tree.set_text("Search messages", "nothing like this")
+    ctx.tree.wait_text("No messages yet")
+    ctx.tree.click("Clear")
+    ctx.tree.click("Chats")
+    ctx.tree.wait_text("Everyone on the mesh")

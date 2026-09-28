@@ -157,8 +157,44 @@ toast label {{ color: {TEXT_PRIMARY}; font-size: {px(14)}; }}
 .textbutton label {{ color: {SIGNAL_ORANGE}; font-size: {px(14)}; font-weight: 500; }}
 .field {{ background-color: {SPACE_BLACK}; border: 1px solid {OUTLINE}; border-radius: {px(4)}; padding: 0 {px(14)}; min-height: {px(56)}; color: {TEXT_PRIMARY}; font-size: {px(16)}; caret-color: {SIGNAL_ORANGE}; }}
 .field:focus-within {{ border: 2px solid {SIGNAL_ORANGE}; }}
-.bubble {{ background-color: {SURFACE}; border: 1px solid {BORDER}; border-radius: {px(8)}; padding: {px(12)}; }}
-.bubble.mine {{ background-color: {PRIMARY_CONTAINER}; border-color: {PRIMARY_CONTAINER}; }}
+.bubble {{ background-color: {SURFACE}; border: 1px solid {BORDER}; border-radius: {px(12)} {px(12)} {px(12)} {px(4)}; padding: {px(10)}; }}
+.bubble.mine {{ background-color: alpha({SIGNAL_ORANGE}, 0.15); border-color: alpha({SIGNAL_ORANGE}, 0.3); border-radius: {px(12)} {px(12)} {px(4)} {px(12)}; }}
+.icon-button.small {{ padding: {px(4)}; min-width: {px(12)}; min-height: {px(12)}; border-radius: {px(10)}; }}
+.search {{ background-color: {SPACE_BLACK}; border: 1px solid {BORDER}; border-radius: {px(4)}; padding: 0 {px(8)}; min-height: {px(48)}; }}
+.search:focus-within {{ border-color: {SIGNAL_ORANGE}; }}
+.search entry {{ background: none; border: none; box-shadow: none; color: {TEXT_PRIMARY}; font-size: {px(14)}; caret-color: {SIGNAL_ORANGE}; }}
+.state-tag {{ border-radius: {px(4)}; padding: {px(2)} {px(6)}; }}
+.state-tag.tint-green {{ background-color: alpha({GREEN}, 0.12); }}
+.state-tag.tint-amber {{ background-color: alpha({AMBER}, 0.12); }}
+.state-tag.tint-red {{ background-color: alpha({RED}, 0.12); }}
+.state-tag.tint-teal {{ background-color: alpha({SIGNAL_ORANGE}, 0.12); }}
+.state-tag.tint-muted {{ background-color: alpha({TEXT_MUTED}, 0.12); }}
+.state-tag.tint-mesh {{ background-color: alpha({MESH}, 0.15); }}
+.state-tag.tint-satellite {{ background-color: alpha({IRIDIUM}, 0.15); }}
+.state-tag.tint-sms {{ background-color: alpha({SMS}, 0.15); }}
+.state-tag.tint-hub {{ background-color: alpha({HUB}, 0.15); }}
+.score-tag {{ border-radius: {px(6)}; padding: {px(4)} {px(10)}; }}
+.lane-dot {{ border-radius: {px(5)}; }}
+.divider {{ background-color: {BORDER}; min-height: 1px; }}
+.dimmed {{ opacity: 0.6; }}
+.ledger-counts {{ padding: {px(4)}; }}
+.ledger-group {{ border-radius: {px(6)}; padding: {px(4)} 0; min-height: {px(48)}; }}
+.ledger-group.selected.tint-green {{ background-color: alpha({GREEN}, 0.15); }}
+.ledger-group.selected.tint-amber {{ background-color: alpha({AMBER}, 0.15); }}
+.ledger-group.selected.tint-red {{ background-color: alpha({RED}, 0.15); }}
+.ledger-group.selected.tint-muted {{ background-color: alpha({TEXT_MUTED}, 0.15); }}
+.tonal-box {{ background-color: {SURFACE_LIGHT}; border-radius: {px(4)}; padding: {px(8)}; }}
+.picker {{ background-color: {SPACE_BLACK}; border: 1px solid {OUTLINE}; border-radius: {px(4)}; padding: 0 {px(14)}; min-height: {px(56)}; box-shadow: none; }}
+.picker.error {{ border-color: {RED}; }}
+.fab {{ background-color: {SIGNAL_ORANGE}; border: none; border-radius: {px(16)}; min-width: {px(56)}; min-height: {px(56)}; padding: 0; box-shadow: 0 2px 6px alpha(black, 0.4); }}
+.fab:hover {{ background-color: {ORANGE_LIGHT}; }}
+.tab-chip {{ background: none; border: none; box-shadow: none; border-radius: {px(6)}; padding: 0 {px(12)}; min-height: {px(48)}; }}
+.tab-chip label {{ color: {TEXT_MUTED}; font-size: {px(14)}; font-weight: 400; }}
+.tab-chip.selected {{ background-color: {SURFACE_LIGHT}; }}
+.tab-chip.selected label {{ color: {TEXT_PRIMARY}; font-weight: 600; }}
+.tab-chip label.count {{ color: {TEXT_SECONDARY}; background-color: {BORDER}; font-weight: 400; }}
+.card-tight {{ padding: {px(8)} {px(4)} {px(4)} {px(12)}; }}
+.card-tap {{ padding: {px(12)}; border-radius: {px(8)}; }}
 .dot {{ border-radius: {px(4)}; min-width: {px(8)}; min-height: {px(8)}; }}
 .dot-small {{ border-radius: {px(3)}; min-width: {px(6)}; min-height: {px(6)}; }}
 .segments {{ background-color: {SURFACE}; border: 1px solid {BORDER}; border-radius: {px(8)}; padding: {px(3)}; min-height: {px(30)}; }}
@@ -187,6 +223,11 @@ toast label {{ color: {TEXT_PRIMARY}; font-size: {px(14)}; }}
 .map-credit {{ background-color: alpha({SPACE_BLACK}, 0.7); color: {TEXT_SECONDARY}; border-radius: {px(4)}; padding: {px(2)} {px(6)}; font-size: {px(12)}; }}
 .panel-bar {{ min-height: {px(56)}; padding: 0 {px(12)}; }}
 .subheader {{ min-height: {px(56)}; border-bottom: 1px solid {BORDER}; padding: 0 {px(4)}; }}
+.subheader.plain {{ min-height: {px(48)}; border-bottom: none; padding: 0; }}
+.compose {{ padding: {px(8)}; }}
+.field.compose-field {{ border-color: {BORDER}; }}
+.field.compose-field:focus-within {{ border: 2px solid {TEXT_SECONDARY}; }}
+.field.compose-field text placeholder {{ font-size: {px(14)}; }}
 .group-title {{ font-size: {px(14)}; font-weight: 500; color: {TEXT_SECONDARY}; padding: {px(20)} {px(16)} {px(4)} {px(16)}; }}
 .nav-row {{ min-height: {px(64)}; padding: {px(8)} {px(16)}; }}
 .kv-key {{ color: {TEXT_SECONDARY}; font-size: {px(14)}; }}

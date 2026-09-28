@@ -227,15 +227,18 @@ class Notifier:
         return True
 
     def poll_once(self) -> None:
-        bridge = api.get("/api/status")
         modem = signal = sos = None
         nodes = []
         ble = None
-        if bridge is not None:
-            modem = api.get("/api/iridium/modem")
-            signal = api.get("/api/iridium/signal")
-            sos = api.get("/api/sos/status")
-            nodes = (api.get("/api/nodes") or {}).get("nodes") or []
+        try:
+            bridge = api.polled("/api/status")
+            if bridge is not None:
+                modem = api.polled("/api/iridium/modem")
+                signal = api.polled("/api/iridium/signal")
+                sos = api.polled("/api/sos/status")
+                nodes = (api.polled("/api/nodes") or {}).get("nodes") or []
+        except api.Throttled:
+            return  # the Bridge asked for a pause: the notifications stay as they are
         hardware = api.hardware()
         if bridge is not None and hardware.get("node") == "bluetooth":
             ble = api.ble_status()

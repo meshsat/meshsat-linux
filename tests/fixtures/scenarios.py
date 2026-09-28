@@ -91,7 +91,10 @@ def base() -> dict:
         "GET /api/version": rec("version", {"version": "test"}),
         "GET /api/access-rules": rec("access-rules", []),
         "GET /api/interfaces": rec("interfaces", []),
-        "GET /api/deliveries": rec("deliveries", {"deliveries": []}),
+        "GET /api/interfaces/health": rec("interfaces_health", []),
+        "GET /api/object-groups": rec("object-groups", []),
+        "GET /api/failover-groups": rec("failover-groups", []),
+        "GET /api/deliveries": rec("deliveries", []),
         "GET /api/iridium/passes": {"passes": [], "tle_source": "none", "tle_age": -1, "cache_age": -1, "error": "no orbit data"},
         "GET /api/iridium/signal/history": [],
         "GET /api/position/fixed": {"latitude": 0, "longitude": 0},
@@ -178,8 +181,73 @@ def bluetooth_connected() -> dict:
     return routes
 
 
+def stamp(seconds_ago: int) -> str:
+    """A time stamp as SQLite writes it in the Bridge's database (UTC, no zone)."""
+    return time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(NOW - seconds_ago))
+
+
+def delivery(id_: int, channel: str, status: str, text: str, ago: int, **more) -> dict:
+    out = {"id": id_, "msg_ref": f"msg-{id_}", "channel": channel, "status": status, "priority": 1, "text_preview": text, "retries": 0, "max_retries": 10, "last_error": "",
+           "channel_ref": "", "cost": 0, "visited": "[]", "ttl_seconds": 0, "qos_level": 1, "seq_num": id_, "class": "message", "created_at": stamp(ago), "updated_at": stamp(max(0, ago - 30))}
+    out.update(more)
+    return out
+
+
+def queue_busy() -> dict:
+    """Every state the queue can show, over four links; three rules, one on each tab; a group,
+    a backup group, health scores. The links: the mesh working, the satellite modem off (its
+    port known), SMS failing, the Hub not connected, ham radio switched off."""
+    routes = base()
+    routes["_deliveries"] = [
+        delivery(1, "iridium_0", "queued", "Position report", 240),
+        delivery(2, "iridium_0", "retry", "Camp reached, all well", 900, retries=2, last_error="Not sent: status 32, no network service, MOMSN 233", next_retry="2026-09-28T18:30:00Z"),
+        delivery(3, "sms_0", "held", "Back by six", 600),
+        delivery(4, "mesh_0", "sending", "on my way", 30),
+        delivery(5, "mesh_0", "sent", "hello from the phone", 3600),
+        delivery(6, "iridium_0", "delivered", "Test from A MeshSat user", 7200, ack_status="acked"),
+        delivery(7, "mesh_0", "failed", "are you there", 1800, retries=1, last_error="Could not hand the message to the modem"),
+        delivery(8, "iridium_0", "dead", "Weather closing in", 10800, retries=10, last_error="cancelled: exceeded retry limit (10)"),
+        delivery(9, "sms_0", "dead", "Running late", 5400, last_error="cancelled"),
+        delivery(10, "iridium_0", "expired", "Old news", 90000, last_error="TTL expired", ttl_seconds=3600, expires_at="2026-09-27T18:00:00Z"),
+    ]
+    routes["_rules"] = [
+        {"id": 1, "interface_id": "mesh_0", "direction": "ingress", "priority": 0, "name": "SOS to satellite", "enabled": True, "action": "forward", "forward_to": "iridium_0",
+         "filters": '{"keyword":"SOS","channels":"[0]"}', "filter_node_group": None, "filter_sender_group": None, "filter_portnum_group": None, "schedule_type": "none",
+         "schedule_config": "", "forward_options": '{"ttl_seconds":600}', "qos_level": 1, "rate_limit_per_min": 5, "rate_limit_window": 60, "match_count": 0,
+         "created_at": "2026-09-28T10:00:00Z", "updated_at": "2026-09-28T10:00:00Z"},
+        {"id": 2, "interface_id": "iridium_0", "direction": "ingress", "priority": 10, "name": "Satellite into the mesh", "enabled": True, "action": "forward", "forward_to": "mesh_0",
+         "filters": "{}", "filter_node_group": None, "filter_sender_group": None, "filter_portnum_group": None, "schedule_type": "none", "schedule_config": "",
+         "forward_options": "{}", "qos_level": 1, "rate_limit_per_min": 0, "rate_limit_window": 0, "match_count": 3, "last_match_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(NOW - 120)),
+         "created_at": "2026-09-28T10:00:00Z", "updated_at": "2026-09-28T10:00:00Z"},
+        {"id": 3, "interface_id": "sms_0", "direction": "ingress", "priority": 10, "name": "Stop spam", "enabled": False, "action": "drop", "forward_to": "",
+         "filters": "{}", "filter_node_group": None, "filter_sender_group": "spammers", "filter_portnum_group": None, "schedule_type": "none", "schedule_config": "",
+         "forward_options": "{}", "qos_level": 0, "rate_limit_per_min": 0, "rate_limit_window": 0, "match_count": 1, "last_match_at": None,
+         "created_at": "2026-09-28T10:00:00Z", "updated_at": "2026-09-28T10:00:00Z"},
+    ]
+    routes["GET /api/interfaces"] = [
+        {"id": "mesh_0", "channel_type": "mesh", "label": "Meshtastic LoRa", "enabled": True, "state": "unbound", "last_activity": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(NOW - 300)),
+         "ingress_transforms": "[]", "egress_transforms": "[]"},
+        {"id": "iridium_0", "channel_type": "iridium", "label": "Iridium SBD", "enabled": True, "state": "offline", "device_id": "/dev/ttyUSB4", "last_activity": "0001-01-01T00:00:00Z",
+         "ingress_transforms": "[]", "egress_transforms": "[]"},
+        {"id": "sms_0", "channel_type": "cellular", "label": "Cellular SMS", "enabled": True, "state": "error", "error": "modem not registered", "last_activity": "0001-01-01T00:00:00Z",
+         "ingress_transforms": "[]", "egress_transforms": "[]"},
+        {"id": "hub_0", "channel_type": "mqtt", "label": "MQTT Broker", "enabled": True, "state": "unbound", "last_activity": "0001-01-01T00:00:00Z", "ingress_transforms": "[]", "egress_transforms": "[]"},
+        {"id": "aprs_0", "channel_type": "aprs", "label": "APRS (Direwolf)", "enabled": False, "state": "unbound", "last_activity": "0001-01-01T00:00:00Z", "ingress_transforms": "[]", "egress_transforms": "[]"},
+    ]
+    routes["GET /api/interfaces/health"] = [
+        {"interface_id": "mesh_0", "score": 85, "signal": 70, "success_rate": 1, "latency_ms": 1200, "cost_score": 100, "available": True},
+        {"interface_id": "iridium_0", "score": 40, "signal": 0, "success_rate": 0.5, "latency_ms": 90000, "cost_score": 50, "available": True},
+        {"interface_id": "sms_0", "score": 0, "signal": 0, "success_rate": 0, "latency_ms": 0, "cost_score": 60, "available": False},
+    ]
+    routes["GET /api/object-groups"] = [{"id": "spammers", "type": "sender_group", "label": "Spammers", "members": '["+31600000001","+31600000002"]', "created_at": "2026-09-28T10:00:00Z"}]
+    routes["GET /api/failover-groups"] = [{"id": "backup-1", "label": "Satellite backup", "mode": "failover", "created_at": "2026-09-28T10:00:00Z",
+                                          "members": [{"id": 1, "group_id": "backup-1", "interface_id": "mesh_0", "priority": 1}, {"id": 2, "group_id": "backup-1", "interface_id": "iridium_0", "priority": 2}]}]
+    return routes
+
+
 SCENARIOS = {"fresh": fresh, "mesh-only": mesh_only, "one-node": one_node, "nameless-node": nameless_node, "satellite-3-bars": satellite_3_bars, "sim-ready": sim_ready,
-             "all-four": all_four, "hub-set-up": hub_set_up, "sos-active": sos_active, "bluetooth-pairing": bluetooth_pairing, "bluetooth-connected": bluetooth_connected}
+             "all-four": all_four, "hub-set-up": hub_set_up, "sos-active": sos_active, "bluetooth-pairing": bluetooth_pairing, "bluetooth-connected": bluetooth_connected,
+             "queue-busy": queue_busy}
 
 
 def build(name: str) -> dict:

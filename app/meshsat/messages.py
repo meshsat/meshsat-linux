@@ -2,15 +2,21 @@
 """Messages, as ui/screens/MessagesScreen.kt: the filter chips, the counts, Chats / All
 Messages / New message, the conversation cards; the chat with its orange back arrow, lane
 subtitle, lock, bubbles and composer; the New message dialog."""
+import time
+
 from gi.repository import GLib, Gtk
 
 from . import api, theme
+from .model import chat as chat_words
 from .model import words
 from .screen import Screen
-from .widgets import Card, Chip, PickerDialog, SubHeader, Tag, clear, hscroll, icon_button, page, scroller, spacer, text, when, when_date
+from .widgets import Card, Chip, PickerDialog, SubHeader, Tag, clear, hscroll, icon, icon_button, name_widget, page, scroller, spacer, state_tag, text, tone_colour, when, when_date
 
 EVERYONE = "!ffffffff"
 SATELLITE = "satellite"
+# The transport's badge on a message, as Android stores the transport ("iridium", not "satellite").
+BADGE = {"mesh": "MESH", "satellite": "IRIDIUM", "sms": "SMS"}
+TRANSPORT_OF_LANE = {"mesh": "mesh", "satellite": "iridium", "sms": "sms"}
 
 
 def lane_of(message: dict) -> str:
@@ -99,7 +105,26 @@ class MessagesScreen(Screen):
         views.append(Chip("New message", lambda c: new_message(self.app)))
         column.append(hscroll(views))
 
-        self.list = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(12))
+        # The search bar of All Messages (MessagesScreen.kt): a magnifier, the query, a clear button.
+        self.query = ""
+        self.search = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
+        self.search.add_css_class("search")
+        magnifier = icon("outlined-search", 24, theme.TEXT_MUTED)
+        magnifier.set_valign(Gtk.Align.CENTER)
+        name_widget(magnifier, "Search")
+        self.search.append(magnifier)
+        self.search_entry = Gtk.Entry(placeholder_text=chat_words.SEARCH_PLACEHOLDER)
+        self.search_entry.set_hexpand(True)
+        name_widget(self.search_entry, "Search messages")
+        self.search_entry.connect("changed", self.query_changed)
+        self.search.append(self.search_entry)
+        self.clear_button = icon_button("outlined-clear", lambda: self.search_entry.set_text(""), 24, theme.TEXT_MUTED, tooltip="Clear")
+        self.clear_button.set_visible(False)
+        self.search.append(self.clear_button)
+        self.search.set_visible(False)
+        column.append(self.search)
+
+        self.list = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(8))
         column.append(self.list)
         self.append(scroller(column))
 
@@ -114,6 +139,13 @@ class MessagesScreen(Screen):
         self.view = key
         for k, chip in self.view_chips.items():
             chip.set_selected(k == key)
+        self.search.set_visible(key == "all")
+        self._list_key = None
+        self.update(self.app.state)
+
+    def query_changed(self, entry) -> None:
+        self.query = entry.get_text()
+        self.clear_button.set_visible(bool(self.query.strip()))
         self._list_key = None
         self.update(self.app.state)
 
@@ -136,16 +168,19 @@ class MessagesScreen(Screen):
         else:
             texts = [m for m in s.messages if m.get("portnum_name") == "TEXT_MESSAGE_APP" and m.get("decoded_text") and m.get("transport") != "sms"] + sms_as_messages(s)
             texts.sort(key=lambda m: m.get("rx_time") or 0, reverse=True)
+            texts = chat_words.search(texts, self.query)
             texts = [m for m in texts if self.filter == "all" or lane_of(m) == self.filter][:100]
-            key = ("all", tuple((m.get("id"), m.get("rx_time"), m.get("decoded_text")) for m in texts))
+            key = ("all", self.query, tuple((m.get("id"), m.get("rx_time"), m.get("decoded_text"), m.get("delivery_status")) for m in texts))
             if key == self._list_key:
                 return
             self._list_key = key
             clear(self.list)
             if not texts:
-                self.list.append(text("No messages yet", "body-medium", theme.TEXT_SECONDARY))
+                empty = text("No messages yet", "body-large", theme.TEXT_MUTED, xalign=0.5)
+                empty.set_margin_top(theme.dp(16))
+                self.list.append(empty)
             for m in texts:
-                self.list.append(self.message_row(m))
+                self.list.append(self.message_card(m, s))
 
     def chat_card(self, chat: dict) -> Gtk.Widget:
         button = Gtk.Button()
@@ -168,23 +203,36 @@ class MessagesScreen(Screen):
         button.connect("clicked", lambda *_: self.app.push(ChatScreen(self.app, chat["key"], chat["title"], chat["lane"]), chat["title"]))
         return button
 
-    def message_row(self, m: dict) -> Gtk.Widget:
-        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(12))
-        row.append(text(when(m.get("rx_time")), "body-medium", theme.TEXT_SECONDARY, mono=True))
-        tag = text({"satellite": "Satellite", "mesh": "Mesh", "sms": "SMS"}[lane_of(m)], "body-medium", theme.lane_colour(lane_of(m)))
-        tag.set_size_request(theme.dp(64), -1)
-        row.append(tag)
+    def message_card(self, m: dict, s: api.State) -> Gtk.Widget:
+        """One message of All Messages, as Android's MessageCard: the transport and the
+        direction as tags, a forwarded message's state, the time to the second, a copy button,
+        who it is with, and the text."""
+        lane = lane_of(m)
         out = m.get("direction") == "tx"
-        row.append(text("↑" if out else "↓", "body-medium", theme.GREEN if out else theme.SIGNAL_ORANGE))
-        body = text(m.get("decoded_text", ""), "body-large", ellipsize=True)
-        body.set_hexpand(True)
-        row.append(body)
-        return row
+        card = Card(spacing=4)
+        top = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
+        badge = text(BADGE.get(lane, lane.upper()), "body-small", theme.lane_colour(lane))
+        badge.add_css_class("state-tag")
+        badge.add_css_class(f"tint-{lane}")
+        top.append(badge)
+        top.append(state_tag("TX" if out else "RX", "amber" if out else "teal", "body-small"))
+        if m.get("forwarded"):
+            top.append(state_tag(chat_words.delivery_label(m.get("delivery_status", "")), "muted", "body-small"))
+        top.append(spacer())
+        top.append(text(time.strftime("%H:%M:%S", time.localtime(m.get("rx_time") or 0)) if m.get("rx_time") else "", "body-small", theme.TEXT_MUTED))
+        top.append(icon_button("outlined-content-copy", lambda t=m.get("decoded_text", ""): self.app.copy(t), 16, theme.TEXT_MUTED, tooltip="Copy", small=True))
+        card.append(top)
+        peer = m.get("to_node") if out else m.get("from_node")
+        card.append(text(str(peer or ""), "body-small", theme.TEXT_MUTED))
+        card.append(text(m.get("decoded_text", ""), "body-large", wrap=True))
+        return card
 
 
 class ChatScreen(Screen):
-    """One conversation, as ChatScreen.kt: orange back arrow, title with the lane under it, a
-    lock button, the bubbles, the composer with its footer line."""
+    """One conversation, as ConversationChatView (MessagesScreen.kt): everything inside 16 dp of
+    padding; the header (orange back arrow, the name in titleLarge, the lane under it in
+    bodySmall, the lock) 8 dp above the messages; the bubbles 4 dp apart; the compose bar with
+    its line under the box."""
 
     def __init__(self, app, key: str, title: str, lane: str):
         super().__init__(app)
@@ -192,35 +240,59 @@ class ChatScreen(Screen):
         self.route = "chat/" + key
         self._key = None
         self.sending = False
-        lock = icon_button("outlined-lock", lambda: app.toast("Encryption keys are managed by the Bridge."), 24, theme.TEXT_SECONDARY, tooltip="Conversation encryption key")
+        # No per-chat key on this phone yet (0.12.0): Android's open lock, muted.
+        lock = icon_button("outlined-lock-open", lambda: app.toast("Encryption keys are managed by the Bridge."), 24, theme.TEXT_MUTED, tooltip="Encryption key")
         # Under the name, as the Android header: the node's id, the channel, or the transport.
         subtitle = detail_of(key) or {"sms": "SMS"}.get(lane, "Mesh")
-        self.append(SubHeader(title, app.pop, orange=True, subtitle=subtitle, subtitle_colour=theme.lane_colour(lane), trailing=lock))
-        self.bubbles = page(spacing=12)
+        self.append(SubHeader(title, app.pop, orange=True, subtitle=subtitle, subtitle_colour=theme.lane_colour(lane), trailing=lock, plain=True))
+        self.bubbles = page(spacing=4, padded=False)
+        self.bubbles.set_margin_start(theme.dp(16))
+        self.bubbles.set_margin_end(theme.dp(16))
+        self.bubbles.set_margin_top(theme.dp(4))
+        self.bubbles.set_margin_bottom(theme.dp(4))
         self.scroll = scroller(self.bubbles)
         self.append(self.scroll)
-        composer = Card()
-        composer.set_margin_start(theme.dp(12))
-        composer.set_margin_end(theme.dp(12))
-        composer.set_margin_bottom(theme.dp(12))
+        # The compose bar (MessagesScreen.kt): the box, the send button, and under them the line
+        # that says how this message goes, and for a satellite message its size and cost.
+        self.transport = TRANSPORT_OF_LANE.get(lane, "mesh")
+        self.everyone = key == EVERYONE
+        composer = Card(padded=False, spacing=0)
+        composer.add_css_class("compose")
+        composer.set_margin_start(theme.dp(16))
+        composer.set_margin_end(theme.dp(16))
+        composer.set_margin_bottom(theme.dp(16))
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
-        self.entry = Gtk.Entry(placeholder_text="Message by satellite" if lane == "satellite" else "Text message")
+        self.entry = Gtk.Entry(placeholder_text=chat_words.placeholder(self.transport, self.everyone))
         self.entry.add_css_class("field")
+        self.entry.add_css_class("compose-field")
         self.entry.set_hexpand(True)
         self.entry.update_property([Gtk.AccessibleProperty.LABEL], ["Message"])
         self.entry.connect("activate", lambda *_: self.send())
+        self.entry.connect("changed", lambda *_: self.composer_changed())
         row.append(self.entry)
-        self.send_button = icon_button("outlined-send", self.send, 24, theme.TEXT_PRIMARY, tooltip="Send")
+        self.send_button = icon_button("outlined-send", self.send, 24, theme.TEXT_MUTED, tooltip="Send")
         row.append(self.send_button)
         composer.append(row)
-        footer = {"satellite": "By satellite, through Rock7 to the Hub.", "sms": "By SMS from this phone."}.get(lane, "By mesh, from your node.")
-        composer.append(text(footer, "body-medium", theme.TEXT_SECONDARY))
+        self.hint = text("", "body-small", theme.TEXT_SECONDARY, wrap=True)
+        self.hint.set_margin_start(theme.dp(4))
+        self.hint.set_margin_top(theme.dp(4))
+        composer.append(self.hint)
         self.append(composer)
+        self.composer_changed()
         self.update(app.state)
+
+    def composer_changed(self) -> None:
+        """The hint and the send button follow what is typed and what is connected."""
+        s = self.app.state
+        value = self.entry.get_text()
+        self.hint.set_text(chat_words.compose_hint(self.transport, value, self.everyone, s.mesh_connected(), s.modem_connected()))
+        ready = chat_words.can_send(self.transport, value) and not self.sending
+        self.send_button.set_sensitive(ready)
+        self.send_button.set_child(icon("outlined-send", 24, theme.SIGNAL_ORANGE if ready else theme.TEXT_MUTED))
 
     def send(self) -> None:
         value = self.entry.get_text().strip()
-        if not value or self.sending:
+        if not chat_words.can_send(self.transport, value) or self.sending:
             return
         body = {"text": value}
         if self.lane == "sms":
@@ -232,18 +304,22 @@ class ChatScreen(Screen):
         elif self.key not in (EVERYONE, SATELLITE):
             body["to"] = self.key
         if self.lane == "satellite":
-            body["gateway"] = "iridium"
+            body["gateway"] = "iridium"  # queued even without the modem: it goes out once a session succeeds
+        elif not self.app.state.mesh_connected():
+            self.app.toast(chat_words.NODE_NOT_CONNECTED)
+            return
         self.sending = True
-        self.send_button.set_sensitive(False)
+        self.composer_changed()
         me = (self.app.state.bridge or {}).get("node_id")
 
         def sent(answer: api.Answer) -> None:
             self.sending = False
-            self.send_button.set_sensitive(True)
             if not answer.ok:
+                self.composer_changed()
                 self.app.toast(answer.error or "The message did not go.")
                 return
             self.entry.set_text("")
+            self.composer_changed()
             api.record_sent(value, body.get("to"), self.lane, me)
             self.app.poller.poll_now()
 
@@ -251,34 +327,54 @@ class ChatScreen(Screen):
 
     def update(self, s: api.State) -> None:
         me = (s.bridge or {}).get("node_id")
+        self.composer_changed()
         chat = next((c for c in conversations(s) if c["key"] == self.key), None)
         messages = list(reversed(chat["items"])) if chat else []
         key = tuple((m.get("id"), m.get("rx_time"), m.get("decoded_text"), m.get("delivery_status")) for m in messages[-80:])
         if key == self._key:
             return  # the same bubbles: no rebuild, no jump to the end under a finger
         self._key = key
-        clear(self.bubbles)
-        if not messages:
-            self.bubbles.append(text("No messages yet", "body-medium", theme.TEXT_SECONDARY))
+        clear(self.bubbles)  # an empty chat is an empty list, as on Android
         for m in messages[-80:]:
-            mine = m.get("direction") == "tx" or m.get("from_node") == me
-            bubble = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(6))
-            bubble.add_css_class("bubble")
-            if mine:
-                bubble.add_css_class("mine")
-            bubble.set_halign(Gtk.Align.END if mine else Gtk.Align.START)
-            bubble.set_size_request(theme.dp(220), -1)
-            top = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
-            who = text("You" if mine else name_of(m.get("from_node"), s), "label-medium", theme.lane_colour(lane_of(m)))
-            top.append(who)
-            top.append(spacer())
-            top.append(text(when(m.get("rx_time")), "label-medium", theme.TEXT_SECONDARY, mono=True))
-            top.append(icon_button("outlined-content-copy", lambda t=m.get("decoded_text", ""): self.app.copy(t), 16, theme.TEXT_SECONDARY, tooltip="Copy"))
-            bubble.append(top)
-            bubble.append(text(m.get("decoded_text", ""), "body-large", wrap=True))
-            self.bubbles.append(bubble)
+            self.bubbles.append(self.bubble(m, me))
         adjustment = self.scroll.get_vadjustment()
         GLib.idle_add(lambda: adjustment.set_value(adjustment.get_upper()) or False)
+
+    def bubble(self, m: dict, me: str | None) -> Gtk.Widget:
+        """ChatBubble: four fifths of the width, at the right for the phone's own messages; the
+        transport's badge and, at the right of the header, the time, the delivery mark of a
+        message the phone sent, and a small copy button; the text under them."""
+        mine = m.get("direction") == "tx" or m.get("from_node") == me
+        lane = lane_of(m)
+        bubble = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        bubble.add_css_class("bubble")
+        if mine:
+            bubble.add_css_class("mine")
+        # The header: labelSmall (12 sp, medium), 20 dp tall with the copy button.
+        top = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(4))
+        top.append(text(BADGE.get(lane, lane.upper()), "label-medium", theme.lane_colour(lane)))
+        if m.get("forwarded") and not mine:
+            top.append(text("Forwarded", "label-medium", theme.TEXT_MUTED))
+        top.append(spacer())
+        top.append(text(when(m.get("rx_time")), "label-medium", theme.TEXT_MUTED))
+        if mine:
+            icon_name, tone, label = chat_words.mark(m.get("delivery_status", ""))
+            mark = icon(icon_name, 14, tone_colour(tone))
+            mark.set_valign(Gtk.Align.CENTER)
+            name_widget(mark, label)
+            top.append(mark)
+        top.append(icon_button("outlined-content-copy", lambda t=m.get("decoded_text", ""): self.app.copy(t), 12, theme.TEXT_MUTED, tooltip="Copy", small=True))
+        bubble.append(top)
+        body = text(m.get("decoded_text", ""), "body-medium", wrap=True)
+        body.set_margin_top(theme.dp(4))
+        body.set_selectable(True)
+        bubble.append(body)
+        # Android's fillMaxWidth(0.8f): four of five equal columns, the fifth empty.
+        row = Gtk.Grid(column_homogeneous=True)
+        row.attach(bubble, 1 if mine else 0, 0, 4, 1)
+        filler = Gtk.Box()
+        row.attach(filler, 0 if mine else 4, 0, 1, 1)
+        return row
 
 
 def name_of(node_id: str | None, s: api.State) -> str:
