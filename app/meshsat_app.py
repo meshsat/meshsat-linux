@@ -11,9 +11,9 @@ a button to start the services.
 """
 import json
 import os
-import socket
 import subprocess
 import sys
+import urllib.request
 
 import gi
 
@@ -23,19 +23,30 @@ gi.require_version("WebKit", "6.0")
 from gi.repository import Adw, Gio, GLib, Gtk, WebKit  # noqa: E402
 
 APP_ID = "net.meshsat.Bridge"
-VERSION = "0.1.0"
+VERSION = "0.1.1"
 BRIDGE_URL = os.environ.get("MESHSAT_APP_URL", "http://127.0.0.1:6050/")
-BRIDGE_PORT = int(os.environ.get("MESHSAT_APP_BRIDGE_PORT", "6050"))
-DAEMON_PORT = int(os.environ.get("MESHSAT_APP_DAEMON_PORT", "4403"))
 STATUS_PATH = os.environ.get("MESHSAT_APP_STATUS", "/run/meshsat-node/status")
 SERVICES = ("meshtasticd.service", "meshsat-bridge.service")
 
+# The daemon's API port (4403) is never touched from here: meshtasticd keeps one TCP client
+# at a time and drops the previous one for every new connection, so a mere "is the port open"
+# probe would throw the Bridge off its session every few seconds (seen on 28 Sep 2026). The
+# node's state comes from systemd and from the Bridge's own status page instead.
 
-def port_open(port: int, host: str = "127.0.0.1") -> bool:
+
+def bridge_status() -> dict | None:
+    """The Bridge's /api/status, or None when the Bridge does not answer."""
     try:
-        with socket.create_connection((host, port), timeout=0.4):
-            return True
-    except OSError:
+        with urllib.request.urlopen(BRIDGE_URL.rstrip("/") + "/api/status", timeout=1.5) as response:
+            return json.load(response)
+    except (OSError, ValueError):
+        return None
+
+
+def unit_active(unit: str) -> bool:
+    try:
+        return subprocess.run(["systemctl", "is-active", "--quiet", unit], timeout=3).returncode == 0
+    except (OSError, subprocess.SubprocessError):
         return False
 
 
@@ -95,14 +106,15 @@ class Window(Adw.ApplicationWindow):
         GLib.timeout_add_seconds(3, self.refresh)
 
     def refresh(self) -> bool:
-        bridge, daemon = port_open(BRIDGE_PORT), port_open(DAEMON_PORT)
-        if bridge:
+        bridge = bridge_status()
+        if bridge is not None:
             if self.showing != "web":
                 self.web.load_uri(BRIDGE_URL)
                 self.stack.set_visible_child_name("web")
                 self.showing = "web"
             return True
         status = read_status()
+        daemon = unit_active("meshtasticd.service")
         self.node_row.set_markup(
             "<b>Node (meshtasticd):</b> " + ("running" if daemon else "not running")
         )
