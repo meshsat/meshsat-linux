@@ -5,14 +5,19 @@ set -e
 
 case "$1" in
     configure)
+        # The node daemon is in the arm64 package only (the PinePhone's LoRa back cover); the
+        # amd64 package is the Bridge and the app, with a node over Bluetooth.
+        NODE=0; [ -x /usr/bin/meshtasticd ] && NODE=1
+
         # Users: the daemon on the I2C bus, the Bridge on the USB serial ports.
+        getent passwd meshsat >/dev/null || adduser --system --group --home /var/lib/meshsat --no-create-home --shell /usr/sbin/nologin meshsat
+        adduser meshsat dialout >/dev/null 2>&1 || true
+        install -d -o meshsat -g meshsat -m 0750 /var/lib/meshsat
+        if [ "$NODE" = 1 ]; then
         getent group i2c >/dev/null || addgroup --system i2c
         getent passwd meshtasticd >/dev/null || adduser --system --group --home /var/lib/meshtasticd --no-create-home --shell /usr/sbin/nologin meshtasticd
         adduser meshtasticd i2c >/dev/null 2>&1 || true
-        getent passwd meshsat >/dev/null || adduser --system --group --home /var/lib/meshsat --no-create-home --shell /usr/sbin/nologin meshsat
-        adduser meshsat dialout >/dev/null 2>&1 || true
         install -d -o meshtasticd -g meshtasticd -m 0750 /var/lib/meshtasticd
-        install -d -o meshsat -g meshsat -m 0750 /var/lib/meshsat
         chown -R meshtasticd:meshtasticd /usr/share/meshtasticd
 
         # The bus: the module now (and at boot through modules-load.d), the permissions,
@@ -32,10 +37,11 @@ case "$1" in
             chown meshtasticd:meshtasticd /etc/meshtasticd/ssl/private_key.pem /etc/meshtasticd/ssl/certificate.pem
             chmod 0600 /etc/meshtasticd/ssl/private_key.pem
         fi
+        fi
 
         # A node that was run by hand on this phone keeps its identity (keys, channels, node
         # database): the first such prefs directory found is copied, once.
-        if [ ! -d /var/lib/meshtasticd/.portduino/default/prefs ]; then
+        if [ "$NODE" = 1 ] && [ ! -d /var/lib/meshtasticd/.portduino/default/prefs ]; then
             for home in "$( [ -n "${SUDO_USER:-}" ] && getent passwd "$SUDO_USER" | cut -d: -f6 )" /home/*; do
                 if [ -n "$home" ] && [ -d "$home/.portduino/default/prefs" ]; then
                     install -d -o meshtasticd -g meshtasticd /var/lib/meshtasticd/.portduino/default
@@ -81,8 +87,12 @@ case "$1" in
         # Bluetooth (then they stay off); the Bridge follows what it found.
         if [ -d /run/systemd/system ]; then
             systemctl daemon-reload
-            systemctl enable meshsat-hardware.service meshtasticd.service meshsat-radio-watch.timer meshsat-bridge.service >/dev/null 2>&1 || true
-            systemctl stop meshsat-radio-watch.timer meshtasticd.service 2>/dev/null || true
+            if [ "$NODE" = 1 ]; then
+                systemctl enable meshsat-hardware.service meshtasticd.service meshsat-radio-watch.timer meshsat-bridge.service >/dev/null 2>&1 || true
+                systemctl stop meshsat-radio-watch.timer meshtasticd.service 2>/dev/null || true
+            else
+                systemctl enable meshsat-hardware.service meshsat-bridge.service >/dev/null 2>&1 || true
+            fi
             systemctl start meshsat-hardware.service || true
             systemctl restart meshsat-bridge.service || true
             # MeshSat outside its window (notifications, the satellite signal): a user service
@@ -101,7 +111,7 @@ case "$1" in
         else
             echo "meshsat: no LoRa back cover on this device; the Bridge is starting in Bluetooth mode. Open the MeshSat app (in the app grid, or meshsat-app) and connect your node under Setup > Node."
         fi
-        if [ ! -d /var/lib/meshtasticd/.portduino/default/prefs ]; then
+        if [ "$NODE" = 1 ] && [ ! -d /var/lib/meshtasticd/.portduino/default/prefs ]; then
             echo "meshsat: a new node: give it its channels with  cat channel-url.txt | meshsat-node-channels --owner <name> --short <ABCD> --role CLIENT_MUTE"
         fi
         ;;

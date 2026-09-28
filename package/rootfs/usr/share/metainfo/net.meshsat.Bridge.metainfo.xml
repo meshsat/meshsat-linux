@@ -36,6 +36,11 @@
   </recommends>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.6.0" date="2026-09-28">
+      <description>
+        <p>Safety as on MeshSat Android: the SOS goes out with your name and position on every route the phone has, the SOS screen shows where it went ("See where it went"), a cancelled SOS tells every route that carried it, and "Test the alarm" sends a test on every route, says it is a test and raises nothing at the Hub. Emergency contacts and the check-in timer in Android's words, with the timer's triggered state. The Bridge underneath carries the SOS words and the Hub's test event.</p>
+      </description>
+    </release>
     <release version="0.5.1" date="2026-09-28">
       <description>
         <p>The foundations under every screen and the faults of 0.5.0 fixed: a text addressed to a node no longer opens the Satellite chat; the lanes no longer keep a modem, a SIM or a Hub while the Bridge is down; opening Safety no longer resets the check-in timer; no call to the Bridge holds the screen; the hold-to-send bar asks first when activated by a screen reader; singular and plural as Android's. An end-to-end test harness runs the app on the phone against a scripted Bridge, and a parity ledger measures the distance to MeshSat Android. An amd64 package for desktops.</p>

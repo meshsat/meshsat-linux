@@ -27,6 +27,8 @@ def satellite_lane(s) -> tuple:
         return "trying", "Checking the modem.", ""
     if s.node_mode() == "bluetooth":
         ble = s.ble or {}
+        if ble.get("adapter_powered") is False and ble.get("address"):
+            return "failed", (queue_line + "Bluetooth is off on this phone. Switch it on to reach the node's modem.").strip(), ""
         if not s.mesh_connected():
             if ble.get("address"):
                 return "trying", (queue_line + "Reconnecting to your MeshSat node.").strip(), ""
@@ -57,7 +59,7 @@ def mesh_lane(s) -> tuple:
         return "working", detail, words.count(len(s.others()), "node")
     if s.node_mode() == "bluetooth":
         ble = s.ble or {}
-        if ble.get("adapter") is False and ble.get("address"):
+        if ble.get("adapter_powered") is False and ble.get("address"):
             return "failed", "Bluetooth is off on this phone. Switch it on to reach your node.", ""
         if ble.get("mode") in ("scanning", "pairing", "connecting"):
             return "trying", "Connecting to your node.", ""

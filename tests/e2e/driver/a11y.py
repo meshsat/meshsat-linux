@@ -24,7 +24,9 @@ class Node:
             self.role = accessible.get_role_name() or ""
             self.name = accessible.get_name() or ""
             self.states = accessible.get_state_set()
-        except GLib.Error:
+        except (GLib.Error, RuntimeError):
+            # A widget that went away between two bus calls (the screens rebuild their rows),
+            # or a proxy the bus handed over uninitialised: not on view, seen again next walk.
             self.role, self.name, self.states = "defunct", "", None
 
     @property
@@ -44,7 +46,7 @@ class Node:
             if "Action" not in self.acc.get_interfaces():
                 return []
             return [Atspi.Action.get_action_name(self.acc, i) for i in range(Atspi.Action.get_n_actions(self.acc))]
-        except GLib.Error:
+        except (GLib.Error, RuntimeError):
             return []
 
     def do(self, action: str = "click") -> bool:
@@ -57,7 +59,7 @@ class Node:
         try:
             n = Atspi.Text.get_character_count(self.acc)
             return Atspi.Text.get_text(self.acc, 0, n) or ""
-        except GLib.Error:
+        except (GLib.Error, RuntimeError):
             return ""
 
     def set_text(self, value: str) -> bool:
@@ -91,7 +93,7 @@ class Tree:
             try:
                 if app.get_process_id() == self.pid:
                     return app
-            except GLib.Error:
+            except (GLib.Error, RuntimeError):
                 continue
         return None
 
@@ -120,17 +122,23 @@ class Tree:
                 out.append(node)
             try:
                 count = acc.get_child_count()
-            except GLib.Error:
+            except (GLib.Error, RuntimeError):
                 return
             for j in range(count):
                 try:
                     child = acc.get_child_at_index(j)
-                except GLib.Error:
+                except (GLib.Error, RuntimeError):
                     continue
                 if child is not None:
                     visit(child, depth + 1)
 
-        visit(app, 0)
+        for attempt in range(3):
+            out.clear()
+            try:
+                visit(app, 0)
+                return out
+            except RuntimeError:
+                time.sleep(0.2)  # the tree changed under the walk: once more
         return out
 
     def find_all(self, role: str | None = None, name: str | None = None, contains: str | None = None, showing_only: bool = True) -> list:
@@ -212,8 +220,16 @@ class Tree:
         return any(n.role in ("alert", "dialog") for n in self.walk())
 
     def toggle(self, name: str, timeout: float = 5.0) -> None:
-        node = self.find(name=name, timeout=timeout)
-        node.do("toggle" if "toggle" in node.actions() else "click")
+        """A switch, check box or toggle button by name (never the label beside it)."""
+        deadline = time.time() + timeout
+        while True:
+            for node in self.find_all(name=name):
+                if node.role in ("check box", "toggle button", "switch", "radio button"):
+                    node.do("toggle" if "toggle" in node.actions() else "click")
+                    return
+            if time.time() >= deadline:
+                raise AssertionError(f"no switch or check box named {name!r}; on view: {self.summary()[:800]}")
+            time.sleep(0.3)
 
     def set_text(self, name: str, value: str, timeout: float = 5.0) -> None:
         self.find("text", name=name, timeout=timeout).set_text(value)

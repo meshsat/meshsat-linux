@@ -77,7 +77,7 @@ def case_sos_confirmed_activates_and_can_be_cancelled(ctx):
     assert sent["body"]["trigger"] == "hold", sent
     assert sent["body"]["message"].startswith("SOS: A MeshSat user needs help."), sent["body"]["message"]
     ctx.tree.wait_text("SOS is on since", timeout=10)
-    ctx.tree.wait_text("Tap to cancel when you are safe.")
+    ctx.tree.wait_text("SOS is on. Tap to see where it went, or to cancel.")
     ctx.shot("sos-on")
     ctx.tree.click("Cancel SOS")  # the card's button opens the question
     ctx.tree.wait_text("Cancel the SOS?")

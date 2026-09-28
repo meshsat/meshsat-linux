@@ -8,9 +8,9 @@ from gi.repository import Gdk, Gtk
 
 from . import api, sos, theme
 from .model import home as words_of_home
-from .model import words
+from .model import sosrun, words
 from .screen import Screen
-from .widgets import Card, HoldButton, LaneRow, Wordmark, clear, confirm, icon_button, name_widget, page, scroller, spacer, text, text_button, when
+from .widgets import Card, HoldButton, LaneRow, Wordmark, clear, confirm, filled_button, icon_button, name_widget, outlined_button, page, paint, scroller, spacer, text, text_button, when
 
 BRAND = os.path.join(os.path.dirname(os.path.abspath(__file__)), "brand", "app-icon-1024.png")
 
@@ -71,25 +71,31 @@ class HomeScreen(Screen):
             self.steps.append((dot, title_label, detail_label))
         column.append(self.started)
 
-        # SosCard: the reach sentence, the hold bar, the contacts button; while an SOS is on,
-        # since when, and Cancel.
-        sos_card = Card()
-        sos_card.append(text("SOS", "title-medium"))
+        # SosCard (SosScreens.kt): hold to send, or where the SOS or the alarm test in
+        # progress stands.
+        self.sos_card = Card()
+        self.sos_title = text("SOS", "title-medium")
+        self.sos_card.append(self.sos_title)
         self.sos_text = text("", "body-medium", theme.TEXT_SECONDARY, wrap=True)
-        sos_card.append(self.sos_text)
+        self.sos_card.append(self.sos_text)
         self.hold = HoldButton("Hold 3 seconds for SOS", self.sos_fire, self.sos_activate)
         self.hold.set_margin_top(theme.dp(4))
-        sos_card.append(self.hold)
-        actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
-        self.contacts_button = text_button("Emergency contacts", lambda: app.open_route("setup/safety"))
-        actions.append(self.contacts_button)
-        actions.append(spacer())
-        self.see = text_button("See where it went", lambda: app.open_route("sos"))
-        actions.append(self.see)
-        self.cancel = text_button("Cancel SOS", self.sos_cancel_asked)
-        actions.append(self.cancel)
-        sos_card.append(actions)
-        column.append(sos_card)
+        self.sos_card.append(self.hold)
+        self.idle_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
+        self.contacts_button = text_button("Emergency contacts", self.open_contacts)
+        self.idle_row.append(self.contacts_button)
+        self.test_button = text_button("Test the alarm", self.test_asked)
+        self.idle_row.append(self.test_button)
+        self.sos_card.append(self.idle_row)
+        self.active_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8), homogeneous=True)
+        self.see = filled_button("See where it went", lambda: app.open_route("sos"))
+        self.see.remove_css_class("filled")
+        self.see.add_css_class("tonal")
+        self.active_row.append(self.see)
+        self.cancel = outlined_button("Cancel SOS", self.sos_cancel_asked)
+        self.active_row.append(self.cancel)
+        self.sos_card.append(self.active_row)
+        column.append(self.sos_card)
 
         signal = Card()
         signal.append(text("Signal history", "title-medium"))
@@ -124,9 +130,6 @@ class HomeScreen(Screen):
 
     # SOS: hold three seconds, as on Android; a screen reader or a test asks in a dialog.
     def sos_activate(self, how: str) -> None:
-        if (self.app.state.sos or {}).get("active"):
-            self.sos_cancel_asked()
-            return
         if how == "tap":
             self.app.toast("Hold 3 seconds for SOS")
             return
@@ -134,47 +137,35 @@ class HomeScreen(Screen):
                 "Send SOS", self.sos_fire, cancel="Don't send", danger=True)
 
     def sos_cancel_asked(self) -> None:
+        run = self.app.sos.active()
+        if run is not None and run.test:
+            self.app.sos.cancel(self.app.state)  # a test stops without a question
+            return
         confirm(self.app, "Cancel the SOS?", "Nothing more goes out, and everyone who got the SOS is told you are safe.", "Cancel SOS", self.sos_cancel, cancel="Keep it on")
 
     def sos_fire(self) -> None:
-        s = self.app.state
-        if (s.sos or {}).get("active"):
-            self.sos_cancel()
-            return
-        body = {"message": sos.mesh_text(s.sos_name, s.position()), "trigger": "hold"}
-        self.app.toast("Sending the SOS")
-
-        def sent(answer: api.Answer) -> None:
-            if not answer.ok:
-                self.app.toast(f"The SOS did not start: {answer.error}")
-            self.app.poller.poll_now()
-
-        api.fetch("/api/sos/activate", sent, method="POST", body=body)
-        self.text_contacts(sos.sms_text(s.sos_name, s.position()))
+        """The hold ran its course, or the dialog said Send: a real SOS, which replaces a test."""
+        self.app.sos.start(self.app.state, test=False, trigger="hold")
+        self.app.poller.poll_now()
 
     def sos_cancel(self) -> None:
-        s = self.app.state
-        api.fetch("/api/sos/cancel", lambda answer: self.app.poller.poll_now(), method="POST")
-        self.text_contacts(sos.cancel_text(s.sos_name))
+        self.app.sos.cancel(self.app.state)
+        self.app.poller.poll_now()
 
-    def text_contacts(self, message: str) -> None:
-        """The SOS by SMS to every emergency contact, from the phone's own SIM, as Android
-        sends it; through the Bridge's SMS gateway, each logged as a sent text."""
+    def open_contacts(self) -> None:
         s = self.app.state
-        if not s.contacts:
-            return
-        if not s.sms_ready():
-            self.app.toast(f"SMS to your contacts did not go: {s.sms_reason()}")
-            return
-        me = (s.bridge or {}).get("node_id")
-        for contact in s.contacts:
-            def sent(answer: api.Answer, contact=contact) -> None:
-                if not answer.ok:
-                    self.app.toast(f"SMS to {contact.get('name') or contact['phone']} failed: {answer.error}")
-                else:
-                    api.record_sent(message, contact["phone"], "sms", me)
+        self.app.open_route("setup/safety" if s.sms_ready() else "setup/node")
 
-            api.fetch("/api/messages/send", sent, method="POST", body={"text": message, "gateway": "cellular", "to": contact["phone"]})
+    def test_asked(self) -> None:
+        """TestAlarmDialog: what the test text is, what each route carries and costs."""
+        s = self.app.state
+        text_of_test = sos.test_text(s.sos_name)
+        parts = sosrun.test_parts(s, s.sos_name)
+        confirm(self.app, "Test the alarm?", sosrun.test_dialog_text(text_of_test, parts), "Send the test", self.test_fire, cancel="Not now")
+
+    def test_fire(self) -> None:
+        self.app.sos.start(self.app.state, test=True, trigger="hold")
+        self.app.poller.poll_now()
 
     def draw_chart(self, area, cr, width, height):
         rgba = Gdk.RGBA()
@@ -226,16 +217,7 @@ class HomeScreen(Screen):
             dot.add_css_class("dot-green" if done else "dot-muted")
         self.started.set_visible(not (steps[0][2] and steps[1][2]))
 
-        active = bool((s.sos or {}).get("active"))
-        if active:
-            self.sos_text.set_text(f"SOS is on since {when((s.sos or {}).get('started_at_unix')) or sos_clock(s.sos)}. Sent {(s.sos or {}).get('sends', 0)} times.")
-        else:
-            self.sos_text.set_text(words_of_home.reach_sentence(s, lanes))
-        self.hold.set_visible(not active)
-        self.cancel.set_visible(active)
-        self.see.set_visible(active)
-        self.contacts_button.set_visible(not active)
-        self.contacts_button.set_label(words_of_home.contacts_button(s))
+        self.update_sos_card(s, lanes)
 
         self.samples = [m.get("rx_snr") for m in reversed(s.messages) if m.get("direction") == "rx" and m.get("rx_snr")]
         if self.samples:
@@ -268,9 +250,54 @@ class HomeScreen(Screen):
             self.recent.append(row)
 
 
+    def update_sos_card(self, s: api.State, lanes: dict) -> None:
+        """SosCard: hold to send, or where the SOS or the test in progress stands."""
+        run = self.app.sos.active()
+        bridge_sos = (s.sos or {}) if (s.sos or {}).get("active") else None
+        for c in ("sos-test", "sos-on"):
+            self.sos_card.remove_css_class(c)
+        reach = sosrun.anywhere(s)
+        if run is None and bridge_sos is None:
+            self.sos_title.set_text("SOS")
+            paint(self.sos_title, theme.TEXT_PRIMARY)
+            self.sos_text.set_text(words_of_home.reach_sentence(s, lanes))
+            self.hold.set_visible(reach)
+            self.idle_row.set_visible(True)
+            self.active_row.set_visible(False)
+            self.contacts_button.set_label(words_of_home.contacts_button(s))
+            self.test_button.set_visible(reach)
+            return
+        test = run is not None and run.test
+        self.sos_card.add_css_class("sos-test" if test else "sos-on")
+        if test:
+            self.sos_title.set_text("Alarm test running")
+            paint(self.sos_title, theme.AMBER)
+            self.sos_text.set_text(sosrun.summary(run.routes))
+        else:
+            started = run.id if run is not None else None
+            self.sos_title.set_text(f"SOS is on since {sosrun.clock(started)}" if started else f"SOS is on since {sos_clock(bridge_sos)}")
+            paint(self.sos_title, theme.RED)
+            if run is not None:
+                self.sos_text.set_text(sosrun.summary(run.routes))
+            else:
+                sends = (bridge_sos or {}).get("sends") or 0
+                self.sos_text.set_text(f"Sent {sends} times so far. It keeps trying until you cancel." if sends else "Sending your position. It keeps trying until you cancel.")
+        # A real emergency during a test: the hold still works, and replaces the test.
+        self.hold.set_visible(test)
+        self.idle_row.set_visible(False)
+        self.active_row.set_visible(True)
+        self.cancel.set_label("Stop test" if test else "Cancel SOS")
+
+
 def sos_clock(sos_state: dict | None) -> str:
     """HH:MM of the SOS start, from the Bridge's RFC 3339 stamp (local time, as Android's clock())."""
     stamp = (sos_state or {}).get("started_at") or ""
     if isinstance(stamp, str) and len(stamp) >= 16:
-        return stamp[11:16] + " UTC"
+        try:
+            import datetime  # noqa: PLC0415
+
+            at = datetime.datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+            return at.astimezone().strftime("%H:%M")
+        except ValueError:
+            return stamp[11:16]
     return "now"

@@ -41,9 +41,9 @@
    "linux": "__main__.py:on_state",
    "modes": "both",
    "state": "verified",
-   "test": "h_home::sos_confirmed_activates_and_can_be_cancelled",
+   "test": "h_sos::sos_screen_shows_where_it_went_and_the_cancellation",
    "capture": "home",
-   "note": ""
+   "note": "SOS and alarm test words"
   },
   {
    "id": "shell.night",
@@ -159,12 +159,12 @@
    "id": "home.sos-card",
    "kind": "card",
    "android": "ui/screens/SosScreens.kt:SosCard",
-   "linux": "home.py:HomeScreen",
+   "linux": "home.py:HomeScreen.update_sos_card",
    "modes": "both",
-   "state": "partial",
-   "test": "h_home::sos_confirmed_activates_and_can_be_cancelled",
+   "state": "verified",
+   "test": "h_sos::alarm_test_goes_route_by_route_and_settles",
    "capture": "home",
-   "note": "'Test the alarm', the progress summary and 'Stop test' come with 0.6.0"
+   "note": ""
   },
   {
    "id": "home.sos.hold",
@@ -307,7 +307,7 @@
    "state": "partial",
    "test": "h_chat::send_posts_once_and_shows_the_bubble",
    "capture": "chat-everyone",
-   "note": "the composer's placeholders, footer lines and marks come with 0.7.0"
+   "note": "the composer's placeholders, footer lines and marks come with 0.7.0; the bubbles have too much unused space around the text (owner, 28 Sep 2026): measured against Android's in 0.7.0"
   },
   {
    "id": "chat.send",
@@ -610,56 +610,56 @@
    "id": "setup.safety",
    "kind": "screen",
    "android": "ui/screens/SosScreens.kt:SafetyScreen",
-   "linux": "setup.py:SafetyScreen",
+   "linux": "pages/safety.py:SafetyScreen",
    "modes": "both",
-   "state": "partial",
-   "test": "",
+   "state": "verified",
+   "test": "h_sos::safety_page_contacts_and_check_in_timer",
    "capture": "setup-safety",
-   "note": "the alarm test and Android's words for the check-in timer come with 0.6.0"
+   "note": ""
   },
   {
    "id": "setup.safety.contacts",
    "kind": "card",
    "android": "ui/screens/SosScreens.kt:contacts",
-   "linux": "setup.py:SafetyScreen",
+   "linux": "pages/safety.py:SafetyScreen",
    "modes": "both",
    "state": "partial",
-   "test": "",
+   "test": "h_sos::safety_page_contacts_and_check_in_timer",
    "capture": "setup-safety",
-   "note": "'Choose from your contacts' comes with 0.11.0"
+   "note": "typed numbers as Android's; 'Choose from your contacts' (the address book) comes with 0.11.0"
   },
   {
    "id": "setup.safety.checkin",
    "kind": "card",
    "android": "ui/screens/SettingsScreen.kt:992-1061",
-   "linux": "setup.py:SafetyScreen",
+   "linux": "pages/safety.py:SafetyScreen",
    "modes": "both",
-   "state": "partial",
-   "test": "",
+   "state": "verified",
+   "test": "h_sos::safety_page_contacts_and_check_in_timer",
    "capture": "setup-safety",
-   "note": "Android's words and the triggered state come with 0.6.0"
+   "note": ""
   },
   {
    "id": "sos",
    "kind": "screen",
    "android": "ui/screens/SosScreens.kt:SosScreen",
-   "linux": "",
+   "linux": "pages/sos.py:SosScreen",
    "modes": "both",
-   "state": "missing",
-   "test": "",
-   "capture": "",
-   "note": "0.6.0"
+   "state": "verified",
+   "test": "h_sos::sos_screen_shows_where_it_went_and_the_cancellation",
+   "capture": "sos",
+   "note": ""
   },
   {
    "id": "sos.test",
    "kind": "dialog",
    "android": "ui/screens/SosScreens.kt:424-450",
-   "linux": "",
+   "linux": "sosflow.py:Flow.start, model/sosrun.py",
    "modes": "both",
-   "state": "missing",
-   "test": "",
-   "capture": "",
-   "note": "0.6.0"
+   "state": "verified",
+   "test": "h_sos::alarm_test_goes_route_by_route_and_settles",
+   "capture": "sos",
+   "note": "the mesh leg heard by the T-Deck on the bench (l_alarm)"
   },
   {
    "id": "geofence",
@@ -1056,6 +1056,39 @@
    "test": "",
    "capture": "",
    "note": "a RockBLOCK on USB-C, or the T-Beam with one in Bluetooth range"
+  },
+  {
+   "id": "notification.alarm-test",
+   "kind": "notification",
+   "android": "sos/SosController.kt:notify",
+   "linux": "__main__.py:on_sos_change",
+   "modes": "both",
+   "state": "built",
+   "test": "",
+   "capture": "",
+   "note": "'Alarm test running' with Stop test, posted by the app itself"
+  },
+  {
+   "id": "sos.words",
+   "kind": "strings",
+   "android": "sos/SosMessages.kt",
+   "linux": "sos.py",
+   "modes": "both",
+   "state": "verified",
+   "test": "SosMessagesTest.test_a_test_and_a_cancellation_never_raise_an_alarm_whatever_the_name",
+   "capture": "source",
+   "note": "SosMessagesTest ported"
+  },
+  {
+   "id": "sos.run",
+   "kind": "behaviour",
+   "android": "sos/SosRun.kt, SosProgress",
+   "linux": "model/sosrun.py, sosflow.py",
+   "modes": "both",
+   "state": "verified",
+   "test": "FlowTest.test_a_test_goes_route_by_route_and_tells_the_hub",
+   "capture": "source",
+   "note": "the Bridge carries the mesh, satellite and Hub legs of a real SOS; the app the SMS legs and the test"
   }
  ]
 }

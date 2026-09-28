@@ -14,13 +14,13 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
-from . import __version__, api, routes, store, theme, trace  # noqa: E402
+from . import __version__, api, routes, sosflow, store, theme, trace  # noqa: E402
 from .home import HomeScreen  # noqa: E402
 from .mapview import MapScreen  # noqa: E402
 from .messages import ChatScreen, MessagesScreen, name_of  # noqa: E402
 from .model import words  # noqa: E402
 from .people import PeopleScreen  # noqa: E402
-from .setup import SetupScreen, utc_clock  # noqa: E402
+from .setup import SetupScreen  # noqa: E402
 from .widgets import Banner, Filtered, KeyValue, NavBar, StatusStrip, ago, filled_button, outlined_button, text  # noqa: E402
 
 # The application id is the package's; a test instance takes its own so the two never meet.
@@ -40,14 +40,20 @@ class MeshSatApp(Adw.Application):
         self.poller = api.Poller(self.on_state)
         self.state = self.poller.state
         self.prefs = store.Prefs()
+        # The SOS in progress, or the last one (sos/SosController.kt): the banner, the Home
+        # card and the result screen read it.
+        self.sos = sosflow.Flow(self.prefs, lambda: GLib.idle_add(self.on_sos_change))
+        self._test_notified = None
         self.night = False
         self.tabs = {}
         self.current = "home"
-        for name, handler, accel in (("quit", lambda *_: self.quit(), "<Control>q"), ("night", lambda *_: self.toggle_night(), "<Control>n"), ("refresh", lambda *_: self.poller.poll_now(), "F5")):
+        for name, handler, accel in (("quit", lambda *_: self.quit(), "<Control>q"), ("night", lambda *_: self.toggle_night(), "<Control>n"), ("refresh", lambda *_: self.poller.poll_now(), "F5"),
+                                     ("stop-test", lambda *_: self.stop_test(), None)):
             action = Gio.SimpleAction.new(name, None)
             action.connect("activate", handler)
             self.add_action(action)
-            self.set_accels_for_action(f"app.{name}", [accel])
+            if accel:
+                self.set_accels_for_action(f"app.{name}", [accel])
         # With a string: pick a tab, or open a route (Android's route strings, routes.py).
         # Reachable over D-Bus, as any GApplication action (gapplication action net.meshsat.Bridge
         # open "'setup/node'"), which is how the parity captures and the tests drive the app.
@@ -57,6 +63,9 @@ class MeshSatApp(Adw.Application):
             action = Gio.SimpleAction.new(name, GLib.VariantType.new("s"))
             action.connect("activate", handler)
             self.add_action(action)
+        open_sos = Gio.SimpleAction.new("open-sos", None)  # the alarm test's notification
+        open_sos.connect("activate", lambda *_: (self.activate(), self.open_route("sos")))
+        self.add_action(open_sos)
 
     # Lifecycle
     def do_startup(self):
@@ -362,6 +371,49 @@ class MeshSatApp(Adw.Application):
         """The SOS banner opens the SOS screen, the node banner the node's page (NodeLinkBanner.kt)."""
         self.open_route("sos" if kind == "sos" else "setup/node")
 
+    # The SOS and the alarm test (SosController): the app's own record, and the Bridge's status.
+    def stop_test(self) -> None:
+        self.sos.cancel(self.state)
+
+    def on_sos_change(self) -> bool:
+        """The run changed (a route answered, a test settled): the banner, the screen on view,
+        and the alarm test's notification (a real SOS is the notifier's, from the Bridge)."""
+        run = self.sos.run
+        if self.window is not None:
+            self.show_sos_banner(self.state)
+            screen = self.visible_screen()
+            if screen is not None:
+                screen.update(self.state)
+        if run is not None and run.test:
+            if run.active:
+                from .model import sosrun  # noqa: PLC0415
+
+                note = Gio.Notification.new("Alarm test running")
+                note.set_body(sosrun.summary(run.routes))
+                note.set_default_action("app.open-sos")
+                note.add_button("Stop test", "app.stop-test")
+                note.set_priority(Gio.NotificationPriority.HIGH)
+                if not TEST:
+                    self.send_notification("alarm-test", note)
+                self._test_notified = run.id
+            elif self._test_notified == run.id:
+                self.withdraw_notification("alarm-test")
+                self._test_notified = None
+        return False
+
+    def show_sos_banner(self, s: api.State) -> None:
+        """SosBanner: a strip on every screen while an SOS or a test is on."""
+        run = self.sos.active()
+        bridge_sos = bool((s.sos or {}).get("active"))
+        if run is not None and run.test:
+            self.sos_banner.show("sos", "Alarm test running. Tap to see it.")
+            self.sos_banner.add_css_class("test")
+        elif bridge_sos or (run is not None and not run.test):
+            self.sos_banner.remove_css_class("test")
+            self.sos_banner.show("sos", "SOS is on. Tap to see where it went, or to cancel.")
+        else:
+            self.sos_banner.show(None)
+
     # Every poll: the strip, the banners, the screen on view
     def on_state(self, s: api.State) -> bool:
         self.state = s
@@ -394,11 +446,8 @@ class MeshSatApp(Adw.Application):
         self.strip.set_lane("sms", "working" if s.sms_ready() else "off")
         self.strip.set_lane("location", "working" if s.position() else "off")
 
-        sos = s.sos or {}
-        if sos.get("active"):
-            self.sos_banner.show("sos", f"SOS is on since {utc_clock(sos.get('started_at'))}. Tap to cancel when you are safe.")
-        else:
-            self.sos_banner.show(None)
+        self.sos.follow(s)
+        self.show_sos_banner(s)
         verdict = s.watchdog.get("radio")
         if s.bridge is None and not s.bridge_service:
             self.node_banner.show("node", "The Bridge is not running on this phone. Tap to start it.")

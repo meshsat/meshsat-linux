@@ -164,7 +164,9 @@ class FakeBridge:
             return 200, {"status": "cancelled"}
         if path == "/api/deadman":
             if method == "POST":
-                self.deadman.update(enabled=bool((body or {}).get("enabled")), timeout_min=int((body or {}).get("timeout_min") or 240), last_activity=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
+                # As the Bridge's handler: the settings, and a touch that resets the timer and its trigger.
+                self.deadman.update(enabled=bool((body or {}).get("enabled")), timeout_min=int((body or {}).get("timeout_min") or 240),
+                                    last_activity=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), triggered=False)
             return 200, dict(self.deadman)
         if path == "/api/messages/send" and method == "POST":
             self.sent.append(body or {})
