@@ -271,10 +271,10 @@
    "android": "ui/screens/MessagesScreen.kt",
    "linux": "messages.py:MessagesScreen",
    "modes": "both",
-   "state": "partial",
-   "test": "h_messages::counts_have_a_singular",
+   "state": "verified",
+   "test": "h_messages::search_filters_all_messages",
    "capture": "messages",
-   "note": "search and delivery ticks come with 0.7.0"
+   "note": "search and the MessageCard rows of All Messages since 0.7.0"
   },
   {
    "id": "messages.new-message",
@@ -290,13 +290,13 @@
   {
    "id": "messages.search",
    "kind": "behaviour",
-   "android": "ui/screens/MessagesScreen.kt:search",
-   "linux": "",
+   "android": "ui/screens/MessagesScreen.kt:308-331",
+   "linux": "messages.py:MessagesScreen.query_changed",
    "modes": "both",
-   "state": "missing",
-   "test": "",
-   "capture": "",
-   "note": "0.7.0"
+   "state": "verified",
+   "test": "h_messages::search_filters_all_messages",
+   "capture": "messages",
+   "note": "in All Messages only, as Android; the rows are Android's MessageCard"
   },
   {
    "id": "chat",
@@ -304,10 +304,10 @@
    "android": "ui/screens/MessagesScreen.kt:ChatScreen",
    "linux": "messages.py:ChatScreen",
    "modes": "both",
-   "state": "partial",
-   "test": "h_chat::send_posts_once_and_shows_the_bubble",
+   "state": "verified",
+   "test": "h_chat::own_bubbles_carry_a_delivery_mark",
    "capture": "chat-everyone",
-   "note": "the composer's placeholders, footer lines and marks come with 0.7.0; the bubbles have too much unused space around the text (owner, 28 Sep 2026): measured against Android's in 0.7.0"
+   "note": "the bubble audit (MESHSAT-1399), measured on the bench phone's captures (720x1440, scale 2; 1 dp = 0.9 px): Android's ChatBubble is 80 % of the column, 10 dp inside, a 20 dp header (the transport in labelSmall, the time, the delivery mark, a 20 dp copy button with a 12 dp icon), the text in bodyMedium 4 dp below, 4 dp between bubbles, one line 64 dp tall. 0.6.0 drew a bubble at least 220 dp wide, 12 dp inside, a 40 dp header (the copy button's 12 dp padding) and the text in bodyLarge: one line 180 px (100 dp) tall, 12 dp apart. 0.7.0: 532 of 662 px wide (80 %), one line 114 px (63 dp) tall, 4 dp apart; the header inside the screen's 16 dp padding without a divider, the subtitle in bodySmall, the open lock muted (\"Encryption key\"); per-chat keys come with 0.12.0"
   },
   {
    "id": "chat.send",
@@ -334,24 +334,24 @@
   {
    "id": "chat.composer-words",
    "kind": "strings",
-   "android": "ui/screens/MessagesScreen.kt:589-719",
-   "linux": "",
+   "android": "ui/screens/MessagesScreen.kt:586-647",
+   "linux": "model/chat.py",
    "modes": "both",
-   "state": "missing",
-   "test": "",
-   "capture": "",
-   "note": "0.7.0"
+   "state": "verified",
+   "test": "h_chat::the_composer_says_how_the_message_goes",
+   "capture": "chat-everyone",
+   "note": "the four placeholders, the six footer lines, the bytes and credits, the 340-byte limit that disables Send; the node-down toast (h_chat::the_mesh_down_refuses_the_send)"
   },
   {
    "id": "chat.ticks",
    "kind": "behaviour",
-   "android": "ui/components/DeliveryMark",
-   "linux": "",
+   "android": "ui/screens/MessagesScreen.kt:DeliveryMark",
+   "linux": "messages.py:ChatScreen.bubble",
    "modes": "both",
-   "state": "missing",
-   "test": "",
-   "capture": "",
-   "note": "0.7.0"
+   "state": "verified",
+   "test": "h_chat::own_bubbles_carry_a_delivery_mark",
+   "capture": "chat-everyone",
+   "note": "a clock, one check, a question mark, a red mark, two checks; from the Bridge's delivery_status; the Hub's receipt and the carrier's report are not in the Bridge's feed yet (one check for them)"
   },
   {
    "id": "chat.key",
@@ -731,34 +731,34 @@
    "id": "rules",
    "kind": "screen",
    "android": "ui/screens/RulesScreen.kt",
-   "linux": "",
+   "linux": "pages/rules.py:RulesScreen",
    "modes": "both",
-   "state": "missing",
-   "test": "",
-   "capture": "",
-   "note": "0.7.0"
+   "state": "verified",
+   "test": "h_rules::tabs_badges_and_cards",
+   "capture": "rules",
+   "note": "five tabs with badges, subtitles and empty texts; the cards with the switch, the route in the links' colours, the meta line, the filters; the add button"
   },
   {
    "id": "interfaces",
    "kind": "screen",
    "android": "ui/screens/InterfacesScreen.kt",
-   "linux": "",
+   "linux": "pages/links.py:LinksScreen",
    "modes": "both",
-   "state": "missing",
-   "test": "",
-   "capture": "",
-   "note": "0.7.0"
+   "state": "verified",
+   "test": "h_links::six_tabs_in_androids_words",
+   "capture": "interfaces",
+   "note": "a link the Bridge's device manager does not bind (the mesh over the daemon or Bluetooth, the SIM, the Hub) shows the lane's state the app sees"
   },
   {
    "id": "deliveries",
    "kind": "screen",
    "android": "ui/screens/DeliveryScreen.kt",
-   "linux": "",
+   "linux": "pages/deliveries.py:DeliveryScreen",
    "modes": "both",
-   "state": "missing",
-   "test": "",
-   "capture": "",
-   "note": "0.7.0"
+   "state": "verified",
+   "test": "h_queue::counts_chips_and_cards",
+   "capture": "deliveries",
+   "note": "the counts by state, a chip per link, the cards, the empty texts"
   },
   {
    "id": "topology",
@@ -1089,6 +1089,105 @@
    "test": "FlowTest.test_a_test_goes_route_by_route_and_tells_the_hub",
    "capture": "source",
    "note": "the Bridge carries the mesh, satellite and Hub legs of a real SOS; the app the SMS legs and the test"
+  },
+  {
+   "id": "deliveries.details",
+   "kind": "dialog",
+   "android": "ui/screens/DeliveryScreen.kt:DeliveryDetailsDialog",
+   "linux": "pages/deliveries.py:open_details",
+   "modes": "both",
+   "test": "h_queue::details_dialog_shows_the_facts_and_the_raw_fields",
+   "capture": "deliveries",
+   "note": "the facts, the text, Show details, Retry / Cancel message / Close",
+   "state": "verified"
+  },
+  {
+   "id": "deliveries.confirm",
+   "kind": "dialog",
+   "android": "ui/screens/DeliveryScreen.kt:ConfirmQueueRequestDialog",
+   "linux": "pages/deliveries.py:ask",
+   "modes": "both",
+   "test": "h_queue::cancel_and_retry_are_confirmed_and_reach_the_bridge",
+   "capture": "deliveries",
+   "note": "the satellite credit, the SMS carrier and the plain retry questions; the cancel question; the toasts; s_queue::cancel_and_retry_follow_the_bridges_state against the real Bridge",
+   "state": "verified"
+  },
+  {
+   "id": "deliveries.words",
+   "kind": "strings",
+   "android": "ui/screens/DeliveryScreen.kt:96-171",
+   "linux": "model/deliveries.py",
+   "modes": "both",
+   "test": "DeliveryProblemTextTest.test_a_radio_out_of_reach_is_not_described_as_waiting_for_a_satellite",
+   "capture": "source",
+   "note": "DeliveryProblemTextTest ported; the states, urgencies, guarantees, confirmations, tries",
+   "state": "verified"
+  },
+  {
+   "id": "interfaces.tabs",
+   "kind": "tab",
+   "android": "ui/screens/InterfacesScreen.kt:IfaceTab",
+   "linux": "pages/links.py:render",
+   "modes": "both",
+   "test": "h_links::six_tabs_in_androids_words",
+   "capture": "interfaces",
+   "note": "Links, Rules, Capabilities, Groups, Backup links, Health, with the badges; the capabilities are the Bridge's channel table",
+   "state": "verified"
+  },
+  {
+   "id": "interfaces.switch-off",
+   "kind": "dialog",
+   "android": "ui/screens/InterfacesScreen.kt:210-245",
+   "linux": "pages/links.py:switch_changed",
+   "modes": "both",
+   "test": "h_links::switch_off_asks_first",
+   "capture": "interfaces",
+   "note": "by design: every link gets Android's general sentence; Android's satellite sentence (the modem not used, nothing coming in) is not true of the Bridge, which keeps a switched-off modem connected and reads what comes in; a switched-off link stops its deliveries and holds its queue in the Bridge since MESHSAT-1401 (s_links::switch_off_and_on_persist against a real Bridge); Try to connect now binds the link's device",
+   "state": "verified"
+  },
+  {
+   "id": "rules.editor",
+   "kind": "dialog",
+   "android": "ui/screens/RulesScreen.kt:AddEditRuleDialog",
+   "linux": "pages/rules.py:RuleEditor",
+   "modes": "both",
+   "test": "h_rules::a_new_rule_writes_androids_record",
+   "capture": "rules",
+   "note": "every field, helper and error; the Hub duplicate warning; a save writes the rule itself with the editor's fields over it (h_rules::a_save_keeps_every_column_and_delete_asks_first; s_rules against the real Bridge)",
+   "state": "verified"
+  },
+  {
+   "id": "rules.delete",
+   "kind": "dialog",
+   "android": "ui/screens/RulesScreen.kt:358-390",
+   "linux": "pages/rules.py:delete_asked",
+   "modes": "both",
+   "test": "h_rules::a_save_keeps_every_column_and_delete_asks_first",
+   "capture": "rules",
+   "note": "what deleting changes, then You cannot undo this.",
+   "state": "verified"
+  },
+  {
+   "id": "rules.queue",
+   "kind": "tab",
+   "android": "ui/screens/RulesScreen.kt:QueueTabContent",
+   "linux": "pages/rules.py:queue_tab",
+   "modes": "both",
+   "test": "h_rules::the_queue_tab_cancels_and_retries",
+   "capture": "rules",
+   "note": "Waiting to go out (N) with Cancel, Did not go out (N) with Retry",
+   "state": "verified"
+  },
+  {
+   "id": "rules.words",
+   "kind": "strings",
+   "android": "ui/screens/RulesScreen.kt:98-154, 402-413, 591-623, 711-764",
+   "linux": "model/rules.py",
+   "modes": "both",
+   "test": "RuleLinkChoicesTest.test_a_switched_off_link_is_not_offered",
+   "capture": "source",
+   "note": "RuleLinkChoicesTest and DuplicatesTheHubTest ported; the tabs, routes, filters, consequences, hidden settings, the record",
+   "state": "verified"
   }
  ]
 }

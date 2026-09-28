@@ -23,6 +23,9 @@ ROUTES = {
     "radio-config": "Mesh radio settings",
     "nodelog": "Node log",
     "chat/!ffffffff": "Everyone on the mesh",
+    "rules": "Rules decide which messages are passed from one link to another.",
+    "interfaces": "Each way this phone can send and receive messages, and how well it is working.",
+    "deliveries": "No messages here yet. Messages you send, and messages your rules pass on, show up here.",
 }
 
 

@@ -627,6 +627,15 @@ class AdvancedScreen(Page):
     def open(self, title_text: str, route: str) -> None:
         if route == "/nodelog":
             self.app.push(NodeLogScreen(self.app))
+            return
+        # The native pages, pushed over this one as Android's navigation does.
+        from .routes import screen_of  # noqa: PLC0415
+
+        screen = screen_of(route.strip("/"))
+        if screen is not None:
+            page = screen(self.app)
+            page.route = route.strip("/")
+            self.app.push(page, title_text)
         else:
             self.app.push(BridgePage(self.app, title_text, route))
 

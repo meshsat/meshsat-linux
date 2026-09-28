@@ -23,7 +23,7 @@ sys.path.insert(0, HERE)
 
 from driver import HarnessError  # noqa: E402
 from driver.app import App  # noqa: E402
-from driver.bridge import Live, Scripted  # noqa: E402
+from driver.bridge import Live, Scratch, Scripted  # noqa: E402
 from driver.report import Report  # noqa: E402
 
 
@@ -68,11 +68,17 @@ def load_module(path: str):
 
 
 def run_module(path: str, args, report: Report) -> None:
-    name, module = load_module(path)
-    tier = name[0]
-    cases = [(attr[5:], getattr(module, attr)) for attr in dir(module) if attr.startswith("case_")]
+    name = os.path.splitext(os.path.basename(path))[0]
     if args.cases and not any(pattern in name for pattern in args.cases):
         return
+    try:
+        name, module = load_module(path)
+    except Exception as error:  # noqa: BLE001 -- one module that cannot load must not end the run
+        report.record(name, "load", name[0], "fail", 0.0, HarnessError(f"the case module could not be loaded: {type(error).__name__}: {error}"))
+        print(f"FAIL {name}: the module could not be loaded: {error}", flush=True)
+        return
+    tier = name[0]
+    cases = [(attr[5:], getattr(module, attr)) for attr in dir(module) if attr.startswith("case_")]
     work = os.path.join(args.out, "_work", name)
     os.makedirs(work, exist_ok=True)
     bridge = None
@@ -80,15 +86,19 @@ def run_module(path: str, args, report: Report) -> None:
     notifications = None
     notifier = None
     try:
-        if tier in ("h", "s"):
+        if tier == "h":
             bridge = Scripted(getattr(module, "SCENARIO", "mesh-only"))
-            url = bridge.url
+        elif tier == "s":
+            bridge = Scratch(work)
         else:
             bridge = Live()
-            url = bridge.url
+        url = bridge.url
         hardware = getattr(module, "HARDWARE", "real" if tier == "l" else None)
         units = getattr(module, "UNITS", "real" if tier == "l" else "meshtasticd.service=active,meshsat-bridge.service=active")
-        app = App(work, url, app_dir=args.app_dir, hardware=hardware, units=units, poll=getattr(module, "POLL", 2.0)).start()
+        # Against the live Bridge the test app polls at the product's pace: the Bridge limits every
+        # client on 127.0.0.1 together (MESHSAT_API_RATE_LIMIT, 600 a minute), the person's own
+        # app and the notifier included.
+        app = App(work, url, app_dir=args.app_dir, hardware=hardware, units=units, poll=getattr(module, "POLL", 4.0 if tier == "l" else 2.0)).start()
         if getattr(module, "NOTIFIER", False):
             from driver.notifications import NotificationDaemon  # noqa: PLC0415
 
@@ -105,11 +115,16 @@ def run_module(path: str, args, report: Report) -> None:
         if bridge is not None and hasattr(bridge, "stop"):
             bridge.stop()
         return
-    for case_name, fn in cases:
+    for index, (case_name, fn) in enumerate(cases):
         started = time.time()
         ctx = Context(app, bridge, report, name, case_name, notifications, notifier)
         before = len(app.tracebacks())
         try:
+            if index:
+                # Each case starts with no dialog open: a case that failed halfway leaves its own.
+                closed = ctx.tree.close_dialogs()
+                if closed:
+                    ctx.note(f"closed {closed} dialogs left by the case before")
             fn(ctx)
             after = app.tracebacks()
             if len(after) > before:

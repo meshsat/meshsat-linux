@@ -29,12 +29,15 @@ ROUTES = {
     "about": ("setup", "setup", "AboutScreen"),
     "nodelog": ("setup", "setup", "NodeLogScreen"),
     "sos": ("setup", "pages.sos", "SosScreen"),
+    "rules": ("setup", "pages.rules", "RulesScreen"),
+    "interfaces": ("setup", "pages.links", "LinksScreen"),
+    "deliveries": ("setup", "pages.deliveries", "DeliveryScreen"),
 }
 
 # The names the `open` action took before the routes were Android's (kept for the tools).
 ALIASES = {"node": "setup/node", "satellite": "setup/satellite", "hub": "setup/hub", "sms": "setup/sms", "safety": "setup/safety",
            "messaging": "setup/messaging", "maps": "setup/maps", "integrations": "setup/integrations", "radio": "radio-config",
-           "advanced": "setup/advanced", "everyone": "chat/!ffffffff"}
+           "advanced": "setup/advanced", "everyone": "chat/!ffffffff", "links": "interfaces", "queue": "deliveries"}
 
 # Which routes a notification may open (MainActivity.kt OPENABLE_ROUTES), and where a lane leads.
 OPENABLE = ("sos", "messages", "home")

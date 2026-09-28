@@ -88,11 +88,14 @@ def text_button(label_text: str, on_click=None) -> Gtk.Button:
     return button
 
 
-def icon_button(name: str, on_click, size: int = 24, colour: str | None = None, tooltip: str | None = None) -> Gtk.Button:
+def icon_button(name: str, on_click, size: int = 24, colour: str | None = None, tooltip: str | None = None, small: bool = False) -> Gtk.Button:
     """An icon-only button. `tooltip` is also its accessible name (Android's contentDescription):
-    it is how a screen reader and the tests find it, so every one has it."""
+    it is how a screen reader and the tests find it, so every one has it. `small`: Android's
+    20 dp IconButton with a 12 dp icon (the copy button inside a bubble)."""
     button = Gtk.Button()
     button.add_css_class("icon-button")
+    if small:
+        button.add_css_class("small")
     button.set_child(icon(name, size, colour))
     if tooltip:
         button.set_tooltip_text(tooltip)
@@ -486,18 +489,26 @@ class NavBar(Gtk.Box):
 
 
 class SubHeader(Gtk.Box):
-    """The 56 px '<- Title' row of a sub-screen, with a 1 px divider under it."""
+    """The 56 px '<- Title' row of a sub-screen, with a 1 px divider under it. `plain`: the
+    chat's own header (ConversationChatView), inside the screen's 16 dp padding, 8 dp above the
+    messages, no divider, the subtitle in bodySmall."""
 
-    def __init__(self, title: str, on_back, orange: bool = False, subtitle: str | None = None, subtitle_colour: str | None = None, trailing: Gtk.Widget | None = None):
+    def __init__(self, title: str, on_back, orange: bool = False, subtitle: str | None = None, subtitle_colour: str | None = None, trailing: Gtk.Widget | None = None,
+                 plain: bool = False):
         super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(4))
         self.add_css_class("subheader")
-        self.append(icon_button("outlined-arrow-back", on_back, 22, theme.SIGNAL_ORANGE if orange else theme.TEXT_PRIMARY))
+        if plain:
+            self.add_css_class("plain")
+            for side in ("start", "end", "top"):
+                getattr(self, f"set_margin_{side}")(theme.dp(16))
+            self.set_margin_bottom(theme.dp(8))
+        self.append(icon_button("outlined-arrow-back", on_back, 24 if plain else 22, theme.SIGNAL_ORANGE if orange else theme.TEXT_PRIMARY, tooltip="Back"))
         texts = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(0))
         texts.set_hexpand(True)
         texts.set_valign(Gtk.Align.CENTER)
         texts.append(text(title, "title-large", ellipsize=True))
         if subtitle:
-            texts.append(text(subtitle, "body-medium", subtitle_colour or theme.TEXT_SECONDARY))
+            texts.append(text(subtitle, "body-small" if plain else "body-medium", subtitle_colour or theme.TEXT_SECONDARY))
         self.append(texts)
         if trailing:
             self.append(trailing)
@@ -954,15 +965,17 @@ class Tabs(Gtk.Box):
     """A row of tabs as Android's ScrollableTabRow: chips that slide sideways, one selected,
     each with a count badge when it has one."""
 
-    def __init__(self, names: list, on_select, selected: str | None = None):
-        super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
+    def __init__(self, names: list, on_select, selected: str | None = None, plain: bool = False):
+        """`plain`: Android's own tab row (InterfacesScreen, RulesScreen): text on nothing,
+        the selected one on SurfaceLight, 48 dp tall, 4 dp apart."""
+        super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(4 if plain else 8))
         self.chips = {}
         self.badges = {}
         self.on_select = on_select
         self.selected = selected or names[0]
         for name in names:
             chip = Gtk.Button()
-            chip.add_css_class("chip")
+            chip.add_css_class("tab-chip" if plain else "chip")
             name_widget(chip, name)
             inner = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(6))
             inner.append(text(name, "label-large"))
@@ -991,6 +1004,133 @@ class Tabs(Gtk.Box):
         badge = self.badges[name]
         badge.set_text(str(count))
         badge.set_visible(count > 0)
+
+
+def dot(lane: str, size: int = 10) -> Gtk.Box:
+    """A round dot in a lane's colour, as Android's Box(size).background(color, CircleShape)."""
+    box = Gtk.Box()
+    box.add_css_class("lane-dot")
+    box.set_size_request(theme.dp(size), theme.dp(size))
+    box.set_valign(Gtk.Align.CENTER)
+    paint(box, theme.lane_colour(lane), background=True)
+    return box
+
+
+def tone_colour(tone: str) -> str:
+    return {"green": theme.GREEN, "amber": theme.AMBER, "red": theme.RED, "teal": theme.SIGNAL_ORANGE, "primary": theme.TEXT_PRIMARY}.get(tone, theme.TEXT_MUTED)
+
+
+def state_tag(value: str, tone: str, style: str = "label-large") -> Gtk.Label:
+    """A word in its tone on a tinted pill, as Android's state labels (a 12 % tint of the
+    colour behind the text)."""
+    label = text(value, style, tone_colour(tone))
+    label.add_css_class("state-tag")
+    label.add_css_class(f"tint-{tone if tone in ('green', 'amber', 'red', 'teal') else 'muted'}")
+    label.set_valign(Gtk.Align.CENTER)
+    return label
+
+
+def divider() -> Gtk.Box:
+    line = Gtk.Box()
+    line.add_css_class("divider")
+    return line
+
+
+def fact_row(label: str, value: str, colour: str | None = None, mono: bool = False) -> Gtk.Box:
+    """A label at the left, its value at the right, as Android's DeliveryFact."""
+    row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(12))
+    row.append(text(label, "body-small", theme.TEXT_MUTED))
+    value_label = text(value, "body-small", colour, xalign=1.0, wrap=True, mono=mono)
+    value_label.set_hexpand(True)
+    value_label.set_justify(Gtk.Justification.RIGHT)
+    row.append(value_label)
+    return row
+
+
+class PickerField(Gtk.Box):
+    """A choice out of a list as Android's DropdownField (an ExposedDropdownMenu on an
+    OutlinedTextField): the label above, the chosen option's name with a chevron, a helper or
+    an error under it; a tap opens a PickerDialog. The button's accessible name is the label."""
+
+    def __init__(self, app, label: str, options: list, chosen, on_pick, helper: str = ""):
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(4))
+        self.app = app
+        self.label_text = label
+        self.options = list(options)  # (key, name, detail)
+        self.chosen = chosen
+        self.on_pick = on_pick
+        self.append(text(label, "label-medium", theme.TEXT_SECONDARY))
+        self.button = Gtk.Button()
+        self.button.add_css_class("picker")
+        name_widget(self.button, label)
+        inner = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
+        self.value = text("", "body-large", ellipsize=True)
+        self.value.set_hexpand(True)
+        inner.append(self.value)
+        inner.append(icon("outlined-expand-more", 24, theme.TEXT_SECONDARY))
+        self.button.set_child(inner)
+        self.button.connect("clicked", lambda *_: self.open())
+        self.append(self.button)
+        self.helper_text = helper
+        self.helper = text(helper, "body-small", theme.TEXT_SECONDARY, wrap=True)
+        self.helper.set_visible(bool(helper))
+        self.append(self.helper)
+        self._show()
+
+    def _show(self) -> None:
+        name = next((n for k, n, _d in self.options if k == self.chosen), str(self.chosen))
+        self.value.set_text(name)
+
+    def set_options(self, options: list, chosen=None) -> None:
+        self.options = list(options)
+        if chosen is not None:
+            self.chosen = chosen
+        self._show()
+
+    def set_chosen(self, key) -> None:
+        self.chosen = key
+        self._show()
+
+    def set_helper(self, message: str) -> None:
+        self.helper_text = message
+        self.set_error(None)
+
+    def set_error(self, message: str | None) -> None:
+        if message:
+            self.helper.set_text(message)
+            paint(self.helper, theme.RED)
+            self.helper.set_visible(True)
+            self.button.add_css_class("error")
+        else:
+            self.helper.set_text(self.helper_text)
+            paint(self.helper, theme.TEXT_SECONDARY)
+            self.helper.set_visible(bool(self.helper_text))
+            self.button.remove_css_class("error")
+
+    def open(self) -> None:
+        def picked(key) -> None:
+            self.chosen = key
+            self._show()
+            self.on_pick(key)
+
+        PickerDialog(self.app, self.label_text, self.options, self.chosen, picked).present()
+
+
+class Fab(Gtk.Button):
+    """Android's FloatingActionButton: a 56 dp orange disc at the bottom right with an icon,
+    named for a screen reader and the tests."""
+
+    def __init__(self, icon_name: str, name: str, on_click):
+        super().__init__()
+        self.add_css_class("fab")
+        self.set_child(icon(icon_name, 24, theme.ON_PRIMARY))
+        name_widget(self, name)
+        self.set_tooltip_text(name)
+        self.set_halign(Gtk.Align.END)
+        self.set_valign(Gtk.Align.END)
+        for side in ("start", "end", "top", "bottom"):
+            getattr(self, f"set_margin_{side}")(theme.dp(16))
+        self.connect("clicked", lambda *_: on_click())
 
 
 class StatusBanner(Gtk.Box):

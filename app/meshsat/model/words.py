@@ -2,12 +2,14 @@
 """The words the app shows for its own machinery, as ui/Words.kt: one place, so a channel or a
 state is called the same thing on every screen. Internal ids (iridium_0, sms_0) and raw states
 (dead, retry) never reach the user: they read Satellite, SMS, "Gave up", "Waiting to retry"."""
+import re
 import time
 
 
 def channel(id_: str) -> str:
     """An interface or channel id, as the user knows it."""
-    if id_.startswith("iridium9704"):
+    # Android's 9704 link is iridium9704_0; the Bridge's is iridium_imt_0 (the IMT channel).
+    if id_.startswith("iridium9704") or id_.startswith("iridium_imt"):
         return "Satellite (RockBLOCK 9704)"
     if id_.startswith("iridium"):
         return "Satellite"
@@ -33,7 +35,7 @@ def channel(id_: str) -> str:
 def transport(t: str) -> str:
     """A message's transport field ("iridium", "mesh", "sms", ...), as the user knows it."""
     low = (t or "").lower()
-    if low in ("iridium", "sbd", "iridium9704", "imt"):
+    if low in ("iridium", "sbd", "iridium9704", "imt", "iridium_imt"):
         return "Satellite"
     if low in ("mesh", "meshtastic", "lora", "radio"):
         return "Mesh"
@@ -124,6 +126,40 @@ def in_time(epoch_s: float, now_s: float | None = None) -> str:
     if s < 3600:
         return f"in {(s + 30) // 60} min"
     return f"in {s // 3600} h {(s % 3600) // 60} min"
+
+
+def stamp_epoch(value) -> float | None:
+    """A time stamp of the Bridge as seconds since the epoch: RFC 3339 ("2026-09-28T17:00:00Z",
+    with or without fractions), SQLite's "2026-09-28 17:00:00" (UTC), or a number already;
+    None for nothing, Go's zero time, or words that are not a time (AuditScreen.kt's
+    parseUtcStamp)."""
+    if isinstance(value, (int, float)):
+        return float(value) if value > 0 else None
+    t = (value or "").strip() if isinstance(value, str) else ""
+    if not t or t.startswith("0001-01-01"):
+        return None
+    from datetime import datetime, timezone  # noqa: PLC0415
+
+    t = re.sub(r"(\.\d{6})\d+", r"\1", t)  # Go writes nanoseconds; Python reads microseconds
+    if t.endswith("Z"):
+        t = t[:-1] + "+00:00"
+    try:
+        stamp = datetime.fromisoformat(t)
+    except ValueError:
+        return None
+    if stamp.tzinfo is None:
+        stamp = stamp.replace(tzinfo=timezone.utc)
+    return stamp.timestamp()
+
+
+def local_stamp(epoch_s: float, now_s: float | None = None) -> str:
+    """The clock time, local: "17:04:09" today, "27 Sep 17:04:09" another day (AuditScreen.kt's
+    localStamp)."""
+    now_s = time.time() if now_s is None else now_s
+    at, today = time.localtime(epoch_s), time.localtime(now_s)
+    if at[:3] == today[:3]:
+        return time.strftime("%H:%M:%S", at)
+    return f"{at.tm_mday} {time.strftime('%b %H:%M:%S', at)}"
 
 
 def join_and(items: list) -> str:

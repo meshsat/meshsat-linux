@@ -185,22 +185,39 @@ class Tree:
     def click_containing(self, contains: str, role: str = "button", timeout: float = 5.0) -> None:
         self.find(role, contains=contains, timeout=timeout).do("click")
 
+    @staticmethod
+    def _subtree(nodes: list, start: int) -> list:
+        depth = nodes[start].depth
+        out = [nodes[start]]
+        for n in nodes[start + 1:]:
+            if n.depth <= depth:
+                break
+            out.append(n)
+        return out
+
+    @staticmethod
+    def _is_toast(subtree: list) -> bool:
+        """An Adw.Toast reaches the bus as an "alert" too; its one button is "Dismiss"."""
+        return [n.name for n in subtree if n.role == "button"] == ["Dismiss"]
+
+    def _dialogs(self) -> list:
+        nodes = self.walk()
+        found = []
+        for i, n in enumerate(nodes):
+            if n.role in ("alert", "dialog"):
+                subtree = self._subtree(nodes, i)
+                if not self._is_toast(subtree):
+                    found.append(subtree)
+        return found
+
     def dialog(self, timeout: float = 5.0) -> list:
-        """The widgets of the dialog in front (an alert or a sheet), for a button that shares
-        its name with one on the page behind it."""
+        """The widgets of the dialog in front (an alert or a sheet; never a toast), for a
+        button that shares its name with one on the page behind it."""
         deadline = time.time() + timeout
         while True:
-            nodes = self.walk()
-            starts = [i for i, n in enumerate(nodes) if n.role in ("alert", "dialog")]
-            if starts:
-                start = starts[-1]
-                depth = nodes[start].depth
-                out = [nodes[start]]
-                for n in nodes[start + 1:]:
-                    if n.depth <= depth:
-                        break
-                    out.append(n)
-                return out
+            found = self._dialogs()
+            if found:
+                return found[-1]
             if time.time() >= deadline:
                 raise AssertionError(f"no dialog on view; on view: {self.summary()[:800]}")
             time.sleep(0.3)
@@ -217,19 +234,93 @@ class Tree:
             time.sleep(0.3)
 
     def dialogs_open(self) -> bool:
-        return any(n.role in ("alert", "dialog") for n in self.walk())
+        return bool(self._dialogs())
+
+    # A Gtk.Switch reaches the bus as a "check box" with a "toggle" action in GTK 4.18.
+    TOGGLES = ("check box", "toggle button", "switch", "radio button")
 
     def toggle(self, name: str, timeout: float = 5.0) -> None:
         """A switch, check box or toggle button by name (never the label beside it)."""
+        node = self.switch(name, timeout)
+        node.do("toggle" if "toggle" in node.actions() else "click")
+
+    def switch(self, name: str, timeout: float = 5.0) -> Node:
+        """A switch, check box or toggle button by its exact name; `.checked` is its state."""
         deadline = time.time() + timeout
         while True:
             for node in self.find_all(name=name):
-                if node.role in ("check box", "toggle button", "switch", "radio button"):
-                    node.do("toggle" if "toggle" in node.actions() else "click")
-                    return
+                if node.role in self.TOGGLES:
+                    return node
             if time.time() >= deadline:
                 raise AssertionError(f"no switch or check box named {name!r}; on view: {self.summary()[:800]}")
             time.sleep(0.3)
+
+    def switches(self, contains: str = "") -> list:
+        return [n for n in self.walk() if n.role in self.TOGGLES and contains in n.name]
+
+    def wait_switch(self, name: str, on: bool, timeout: float = 10.0) -> None:
+        """Until the switch named `name` is on (or off): a list rebuilt after a write."""
+        deadline = time.time() + timeout
+        while True:
+            try:
+                if self.switch(name, 0.5).checked == on:
+                    return
+            except AssertionError:
+                pass
+            if time.time() >= deadline:
+                raise AssertionError(f"the switch {name!r} never turned {'on' if on else 'off'}")
+            time.sleep(0.3)
+
+    def click_after(self, contains: str, name: str, role: str = "button", timeout: float = 5.0) -> None:
+        """The first `name` button after the widget whose name holds `contains`, in the order the
+        tree is walked: the Retry of one card among many that all have one."""
+        deadline = time.time() + timeout
+        while True:
+            nodes = self.walk()
+            start = next((i for i, n in enumerate(nodes) if contains in n.name), None)
+            if start is not None:
+                for node in nodes[start + 1:]:
+                    if node.role == role and node.name == name:
+                        node.do("click")
+                        return
+            if time.time() >= deadline:
+                raise AssertionError(f"no {role} {name!r} after {contains!r}; on view: {self.summary()[:800]}")
+            time.sleep(0.3)
+
+    def count_text(self, value: str) -> int:
+        return sum(1 for t in self.texts() if t == value)
+
+    def wait_count(self, value: str, n: int, timeout: float = 10.0) -> None:
+        deadline = time.time() + timeout
+        while True:
+            if self.count_text(value) == n:
+                return
+            if time.time() >= deadline:
+                raise AssertionError(f"{value!r} shows {self.count_text(value)} times, not {n}")
+            time.sleep(0.3)
+
+    # The harmless answer of every dialog the app has, front dialog first.
+    CLOSERS = ("Cancel", "Close", "Keep it", "Keep it on", "Not now", "Don't send", "Keep SOS on")
+
+    def close_dialogs(self, attempts: int = 8) -> int:
+        """Every dialog still open (a case that failed halfway leaves its dialogs), each answered
+        with its harmless button. Returns how many were closed."""
+        closed = 0
+        for _ in range(attempts):
+            found = self._dialogs()  # one look: a dialog may close between two
+            if not found:
+                return closed
+            nodes = found[-1]
+            buttons = {n.name: n for n in nodes if n.role == "button"}
+            for name in self.CLOSERS:
+                if name in buttons:
+                    buttons[name].do("click")
+                    closed += 1
+                    time.sleep(0.5)
+                    break
+            else:
+                raise HarnessError(f"a dialog with no harmless button is open: {[n.name for n in nodes if n.name][:8]}")
+        return closed
 
     def set_text(self, name: str, value: str, timeout: float = 5.0) -> None:
         self.find("text", name=name, timeout=timeout).set_text(value)

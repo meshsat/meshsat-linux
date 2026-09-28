@@ -109,8 +109,28 @@ class FakeBridgeTest(unittest.TestCase):
         self.assertFalse(s.mesh_connected())
         self.fake.control("POST", "/__fake__/down", {"down": False})
 
+    def test_a_bridge_that_asks_for_a_pause_is_not_down(self):
+        """A 429 (the Bridge's per-address limit, found by the live tests of 0.7.0) keeps what
+        the screens show: it used to read as "Bridge down" and blanked every lane."""
+        api.BRIDGE = self.fake.url
+        s = api.State()
+        api.poll_state(s, {}, api.NameAsker(lambda *_: {}))
+        self.assertTrue(s.mesh_connected())
+        modem = s.modem
+        self.fake.control("POST", "/__fake__/set", {"key": "GET /api/status", "status": 429, "body": {"error": "rate limit exceeded"}})
+        api.poll_state(s, {}, api.NameAsker(lambda *_: {}))
+        self.assertTrue(s.mesh_connected(), "a 429 on the status read as the Bridge down")
+        self.assertEqual(s.modem, modem)
+        self.fake.control("POST", "/__fake__/scenario", {"name": "mesh-only"})
+        self.fake.control("POST", "/__fake__/set", {"key": "GET /api/deadman", "status": 429, "body": {"error": "rate limit exceeded"}})
+        s.deadman = {"enabled": True, "timeout_min": 60, "triggered": False}
+        api.poll_state(s, {}, api.NameAsker(lambda *_: {}))
+        self.assertEqual(s.deadman, {"enabled": True, "timeout_min": 60, "triggered": False}, "a 429 blanked the check-in timer")
+        self.fake.control("POST", "/__fake__/scenario", {"name": "mesh-only"})
+
     def test_every_scenario_builds(self):
-        for name in ("fresh", "mesh-only", "one-node", "nameless-node", "satellite-3-bars", "sim-ready", "all-four", "hub-set-up", "sos-active", "bluetooth-pairing", "bluetooth-connected"):
+        for name in ("fresh", "mesh-only", "one-node", "nameless-node", "satellite-3-bars", "sim-ready", "all-four", "hub-set-up", "sos-active", "bluetooth-pairing", "bluetooth-connected",
+                     "queue-busy"):
             routes = fakebridge.load_scenario(name)
             self.assertIn("GET /api/status", routes, name)
         fake = fakebridge.FakeBridge(fakebridge.load_scenario("sos-active"))

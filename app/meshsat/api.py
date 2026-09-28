@@ -509,9 +509,33 @@ class State:
         return sum(1 for n in self.others() if (n.get("last_heard") or 0) >= cutoff)
 
 
+class Throttled(Exception):
+    """The Bridge answered 429: it is up, and asks every client on this address to slow down
+    (MESHSAT_API_RATE_LIMIT requests a minute). Not "down", not "nothing there"."""
+
+
+def polled(path: str):
+    """A poll's GET: the body, or None when the Bridge has nothing or does not answer; a 429
+    raises Throttled, so the poll keeps what the screens show instead of blanking it."""
+    answer = request("GET", path, timeout=2.0)
+    if answer.status == 429:
+        raise Throttled(path)
+    return answer.body if answer.ok else None
+
+
 def poll_state(s: "State", names: dict, asker: "NameAsker") -> "State":
     """One poll of everything the screens show, into `s`, on the calling thread: pure of GTK,
-    so the unit tests run it against a scripted Bridge."""
+    so the unit tests run it against a scripted Bridge. A 429 on any call ends the poll there:
+    what was read before it is fresh, the rest stays as it was."""
+    try:
+        return _poll_state(s, names, asker)
+    except Throttled:
+        s.polled_at = time.time()
+        return s
+
+
+def _poll_state(s: "State", names: dict, asker: "NameAsker") -> "State":
+    get = polled  # every GET of the poll goes through the 429 check
     bridge = get("/api/status")
     s.bridge = bridge
     if bridge is None:

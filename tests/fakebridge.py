@@ -38,6 +38,8 @@ class FakeBridge:
         self.sos = {"active": False, "started_at": "", "sends": 0, "test": False}
         self.deadman = {"enabled": False, "timeout_min": 240, "last_activity": "", "triggered": False}
         self.sent = []  # POST /api/messages/send bodies, also appended to the packet feed
+        self.deliveries = None  # the queue, when the scenario has one (`_deliveries`): cancel and retry change it as the Bridge does
+        self.rules = None  # the routing rules, when the scenario has them (`_rules`): create, replace, delete, switch
         self.apply(scenario or {})
         fake = self
 
@@ -110,6 +112,10 @@ class FakeBridge:
         self.sos = dict(sos) if sos else {"active": False, "started_at": "", "sends": 0, "test": False}
         deadman = routes.pop("_deadman", None)
         self.deadman = dict(deadman) if deadman else {"enabled": False, "timeout_min": 240, "last_activity": "", "triggered": False}
+        deliveries = routes.pop("_deliveries", None)
+        self.deliveries = [dict(d) for d in deliveries] if deliveries is not None else None
+        rules = routes.pop("_rules", None)
+        self.rules = [dict(r) for r in rules] if rules is not None else None
         self.routes = routes
 
     # Life
@@ -169,6 +175,11 @@ class FakeBridge:
                                     last_activity=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), triggered=False)
             return 200, dict(self.deadman)
         if path == "/api/messages/send" and method == "POST":
+            # A direct send on the mesh while every mesh link is switched off: refused, as the Bridge since MESHSAT-1401.
+            listed = self.routes.get("GET /api/interfaces")
+            meshes = [i for i in listed if str(i.get("id", "")).startswith("mesh")] if isinstance(listed, list) else []
+            if not (body or {}).get("gateway") and meshes and not any(i.get("enabled") for i in meshes):
+                return 409, {"error": "Not sent: Mesh is switched off. Switch it on in Links."}
             self.sent.append(body or {})
             feed = self.routes.setdefault("GET /api/packets?limit=200", {"packets": []})
             if isinstance(feed, dict):
@@ -177,6 +188,82 @@ class FakeBridge:
             return 200, {"status": "sent", "id": len(self.sent)}
         if path == "/api/nodes/request-info" and method == "POST":
             return 200, {"status": "nodeinfo request sent"}
+        # The queue, as the Bridge's deliveries.go: cancel only what is queued or waiting for a
+        # retry, retry only what failed or gave up; anything else is a 500 with the Bridge's words.
+        if self.deliveries is not None and path.startswith("/api/deliveries"):
+            stamp = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
+            if path == "/api/deliveries" and method == "GET":
+                # Newest first, as the Bridge's ORDER BY created_at DESC.
+                return 200, [dict(d) for d in sorted(self.deliveries, key=lambda d: d.get("created_at", ""), reverse=True)]
+            parts = path.split("/")
+            if len(parts) == 5 and method == "POST" and parts[4] in ("cancel", "retry"):
+                row = next((d for d in self.deliveries if str(d.get("id")) == parts[3]), None)
+                if row is None:
+                    return 500, {"error": f"failed to {parts[4]} delivery"}
+                if parts[4] == "cancel":
+                    if row.get("status") not in ("queued", "retry"):
+                        return 500, {"error": "failed to cancel delivery"}
+                    row.update(status="dead", last_error="cancelled", updated_at=stamp)
+                    return 200, {"status": "cancelled"}
+                if row.get("status") not in ("failed", "dead"):
+                    return 500, {"error": "failed to retry delivery"}
+                row.update(status="queued", next_retry=None, updated_at=stamp)
+                return 200, {"status": "requeued"}
+        # The routing rules, as the Bridge's interfaces.go: a POST answers 201 with the record
+        # (qos_level 1 when absent), a PUT replaces every column, a DELETE answers 204.
+        if self.rules is not None and path.startswith("/api/access-rules"):
+            stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            parts = path.split("/")
+            if path == "/api/access-rules" and method == "GET":
+                return 200, [dict(r) for r in self.rules]
+            if path == "/api/access-rules" and method == "POST":
+                record = dict(body or {})
+                for key, missing in (("interface_id", None), ("direction", None), ("action", None)):
+                    if not record.get(key):
+                        return 400, {"error": f"{key} is required"}
+                if "qos_level" not in record:
+                    record["qos_level"] = 1
+                record.setdefault("match_count", 0)
+                record["id"] = max([r.get("id", 0) for r in self.rules] + [0]) + 1
+                record["created_at"] = record["updated_at"] = stamp
+                self.rules.append(record)
+                return 201, dict(record)
+            if len(parts) == 4 and parts[3].isdigit():
+                row = next((r for r in self.rules if str(r.get("id")) == parts[3]), None)
+                if method == "PUT":
+                    if row is None:
+                        return 500, {"error": "rule not found"}
+                    kept = {"id": row["id"], "match_count": row.get("match_count", 0), "created_at": row.get("created_at", stamp)}
+                    row.clear()
+                    row.update(body or {})
+                    row.update(kept)
+                    row["updated_at"] = stamp
+                    return 200, dict(row)
+                if method == "DELETE":
+                    if row is not None:
+                        self.rules.remove(row)
+                    return 204, None
+            if len(parts) == 5 and method == "POST" and parts[4] in ("enable", "disable"):
+                row = next((r for r in self.rules if str(r.get("id")) == parts[3]), None)
+                if row is None:
+                    return 500, {"error": "rule not found"}
+                row["enabled"] = parts[4] == "enable"
+                row["updated_at"] = stamp
+                return 200, {"status": f"{parts[4]}d"}
+        # A link switched on or off changes the interface list the scenario serves; a bind is taken.
+        if path.startswith("/api/interfaces/") and method == "POST":
+            parts = path.split("/")
+            if len(parts) == 5 and parts[4] in ("enable", "disable"):
+                listed = self.routes.get("GET /api/interfaces")
+                if isinstance(listed, list):
+                    for iface in listed:
+                        if iface.get("id") == parts[3]:
+                            iface["enabled"] = parts[4] == "enable"
+                return 200, {"status": f"{parts[4]}d"}
+            if len(parts) == 5 and parts[4] == "bind":
+                if not (body or {}).get("device_id"):
+                    return 400, {"error": "device_id is required"}
+                return 200, {"status": "bound"}
         return None
 
     # Orders from the test
@@ -211,7 +298,7 @@ class FakeBridge:
                 self.deadman = {"enabled": False, "timeout_min": 240, "last_activity": "", "triggered": False}
                 return 200, {"ok": True}
             if order == "state":
-                return 200, {"sos": self.sos, "deadman": self.deadman, "down": self.down, "delay": self.delay}
+                return 200, {"sos": self.sos, "deadman": self.deadman, "down": self.down, "delay": self.delay, "deliveries": self.deliveries, "rules": self.rules}
         if order == "event":
             self.push(body)
             return 200, {"listeners": len(self.listeners)}
