@@ -55,6 +55,9 @@ case "$1" in
             sleep 2
         fi
 
+        # The apps' typeface.
+        if command -v fc-cache >/dev/null 2>&1; then fc-cache -f /usr/share/fonts/truetype/meshsat >/dev/null 2>&1 || true; fi
+
         # The app in the app grid.
         if command -v gtk-update-icon-cache >/dev/null 2>&1; then gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor 2>/dev/null || true; fi
         if command -v update-desktop-database >/dev/null 2>&1; then update-desktop-database -q 2>/dev/null || true; fi

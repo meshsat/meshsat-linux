@@ -1,3 +1,4 @@
 #!/bin/sh
-# MeshSat for Linux phones and desktops: the Bridge's interface in its own window.
-exec /usr/bin/python3 /usr/lib/meshsat/app/meshsat_app.py "$@"
+# MeshSat for Linux phones and desktops: the same app as MeshSat Android and iOS.
+export PYTHONPATH=/usr/lib/meshsat/app${PYTHONPATH:+:$PYTHONPATH}
+exec /usr/bin/python3 -m meshsat "$@"

@@ -13,8 +13,9 @@
       MeshSat keeps people connected when the network is not. On a PinePhone with the Pine64 LoRa
       back cover it makes the phone a Meshtastic node and runs the MeshSat Bridge beside it: the
       messages of the LoRa mesh, a RockBLOCK satellite modem on USB, and the MeshSat Hub, routed
-      between each other. This app is the Bridge's interface in a window of its own, with a status
-      page while a service is down.
+      between each other. This app is MeshSat's own: the screens of MeshSat Android and iOS (Home,
+      Messages, Map, People, Setup), drawn with GTK 4 and libadwaita for a phone in the hand, over
+      the Bridge running on the device.
     </p>
     <p>
       Pre-release. The radio in the back cover is qualified at 0 dBm only, and a radio that stops
@@ -35,6 +36,16 @@
   </recommends>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.2.0" date="2026-09-28">
+      <description>
+        <p>The app is MeshSat's own interface now: the Android and iOS apps' screens, colours, type and icons, drawn natively with GTK 4 and libadwaita, with night mode and the map, in place of the Bridge's web console in a web view.</p>
+      </description>
+    </release>
+    <release version="0.1.2" date="2026-09-28">
+      <description>
+        <p>The Bridge binary now carries its web interface (taken from the container image); 0.1.1's showed a blank page.</p>
+      </description>
+    </release>
     <release version="0.1.1" date="2026-09-28">
       <description>
         <p>The app no longer probes the daemon's API port, which threw the Bridge off its session every few seconds.</p>
