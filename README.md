@@ -49,10 +49,10 @@ flowchart LR
 
 | | State |
 |---|---|
-| The package installs with one command on a Mobian PinePhone Pro and starts the node, the watchdog and the Bridge | see the release notes of the first release |
-| The MeshSat icon in the app grid opens the Bridge's interface | see the release notes of the first release |
+| The package installs with one command on a Mobian PinePhone Pro and starts the node, the watchdog and the Bridge | **Yes**, 28 Sep 2026: `sudo apt install ./meshsat_0.1.1_arm64.deb`, exit 0, the three units active, `Final Tx power: 0 dBm`, the node's identity carried over; the 0.1.0 to 0.1.1 upgrade too |
+| The MeshSat icon in the app grid opens the Bridge's interface | The app runs in the phone's Phosh session with the Bridge's page loaded (started from the launcher entry over ssh, 28 Sep 2026); **not yet seen on the screen by a person** |
 | The node: texts both ways with a T-Deck at 0 dBm | **Yes**, 28 Sep 2026, on the bench of meshsat-lora-backplate |
-| The Bridge talks to the node over TCP | **Yes**, against a fake daemon in the Bridge's tests; on the phone: see the release notes |
+| The Bridge talks to the node over TCP | **Yes**, on the phone, 28 Sep 2026: a text sent through the Bridge's API was read on a T-Deck (`Received text msg from=0x52cb81e7`), and a text typed on the T-Deck reached the Bridge's message store through the daemon |
 | A text from the mesh reaches the Hub through the phone | **Not yet**: needs a Hub API key on the phone |
 | A text from the mesh reaches the satellite through the phone | **Not yet**: needs the RockBLOCK on USB-C |
 | Transmit above 0 dBm | **No**, a hardware limit of the back cover until its crystal is replaced by a TCXO |
