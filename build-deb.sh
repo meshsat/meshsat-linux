@@ -102,6 +102,7 @@ install -D -m 0644 "$HERE/docs/INSTALL.md" "$ROOT/usr/share/doc/meshsat/INSTALL.
 mkdir -p "$ROOT/DEBIAN"
 SIZE=$(du -sk "$ROOT" | cut -f1)
 sed -e "s/@VERSION@/$VERSION/" -e "s/@ARCH@/$ARCH/" -e "s/@SIZE@/$SIZE/" "$HERE/package/DEBIAN/control.in" > "$ROOT/DEBIAN/control"
+install -m 0755 "$HERE/package/DEBIAN/preinst" "$ROOT/DEBIAN/preinst"
 install -m 0755 "$HERE/package/DEBIAN/postinst" "$ROOT/DEBIAN/postinst"
 install -m 0755 "$HERE/package/DEBIAN/prerm" "$ROOT/DEBIAN/prerm"
 install -m 0755 "$HERE/package/DEBIAN/postrm" "$ROOT/DEBIAN/postrm"
@@ -110,4 +111,4 @@ install -m 0644 "$HERE/package/DEBIAN/conffiles" "$ROOT/DEBIAN/conffiles"
 OUT="$HERE/build/meshsat_${VERSION}_${ARCH}.deb"
 dpkg-deb --root-owner-group -Zxz --build "$ROOT" "$OUT" >/dev/null
 sha256sum "$OUT"
-say "$(du -h "$OUT" | cut -f1) $OUT"
+say "$(ls -l "$OUT" | awk '{printf "%.1f MB", $5/1048576}') $OUT"
