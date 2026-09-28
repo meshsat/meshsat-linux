@@ -3,26 +3,26 @@
 in three groups, and one page of cards per row. This edition: the node is the LoRa back
 cover driven by meshtasticd on this phone, the satellite modem is a RockBLOCK on USB-C, and
 there is no SMS row (the phone's own modem is not the app's)."""
-import subprocess
 import threading
 
 from gi.repository import Adw, GLib, Gtk
 
 from . import __version__ as VERSION
-from . import api, theme
+from . import api, system, theme
 from . import sos as sos_words
+from .model import words
 from .passes import PassesScreen
-from .widgets import Card, Chip, KeyValue, NavRow, SubHeader, clear, filled_button, group_title, hscroll, outlined_button, page, scroller, spacer, text, text_button, when
+from .screen import Screen, SubScreen
+from .widgets import Chip, KeyValue, NavRow, SubHeader, SwitchRow, clear, filled_button, group_title, hscroll, outlined_button, page, scroller, spacer, text, text_button, when
 
 # Meshtastic's LoRa config, as the Bridge relays it: protobuf field numbers of Config.LoRaConfig.
 REGIONS = {0: "Unset", 1: "US", 2: "EU_433", 3: "EU_868", 4: "CN", 5: "JP", 6: "ANZ", 7: "KR", 8: "TW", 9: "RU", 10: "IN", 11: "NZ_865", 12: "TH", 13: "LORA_24", 14: "UA_433", 15: "UA_868", 16: "MY_433", 17: "MY_919", 18: "SG_923"}
 PRESETS = {0: "LongFast", 1: "LongSlow", 2: "VeryLongSlow", 3: "MediumSlow", 4: "MediumFast", 5: "ShortSlow", 6: "ShortFast", 7: "LongModerate", 8: "ShortTurbo"}
 
 
-class SetupScreen(Gtk.Box):
+class SetupScreen(Screen):
     def __init__(self, app):
-        super().__init__(orientation=Gtk.Orientation.VERTICAL)
-        self.app = app
+        super().__init__(app)
         column = page(spacing=0, padded=False)
         title = text("Setup", "headline-medium")
         title.set_margin_start(theme.dp(16))
@@ -78,8 +78,10 @@ class SetupScreen(Gtk.Box):
             self.satellite.set_detail("Checking the modem", "amber")
         else:
             self.satellite.set_detail("No modem on this radio", "muted")
+        hub_state = (s.hub or {}).get("link") or ""
         if s.hub_configured():
-            self.hub.set_detail("Connected" if (s.hub or {}).get("bridge_id") else "Connecting", "green" if (s.hub or {}).get("bridge_id") else "amber")
+            # Until the Bridge tells the app about the link (B12) the row says "Connecting", never "Connected" on a guess.
+            self.hub.set_detail("Connected" if hub_state == "connected" else "Connecting", "green" if hub_state == "connected" else "amber")
         else:
             self.hub.set_detail("Not set up. Paste the Hub's QR code.", "muted")
         if s.sms_ready():
@@ -88,25 +90,8 @@ class SetupScreen(Gtk.Box):
             self.sms.set_detail(s.sms_reason() or "Not allowed yet", "muted")
 
 
-class Page(Gtk.Box):
-    """A sub-screen: the '<- Title' row and a column of cards 16 px apart."""
-
-    def __init__(self, app, title: str):
-        super().__init__(orientation=Gtk.Orientation.VERTICAL)
-        self.app = app
-        self.append(SubHeader(title, app.pop))
-        self.column = page(spacing=16)
-        self.append(scroller(self.column))
-
-    def card(self, title: str | None = None) -> Card:
-        card = Card(spacing=8)
-        if title:
-            card.append(text(title, "title-medium"))
-        self.column.append(card)
-        return card
-
-    def update(self, s: api.State) -> None:
-        pass
+# A sub-screen: the '<- Title' row and a column of cards 16 px apart (screen.SubScreen).
+Page = SubScreen
 
 
 class NodeScreen(Page):
@@ -145,7 +130,7 @@ class NodeScreen(Page):
         self.update(app.state)
 
     def start(self) -> None:
-        subprocess.Popen(["pkexec", "systemctl", "restart", "meshtasticd.service", "meshsat-bridge.service"])
+        system.privileged("systemctl", "restart", "meshtasticd.service", "meshsat-bridge.service")
         self.app.toast("Starting the node")
 
     def check_hardware(self) -> None:
@@ -266,7 +251,7 @@ class NodeScreen(Page):
             detail += "  (your node)"
         names.append(text(detail, "body-medium", theme.TEXT_SECONDARY, mono=True))
         row.append(names)
-        row.append(text_button("Connect", lambda: self.connect(dev)))
+        row.append(text_button("Connect", lambda: self.connect_node(dev)))
         return row
 
     def scan(self) -> None:
@@ -292,25 +277,25 @@ class NodeScreen(Page):
 
         threading.Thread(target=run, daemon=True).start()
 
-    def connect(self, dev: dict) -> None:
-        result = api.ble_connect(dev.get("address", ""))
-        if result and result.get("error"):
-            self.app.toast(result["error"])
-            return
+    def connect_node(self, dev: dict) -> None:  # not `connect`: that is the widget's own signal method
         self.devices = None
         self.app.toast(f"Connecting to {dev.get('name') or dev.get('address')}")
-        self.app.poller.poll_now()
+        self.update(self.app.state)
+
+        def done(answer: api.Answer) -> None:
+            if not answer.ok:
+                self.app.toast(answer.error or "The node could not be connected.")
+            self.app.poller.poll_now()
+
+        # The Bridge answers once the link is up or given up: up to 45 s, off the main loop.
+        self.call("/api/mesh/ble/connect", done, body={"address": dev.get("address", "")}, timeout=45.0)
 
     def disconnect(self) -> None:
-        result = api.ble_forget(bond=False)
-        self.app.toast(result.get("error") if result and result.get("error") else "Disconnected")
-        self.app.poller.poll_now()
+        self.call("/api/mesh/ble", lambda answer: (self.app.toast(answer.error if not answer.ok else "Disconnected"), self.app.poller.poll_now()), method="DELETE", timeout=15.0)
 
     def forget(self) -> None:
-        result = api.ble_forget(bond=True)
-        self.app.toast(result.get("error") if result and result.get("error") else "The node is forgotten")
         self.devices = None
-        self.app.poller.poll_now()
+        self.call("/api/mesh/ble?bond=1", lambda answer: (self.app.toast(answer.error if not answer.ok else "The node is forgotten"), self.app.poller.poll_now()), method="DELETE", timeout=15.0)
 
     def ask_pin(self, ble: dict) -> None:
         """The node shows a six-digit PIN ("Enter this code" on its screen); the Bridge's
@@ -334,13 +319,15 @@ class NodeScreen(Page):
             if len(pin) != 6:
                 self.app.toast("Enter 6 digits.")
                 return
-            result = api.ble_pair(pin)
-            if result and result.get("error"):
-                self.app.toast(result["error"])
-                return
             dialog.close()
             self.app.toast("Pairing")
-            self.app.poller.poll_now()
+
+            def done(answer: api.Answer) -> None:
+                if not answer.ok:
+                    self.app.toast(answer.error or "Pairing failed.")
+                self.app.poller.poll_now()
+
+            self.call("/api/mesh/ble/pair", done, body={"pin": pin}, timeout=10.0)
 
         buttons.append(text_button("Pair", pair))
         entry.connect("activate", lambda *_: pair())
@@ -373,12 +360,10 @@ class SatelliteScreen(Page):
         self.update(app.state)
 
     def poll_signal(self) -> None:
-        result = api.get("/api/iridium/signal/fast") or {}
-        self.app.toast(f"Signal {result.get('bars', 0)} of 5" if "bars" in result else "No modem")
+        self.call("/api/iridium/signal/fast", lambda a: self.app.toast(f"Signal {a.body.get('bars', 0)} of 5" if a.ok and isinstance(a.body, dict) and "bars" in a.body else "No modem"), method="GET", timeout=20.0)
 
     def check_mailbox(self) -> None:
-        result = api.post("/api/iridium/mailbox/check")
-        self.app.toast(result.get("error") or "Checking the satellite mailbox")
+        self.call("/api/iridium/mailbox/check", lambda a: self.app.toast(a.error if not a.ok else "Checking the satellite mailbox"), timeout=20.0)
 
     def update(self, s: api.State) -> None:
         clear(self.details)
@@ -415,8 +400,12 @@ class HubScreen(Page):
         self.status = text("Not set up", "body-large")
         status.append(self.status)
         status.append(spacer())
+        # "Use the Hub" (SettingsScreen.kt): the switch follows the settings; switching the
+        # link off by hand comes with the Hub page's rewrite (0.9.1), so until then it only shows.
         self.switch = Gtk.Switch()
         self.switch.set_valign(Gtk.Align.CENTER)
+        self.switch.set_sensitive(False)
+        self.switch.update_property([Gtk.AccessibleProperty.LABEL], ["Use the Hub"])
         status.append(self.switch)
         card.append(status)
         card.append(text("Paste the Hub's QR code", "body-medium", theme.TEXT_SECONDARY))
@@ -452,20 +441,30 @@ class HubScreen(Page):
         if not body or not body.get("url"):
             self.app.toast("That is not a Hub QR code")
             return
-        result = api.put("/api/routing/hub", body)
-        self.app.toast(result.get("error") or "Hub settings saved. Restarting the Bridge.")
-        subprocess.Popen(["pkexec", "systemctl", "restart", "meshsat-bridge.service"])
+
+        def saved(answer: api.Answer) -> None:
+            if not answer.ok:
+                self.app.toast(answer.error or "The Hub settings were not saved.")
+                return
+            self.app.toast("Hub settings saved. Restarting the Bridge.")
+            system.privileged("systemctl", "restart", "meshsat-bridge.service")
+
+        self.call("/api/routing/hub", saved, body=body, method="PUT")
 
     def test(self) -> None:
-        hub = api.get("/api/routing/hub") or {}
-        self.app.toast(f"Connected as {hub['bridge_id']}" if hub.get("bridge_id") else "Not connected")
+        def done(answer: api.Answer) -> None:
+            hub = answer.body if answer.ok and isinstance(answer.body, dict) else {}
+            link = hub.get("link") or ""
+            self.app.toast(f"Connected as {hub.get('bridge_id')}" if link == "connected" else "Set up, but the Bridge has not said whether the Hub answers" if hub.get("url") else "Not connected")
+
+        self.call("/api/routing/hub", done, method="GET")
 
     def update(self, s: api.State) -> None:
         hub = s.hub or {}
         for c in ("dot-green", "dot-amber", "dot-muted"):
             self.dot.remove_css_class(c)
         if hub.get("url"):
-            ok = bool(hub.get("bridge_id"))
+            ok = (hub.get("link") or "") == "connected"
             self.dot.add_css_class("dot-green" if ok else "dot-amber")
             self.status.set_text("Connected" if ok else "Connecting")
             self.switch.set_active(True)
@@ -551,14 +550,10 @@ class SafetyScreen(Page):
         self.add_contact = filled_button("Add this contact", self.add_a_contact)
         contacts.append(self.add_contact)
         timer = self.card("Check-in timer (dead man's switch)")
-        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
-        row.append(text("Enabled", "body-large"))
-        row.append(spacer())
-        self.enabled = Gtk.Switch()
-        self.enabled.set_valign(Gtk.Align.CENTER)
-        self.enabled.connect("state-set", self.set_enabled)
-        row.append(self.enabled)
-        timer.append(row)
+        # A poll moves the switch without posting anything back: every POST to the Bridge
+        # resets the timer, and opening this page must never count as a check-in.
+        self.enabled = SwitchRow("Enabled", self.set_enabled)
+        timer.append(self.enabled)
         choices = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
         self.timeouts = {}
         for minutes, label_text in ((30, "30 min"), (60, "1 hour"), (120, "2 hours"), (240, "4 hours"), (480, "8 hours")):
@@ -570,8 +565,7 @@ class SafetyScreen(Page):
         self.update(app.state)
 
     def cancel_sos(self) -> None:
-        api.post("/api/sos/cancel")
-        self.app.poller.poll_now()
+        self.call("/api/sos/cancel", lambda a: self.app.poller.poll_now())
 
     MAX_CONTACTS = 10  # as Android's EmergencyContact.MAX
 
@@ -595,16 +589,13 @@ class SafetyScreen(Page):
         self.app.set_contacts([c for c in self.app.state.contacts if c.get("phone") != phone])
         self.update(self.app.state)
 
-    def set_enabled(self, switch, state) -> bool:
+    def set_enabled(self, state: bool) -> None:
         current = self.app.state.deadman or {}
-        api.post("/api/deadman", {"enabled": bool(state), "timeout_min": current.get("timeout_min", 240)})
-        self.app.poller.poll_now()
-        return False
+        self.call("/api/deadman", lambda a: self.app.poller.poll_now(), body={"enabled": bool(state), "timeout_min": current.get("timeout_min", 240)})
 
     def set_timeout(self, minutes: int) -> None:
         current = self.app.state.deadman or {}
-        api.post("/api/deadman", {"enabled": current.get("enabled", False), "timeout_min": minutes})
-        self.app.poller.poll_now()
+        self.call("/api/deadman", lambda a: self.app.poller.poll_now(), body={"enabled": current.get("enabled", False), "timeout_min": minutes})
 
     def update(self, s: api.State) -> None:
         sos = s.sos or {}
@@ -681,15 +672,15 @@ class IntegrationsScreen(Page):
         self.rns_text = text("", "body-medium", theme.TEXT_SECONDARY, wrap=True)
         self.rns.append(self.rns_text)
         self.column.append(text("The Bridge on this phone carries these links; their settings live in its interface under Advanced.", "body-medium", theme.TEXT_SECONDARY, wrap=True))
-        self.update(app.state)
 
-    def update(self, s: api.State) -> None:
-        aprs = api.get("/api/aprs/status") or {}
-        self.aprs_text.set_text("Working" if aprs.get("connected") else "Off: no radio or TNC on this phone")
-        tak = api.get("/api/tak/enroll/status") or {}
-        self.tak_text.set_text("Enrolled" if tak.get("success") or tak.get("enrolled") else "Not set up")
-        rns = api.get("/api/rns/status") or {}
-        self.rns_text.set_text(f"Working, {rns.get('links', 0)} links" if rns.get("enabled") else "Off")
+    def on_show(self) -> None:
+        # Read once when the page comes on view (and every 30 s while it stays), off the main loop.
+        self.every(30, self.load)
+
+    def load(self) -> None:
+        self.fetch("/api/aprs/status", lambda a: self.aprs_text.set_text("Working" if a.ok and (a.body or {}).get("connected") else "Off: no radio or TNC on this phone"))
+        self.fetch("/api/tak/enroll/status", lambda a: self.tak_text.set_text("Enrolled" if a.ok and ((a.body or {}).get("success") or (a.body or {}).get("enrolled")) else "Not set up"))
+        self.fetch("/api/rns/status", lambda a: self.rns_text.set_text(f"Working, {words.count((a.body or {}).get('links', 0), 'link')}" if a.ok and (a.body or {}).get("enabled") else "Off"))
 
 
 class RadioScreen(Page):
@@ -699,18 +690,29 @@ class RadioScreen(Page):
         self.rows = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(0))
         self.card_box.append(self.rows)
         self.card_box.append(text("Transmit power is capped at 0 dBm on this radio: the back cover's crystal drifts above that and long frames are lost. Change region and channels with meshsat-node-channels.", "body-medium", theme.TEXT_SECONDARY, wrap=True))
+        self.config = None
         self.update(app.state)
+
+    def on_show(self) -> None:
+        self.fetch("/api/config", self.loaded)
+
+    def loaded(self, answer: api.Answer) -> None:
+        self.config = answer.body if answer.ok and isinstance(answer.body, dict) else {}
+        self.update(self.app.state)
 
     def update(self, s: api.State) -> None:
         clear(self.rows)
         if not s.mesh_connected():
             self.rows.append(text("Your phone is not connected to your node, so its settings cannot be read or changed.", "body-medium", theme.TEXT_SECONDARY, wrap=True))
             return
-        lora = (api.get("/api/config") or {}).get("config_6") or {}
+        if self.config is None:
+            self.rows.append(text("Reading the node's settings.", "body-medium", theme.TEXT_SECONDARY, wrap=True))
+            return
+        lora = self.config.get("config_6") or {}
         if not isinstance(lora, dict):
             lora = {}
         b = s.bridge or {}
-        channel = ((api.get("/api/config") or {}).get("channel_0") or {}).get("2", {})
+        channel = (self.config.get("channel_0") or {}).get("2", {})
         name = channel.get("3", "") if isinstance(channel, dict) else ""
         for k, v in (("Node", b.get("node_name") or "-"), ("Region", REGIONS.get(lora.get("7", 0), str(lora.get("7", "-")))), ("Preset", PRESETS.get(lora.get("2", 0), str(lora.get("2", "-")))),
                      ("Primary channel", name or "default"), ("Transmit power", f"0 dBm (capped; the node asks for {lora.get('10', '-')})"), ("Hops", str(lora.get("8", 3))), ("Firmware", b.get("firmware_version", ""))):
@@ -746,12 +748,12 @@ class AdvancedScreen(Page):
             self.app.push(BridgePage(self.app, title_text, route))
 
 
-class BridgePage(Gtk.Box):
+class BridgePage(Screen):
     """An expert page of the Bridge's own interface, inside the app. The Bridge's dashboard is
     the operator console of a MeshSat kit; here it serves the expert screens only."""
 
     def __init__(self, app, title: str, route: str):
-        super().__init__(orientation=Gtk.Orientation.VERTICAL)
+        super().__init__(app)
         self.append(SubHeader(title, app.pop))
         try:
             import gi
@@ -764,9 +766,6 @@ class BridgePage(Gtk.Box):
         except (ValueError, ImportError):
             self.append(text("The Bridge's interface needs WebKitGTK.", "body-medium", theme.TEXT_SECONDARY))
 
-    def update(self, s: api.State) -> None:
-        pass
-
 
 class NodeLogScreen(Page):
     def __init__(self, app):
@@ -776,21 +775,27 @@ class NodeLogScreen(Page):
         self.log = text("", "body-small", mono=True, wrap=True)
         self.log.set_selectable(True)
         self.column.append(self.log)
-        self.refresh()
-        GLib.timeout_add_seconds(5, self.refresh)
 
-    def refresh(self) -> bool:
-        try:
-            out = subprocess.run(["journalctl", "-u", "meshtasticd", "-n", "80", "--no-pager", "-o", "cat"], capture_output=True, text=True, timeout=5).stdout
-        except (OSError, subprocess.SubprocessError):
-            out = "Cannot read the node's log."
+    def on_show(self) -> None:
+        self.every(5, self.refresh)
+
+    def refresh(self) -> None:
+        # The journal is read off the main loop; the lines land on it, while the page is on view.
+        def run() -> None:
+            out = system.journal("meshtasticd", 80)
+            GLib.idle_add(lambda: self.show_lines(out) or False)
+
+        threading.Thread(target=run, daemon=True).start()
+
+    def show_lines(self, out: str) -> None:
+        if not self.alive:
+            return
         # The app's own asks for the name of a node the phone has no NodeInfo from.
         asks = self.app.state.name_requests
         if asks:
             lines = [f"{when(a['time'])} asked {a['node']} for its name: {a['outcome']}" for a in asks[-20:]]
             out = (out or "").rstrip() + "\n\n" + "\n".join(lines)
         self.log.set_text(out or "No lines yet.")
-        return self.get_root() is not None
 
 
 class AboutScreen(Page):

@@ -1,0 +1,18 @@
+{
+ "enabled": true,
+ "links": 0,
+ "paths": 0,
+ "stats": {
+  "AnnouncesRx": 0,
+  "AnnouncesTx": 23,
+  "Dropped": 0,
+  "Filtered": 0,
+  "Forwarded": 0,
+  "IFACViolations": 0,
+  "LinkTransit": 0,
+  "PathRequestsRx": 0,
+  "RxPackets": 0,
+  "TxPackets": 23
+ },
+ "transport_id": "57f70094a21f2a2886c1e831788cef97"
+}

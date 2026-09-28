@@ -6,6 +6,7 @@ import time
 from gi.repository import Gtk
 
 from . import api, theme
+from .model import words
 from .widgets import Card, Chip, ago, clear, filled_button, hscroll, outlined_button, page, scroller, text, text_button
 
 
@@ -115,15 +116,18 @@ class PeopleScreen(Gtk.Box):
     def update(self, s: api.State) -> None:
         others = s.others()
         recent = s.heard_recently(15)
-        self.heard.set_text(f"{len(others)} nodes heard, {recent} in the last 15 min")
+        self.heard.set_text(f"{words.count(len(others), 'node')} heard, {recent} in the last 15 min")
         if not others:
             self.empty.set_visible(True)
             self.table_box.set_visible(False)
+            # PeersScreen.kt:155-165: the words follow the node's state.
             if s.mesh_connected():
                 self.empty_title.set_text("Your node is listening.")
+                self.empty_text.set_text("People appear here as soon as they transmit on the mesh.")
                 self.connect_button.set_visible(False)
             else:
                 self.empty_title.set_text("Nobody heard yet.")
+                self.empty_text.set_text("People appear here when your MeshSat node hears them on the mesh.")
                 self.connect_button.set_visible(True)
             return
         self.empty.set_visible(False)
@@ -137,4 +141,5 @@ class PeopleScreen(Gtk.Box):
             dot = "green" if heard >= now - 900 else "muted"
             signal = f"{n.get('snr'):.1f} dB" if n.get("snr") else "-"
             battery = "USB" if (n.get("battery_level") or 0) > 100 else f"{n.get('battery_level')}%" if n.get("battery_level") else "-"
-            self.rows.append(self.row((n.get("long_name") or n.get("short_name") or n.get("user_id", "?"), signal, battery, ago(heard)), dot=dot, node=n))
+            # Peers.displayName: the long name, else "Node !id" until the node has told it.
+            self.rows.append(self.row((n.get("long_name") or n.get("short_name") or f"Node {n.get('user_id', '?')}", signal, battery, ago(heard)), dot=dot, node=n))

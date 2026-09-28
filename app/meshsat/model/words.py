@@ -1,0 +1,136 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""The words the app shows for its own machinery, as ui/Words.kt: one place, so a channel or a
+state is called the same thing on every screen. Internal ids (iridium_0, sms_0) and raw states
+(dead, retry) never reach the user: they read Satellite, SMS, "Gave up", "Waiting to retry"."""
+import time
+
+
+def channel(id_: str) -> str:
+    """An interface or channel id, as the user knows it."""
+    if id_.startswith("iridium9704"):
+        return "Satellite (RockBLOCK 9704)"
+    if id_.startswith("iridium"):
+        return "Satellite"
+    if id_.startswith("mesh"):
+        return "Mesh"
+    if id_.startswith("sms"):
+        return "SMS"
+    if "relay" in id_:  # before hub: the relay is a tunnel to another bridge, not the Hub itself
+        return "Hub relay"
+    if id_.startswith("hub"):
+        return "Hub"
+    if id_.startswith("mqtt"):
+        return "MQTT broker"
+    if id_.startswith("aprs"):
+        return "Ham radio"
+    if id_.startswith("tcp_rns") or id_.startswith("rns"):
+        return "Reticulum"
+    if not id_.strip():
+        return "Unknown"
+    return id_
+
+
+def transport(t: str) -> str:
+    """A message's transport field ("iridium", "mesh", "sms", ...), as the user knows it."""
+    low = (t or "").lower()
+    if low in ("iridium", "sbd", "iridium9704", "imt"):
+        return "Satellite"
+    if low in ("mesh", "meshtastic", "lora", "radio"):
+        return "Mesh"
+    if low in ("sms", "cellular"):
+        return "SMS"
+    if low in ("mqtt", "hub"):
+        return "Hub"
+    if low == "aprs":
+        return "Ham radio"
+    if low in ("reticulum", "rns"):
+        return "Reticulum"
+    if low == "tak":
+        return "TAK"
+    return t[:1].upper() + t[1:] if t else ""
+
+
+def transport_lane(t: str) -> str:
+    """The lane (the colour) of a transport: satellite, mesh, sms, hub, radio, or none."""
+    return {"Satellite": "satellite", "Mesh": "mesh", "SMS": "sms", "Hub": "hub", "Hub relay": "hub", "Ham radio": "radio"}.get(transport(t), "none")
+
+
+def channel_lane(id_: str) -> str:
+    """The lane (the colour) of a channel id."""
+    if id_.startswith("iridium"):
+        return "satellite"
+    if id_.startswith("mesh"):
+        return "mesh"
+    if id_.startswith("sms"):
+        return "sms"
+    if id_.startswith("mqtt") or id_.startswith("hub") or "relay" in id_:
+        return "hub"
+    if id_.startswith("aprs"):
+        return "radio"
+    return "none"
+
+
+def delivery_state(status: str) -> str:
+    """A delivery's status in the queue."""
+    return {"queued": "Waiting", "retry": "Waiting to retry", "held": "On hold until the link is back", "sending": "Sending", "sent": "Sent",
+            "delivered": "Delivered", "acked": "Delivered", "failed": "Failed", "dead": "Gave up", "expired": "Expired", "denied": "Blocked by a rule",
+            "cancelled": "Cancelled"}.get((status or "").lower(), (status[:1].upper() + status[1:]) if status else "")
+
+
+def delivery_tone(status: str) -> str:
+    """The colour of a delivery status: working (green), trying (amber), failed (red), or muted."""
+    low = (status or "").lower()
+    if low in ("sent", "delivered", "acked"):
+        return "green"
+    if low in ("queued", "retry", "held", "sending"):
+        return "amber"
+    if low in ("failed", "dead", "expired", "denied"):
+        return "red"
+    return "muted"
+
+
+def link_state(state: str) -> str:
+    """An interface's link state."""
+    return {"online": "Working", "connecting": "Connecting", "offline": "Off", "error": "Not working", "disabled": "Switched off"}.get(
+        (state or "").lower(), (state[:1].upper() + state[1:]) if state else "")
+
+
+def count(n: int, one: str, many: str | None = None) -> str:
+    """"1 message", "3 messages"."""
+    return f"{n} {one if n == 1 else (many or one + 's')}"
+
+
+def ago(epoch_s: float, now_s: float | None = None) -> str:
+    """A moment in the past, relative: "just now", "4 min ago", "2 h ago", "3 days ago"."""
+    if not epoch_s or epoch_s <= 0:
+        return "never"
+    now_s = time.time() if now_s is None else now_s
+    s = max(0, int(now_s - epoch_s))
+    if s < 45:
+        return "just now"
+    if s < 3600:
+        return f"{(s + 30) // 60} min ago"
+    if s < 86400:
+        return f"{s // 3600} h ago"
+    return count(s // 86400, "day") + " ago"
+
+
+def in_time(epoch_s: float, now_s: float | None = None) -> str:
+    """A moment ahead, relative: "now", "in 4 min", "in 2 h 10 min"."""
+    now_s = time.time() if now_s is None else now_s
+    s = int(epoch_s - now_s)
+    if s <= 30:
+        return "now"
+    if s < 3600:
+        return f"in {(s + 30) // 60} min"
+    return f"in {s // 3600} h {(s % 3600) // 60} min"
+
+
+def join_and(items: list) -> str:
+    """"a", "a and b", "a, b and c"."""
+    items = [str(i) for i in items if i]
+    if not items:
+        return ""
+    if len(items) == 1:
+        return items[0]
+    return ", ".join(items[:-1]) + " and " + items[-1]

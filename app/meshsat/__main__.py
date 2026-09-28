@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The app: the window every MeshSat app has (the status strip, the banners, the five tabs
 with their own stacks, the navigation bar), night mode as the colour matrix Android applies,
-and the few things the screens ask of it: push, pop, toast, copy, open a lane, pick a tab."""
+and the few things the screens ask of it: push, pop, toast, copy, open a route, pick a tab."""
 import json
 import os
 import subprocess
@@ -14,23 +14,23 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
-from . import __version__, api, theme  # noqa: E402
+from . import __version__, api, routes, store, theme, trace  # noqa: E402
 from .home import HomeScreen  # noqa: E402
 from .mapview import MapScreen  # noqa: E402
-from .messages import ChatScreen, MessagesScreen  # noqa: E402
+from .messages import ChatScreen, MessagesScreen, name_of  # noqa: E402
+from .model import words  # noqa: E402
 from .people import PeopleScreen  # noqa: E402
-from .passes import PassesScreen  # noqa: E402
-from .setup import (AboutScreen, AdvancedScreen, HubScreen, IntegrationsScreen, MapsScreen, MessagingScreen, NodeScreen, RadioScreen,  # noqa: E402
-                    SafetyScreen, SatelliteScreen, SetupScreen, SmsScreen, utc_clock)
+from .setup import SetupScreen, utc_clock  # noqa: E402
 from .widgets import Banner, Filtered, KeyValue, NavBar, StatusStrip, ago, filled_button, outlined_button, text  # noqa: E402
 
-APP_ID = "net.meshsat.Bridge"
-PREFS = os.path.join(GLib.get_user_config_dir(), "meshsat", "app.json")
+# The application id is the package's; a test instance takes its own so the two never meet.
+APP_ID = os.environ.get("MESHSAT_APP_ID", "net.meshsat.Bridge")
+TEST = os.environ.get("MESHSAT_APP_TEST") == "1"
 TABS = (("home", "Home", HomeScreen), ("messages", "Messages", MessagesScreen), ("map", "Map", MapScreen), ("people", "People", PeopleScreen), ("setup", "Setup", SetupScreen))
-# The Setup pages by name, for the `open` action (gapplication action net.meshsat.Bridge open "'node'").
-SCREENS = {"node": NodeScreen, "satellite": SatelliteScreen, "passes": PassesScreen, "hub": HubScreen, "sms": SmsScreen, "safety": SafetyScreen, "messaging": MessagingScreen,
-           "maps": MapsScreen, "integrations": IntegrationsScreen, "radio": RadioScreen, "advanced": AdvancedScreen, "about": AboutScreen}
 TABS_BY_KEY = {key for key, _title, _cls in TABS}
+
+GLib.set_prgname("net.meshsat.Bridge")
+GLib.set_application_name("MeshSat")
 
 
 class MeshSatApp(Adw.Application):
@@ -39,6 +39,7 @@ class MeshSatApp(Adw.Application):
         self.window = None
         self.poller = api.Poller(self.on_state)
         self.state = self.poller.state
+        self.prefs = store.Prefs()
         self.night = False
         self.tabs = {}
         self.current = "home"
@@ -47,10 +48,12 @@ class MeshSatApp(Adw.Application):
             action.connect("activate", handler)
             self.add_action(action)
             self.set_accels_for_action(f"app.{name}", [accel])
-        # With a string: pick a tab, or open a Setup page. Reachable over D-Bus, as any GApplication
-        # action (gapplication action net.meshsat.Bridge tab "'messages'"), which is how the parity
-        # captures are taken.
-        for name, handler in (("tab", lambda _a, p: self.select_tab(p.get_string())), ("open", lambda _a, p: self.open_screen(p.get_string()))):
+        # With a string: pick a tab, or open a route (Android's route strings, routes.py).
+        # Reachable over D-Bus, as any GApplication action (gapplication action net.meshsat.Bridge
+        # open "'setup/node'"), which is how the parity captures and the tests drive the app.
+        # `inspect "'/tmp/tree.json'"` writes every widget on view with its size, for the tests.
+        for name, handler in (("tab", lambda _a, p: self.select_tab(p.get_string())), ("open", lambda _a, p: self.open_route(p.get_string())),
+                              ("inspect", lambda _a, p: self.inspect(p.get_string()))):
             action = Gio.SimpleAction.new(name, GLib.VariantType.new("s"))
             action.connect("activate", handler)
             self.add_action(action)
@@ -62,28 +65,28 @@ class MeshSatApp(Adw.Application):
         theme.apply()
         # MeshSat outside its window (notifications, the satellite signal) runs with the
         # session; a session older than the package gets it with the app's first start.
-        try:
-            subprocess.Popen(["systemctl", "--user", "start", "meshsat-notify.service"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except OSError:
-            pass
-        prefs = self.prefs()
-        self.night = bool(prefs.get("night", False))
-        entered = prefs.get("position")
+        if not TEST:
+            try:
+                subprocess.Popen(["systemctl", "--user", "start", "meshsat-notify.service"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except OSError:
+                pass
+        self.night = bool(self.prefs.get("night", False))
+        entered = self.prefs.get("position")
         if isinstance(entered, list) and len(entered) == 2:
             self.state.entered = (float(entered[0]), float(entered[1]))
-        contacts = prefs.get("contacts")
+        contacts = self.prefs.get("contacts")
         if isinstance(contacts, list):
             self.state.contacts = [c for c in contacts if isinstance(c, dict) and c.get("phone")]
-        self.state.sos_name = str(prefs.get("sos_name", ""))
+        self.state.sos_name = str(self.prefs.get("sos_name", ""))
         self.locate()
 
     def set_contacts(self, contacts: list) -> None:
         self.state.contacts = contacts
-        self.save_prefs(contacts=contacts)
+        self.prefs.set(contacts=contacts)
 
     def set_sos_name(self, name: str) -> None:
         self.state.sos_name = name.strip()
-        self.save_prefs(sos_name=self.state.sos_name)
+        self.prefs.set(sos_name=self.state.sos_name)
 
     # The phone's own position, as Android asks the phone for its GPS: geoclue, which asks the
     # user once (Phosh's location dialog) and follows the Location switch in Settings.
@@ -126,7 +129,7 @@ class MeshSatApp(Adw.Application):
 
     def set_entered_position(self, lat: float, lon: float) -> None:
         self.state.entered = (lat, lon)
-        self.save_prefs(position=[lat, lon])
+        self.prefs.set(position=[lat, lon])
 
     def do_activate(self):
         if self.window is not None:
@@ -149,29 +152,14 @@ class MeshSatApp(Adw.Application):
 
     def do_shutdown(self):
         self.poller.stop()
+        self.prefs.flush()
         Adw.Application.do_shutdown(self)
-
-    def prefs(self) -> dict:
-        try:
-            with open(PREFS, encoding="utf-8") as handle:
-                return json.load(handle)
-        except (OSError, ValueError):
-            return {}
-
-    def save_prefs(self, **values) -> None:
-        prefs = self.prefs()
-        prefs.update(values)
-        try:
-            os.makedirs(os.path.dirname(PREFS), exist_ok=True)
-            with open(PREFS, "w", encoding="utf-8") as handle:
-                json.dump(prefs, handle)
-        except OSError:
-            pass
 
     # The window: strip, banners, the tab stacks, the bar. The same on a 360 px phone and a desktop.
     def build_window(self) -> None:
         self.window = Adw.ApplicationWindow(application=self, title="MeshSat", default_width=360, default_height=720)
         self.window.set_size_request(320, 480)
+        self.window.connect("notify::is-active", lambda *_: self.poller.set_pace(self.window.is_active()))
         column = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         self.strip = StatusStrip()
         column.append(self.strip)
@@ -201,39 +189,45 @@ class MeshSatApp(Adw.Application):
         self.window.set_content(self.toasts)
         self.select_tab("home")
         if os.environ.get("MESHSAT_APP_DEBUG"):
-            GLib.timeout_add_seconds(5, self.debug_sizes)
+            GLib.timeout_add_seconds(5, lambda: self.inspect("") or True)
 
-    def debug_sizes(self) -> bool:
-        """MESHSAT_APP_DEBUG=1: every 5 s, the window's size and each widget on view whose
-        minimum width is more than the screen affords, on stderr: what widens the window."""
-        surface = self.window.get_surface()
-        print(f"-- {self.current}: window {self.window.get_width()}x{self.window.get_height()}, scale {self.window.get_scale_factor()}, "
-              f"surface {surface.get_width() if surface else 0}x{surface.get_height() if surface else 0}", file=sys.stderr)
-        limit = self.window.get_width() - 40
+    def inspect(self, path: str) -> bool:
+        """Every widget on view, with its class, CSS classes, allocation and minimum width, as
+        JSON to `path` (stderr when empty): what AT-SPI cannot tell, for the tests and for
+        finding what widens the window."""
+        if self.window is None:
+            return False
+        out = {"route": self.current, "window": [self.window.get_width(), self.window.get_height()], "scale": self.window.get_scale_factor(), "widgets": []}
 
-        def walk(widget, depth):
-            if not widget.get_visible():
+        def walk(widget, depth, scrolls):
+            if not widget.get_visible() or not widget.get_mapped():
                 return
             minimum, natural, _b1, _b2 = widget.measure(Gtk.Orientation.HORIZONTAL, -1)
-            if minimum > limit or depth < 3:
-                print(f"{'  ' * depth}{type(widget).__name__} .{' .'.join(widget.get_css_classes()) or '-'} allocated {widget.get_width()} min {minimum} nat {natural}", file=sys.stderr)
+            label = widget.get_label() if isinstance(widget, Gtk.Label) else None
+            # Inside a row that slides sideways (hscroll) a wide child is by design: it never widens the window.
+            if isinstance(widget, Gtk.ScrolledWindow) and widget.get_policy()[0] != Gtk.PolicyType.NEVER:
+                scrolls = True
+            out["widgets"].append({"depth": depth, "type": type(widget).__name__, "css": widget.get_css_classes(), "width": widget.get_width(), "height": widget.get_height(),
+                                   "min": minimum, "natural": natural, "text": label, "scrolls": scrolls})
             child = widget.get_first_child()
             while child is not None:
-                walk(child, depth + 1)
+                walk(child, depth + 1, scrolls)
                 child = child.get_next_sibling()
 
-        walk(self.window, 0)
-        screen = self.visible_screen()
-        if hasattr(screen, "map"):  # the map and everything around it, whatever their size
-            def walk_all(widget, depth):
-                minimum, natural, _b1, _b2 = widget.measure(Gtk.Orientation.HORIZONTAL, -1)
-                print(f"{'  ' * depth}{type(widget).__name__} .{' .'.join(widget.get_css_classes()) or '-'} allocated {widget.get_width()}x{widget.get_height()} min {minimum} nat {natural} visible {widget.get_visible()} hexpand {widget.get_hexpand()}", file=sys.stderr)
-                child = widget.get_first_child()
-                while child is not None and depth < 8:
-                    walk_all(child, depth + 1)
-                    child = child.get_next_sibling()
-            walk_all(screen, 0)
-        return True
+        walk(self.window, 0, False)
+        try:
+            if path:
+                with open(path + ".tmp", "w", encoding="utf-8") as handle:
+                    json.dump(out, handle)
+                os.replace(path + ".tmp", path)
+            else:
+                limit = self.window.get_width() - 40
+                for w in out["widgets"]:
+                    if (w["min"] > limit and not w["scrolls"]) or w["depth"] < 3:
+                        print(f"{'  ' * w['depth']}{w['type']} .{' .'.join(w['css']) or '-'} allocated {w['width']} min {w['min']} nat {w['natural']}", file=sys.stderr)
+        except OSError:
+            pass
+        return False
 
     # What the screens ask of the app
     def visible_screen(self):
@@ -246,10 +240,12 @@ class MeshSatApp(Adw.Application):
         self.current = key
         self.stack.set_visible_child_name(key)
         self.navbar.set_active(key)
+        trace.event("route", route=key)
         if self.state.polled_at:
             self.visible_screen().update(self.state)
 
     def push(self, screen: Gtk.Widget, title: str = "MeshSat") -> None:
+        trace.event("route", route=getattr(screen, "route", title))
         self.tabs[self.current].push(Adw.NavigationPage.new(screen, title))
 
     def pop(self) -> None:
@@ -262,32 +258,59 @@ class MeshSatApp(Adw.Application):
             nav.pop_to_page(stack.get_item(0))
 
     def open_lane(self, lane: str) -> None:
-        self.open_screen({"mesh": "node", "satellite": "satellite", "hub": "hub", "sms": "sms"}.get(lane, ""))
+        """A tap on a Home lane (HomeLanes.kt): the satellite lane opens the passes once the
+        modem is there, the mesh lane the people once the node is up, else the setup page."""
+        s = self.state
+        if lane == "satellite" and s.modem_connected():
+            self.open_route("passes")
+        elif lane == "mesh" and s.mesh_connected():
+            self.open_route("people")
+        else:
+            self.open_route(routes.LANES.get(lane, "setup"))
 
     def open_screen(self, name: str) -> None:
-        if name in TABS_BY_KEY:
-            self.select_tab(name)
+        self.open_route(name)
+
+    def open_route(self, name: str) -> None:
+        """Android's route strings: a tab, "chat/<peer>", or a page under the tab that owns it."""
+        route = routes.resolve(name)
+        if route in TABS_BY_KEY:
+            self.select_tab(route)
             self.pop_to_root()
             return
-        if name == "everyone":  # the mesh's broadcast chat
+        if route.startswith("chat/"):
+            peer = route[5:]
             self.select_tab("messages")
             self.pop_to_root()
-            self.push(ChatScreen(self, "!ffffffff", "Everyone on the mesh", "mesh"))
+            if peer == api.EVERYONE:
+                self.push(ChatScreen(self, api.EVERYONE, "Everyone on the mesh", "mesh"), "Everyone on the mesh")
+            elif peer == "satellite":
+                self.push(ChatScreen(self, "satellite", "Satellite", "satellite"), "Satellite")
+            elif peer.startswith("sms:"):
+                self.push(ChatScreen(self, peer, self.state.contact_name(peer[4:]), "sms"), "SMS")
+            else:
+                self.push(ChatScreen(self, peer, name_of(peer, self.state), "mesh"), name_of(peer, self.state))
             return
-        screen = SCREENS.get(name)
+        screen = routes.screen_of(route)
         if screen is None:
             return
-        self.select_tab("setup")
+        self.select_tab(routes.tab_of(route))
         self.pop_to_root()
-        self.push(screen(self))
+        page = screen(self)
+        page.route = route
+        self.push(page, getattr(page, "title", "MeshSat"))
 
     def toggle_night(self) -> None:
         self.night = not self.night
         self.filter.on = self.night
         self.filter.queue_draw()
-        self.save_prefs(night=self.night)
+        self.prefs.set(night=self.night)
+        screen = self.visible_screen()
+        if hasattr(screen, "night_changed"):
+            screen.night_changed(self.night)
 
     def toast(self, message: str) -> None:
+        trace.event("toast", text=message)
         toast = Adw.Toast.new(message)
         toast.set_timeout(3)
         self.toasts.add_toast(toast)
@@ -310,7 +333,7 @@ class MeshSatApp(Adw.Application):
         box.append(text(node.get("user_id", ""), "body-medium", theme.TEXT_SECONDARY, mono=True))
         battery = node.get("battery_level") or 0
         position = f"{node['latitude']:.5f}, {node['longitude']:.5f}" if node.get("latitude") else "Unknown"
-        for k, v in (("Hardware", node.get("hw_model_name") or "-"), ("Signal", f"{node['snr']:.1f} dB" if node.get("snr") else "-"),
+        for k, v in (("Hardware", node.get("hw_model_name") or "-"), ("Signal", signal_words(node)),
                      ("Battery", "USB" if battery > 100 else f"{battery}%" if battery else "-"), ("Position", position), ("Last heard", ago(node.get("last_heard")))):
             box.append(KeyValue(k, v, mono=k in ("Position",)))
         buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(12))
@@ -318,9 +341,7 @@ class MeshSatApp(Adw.Application):
 
         def message() -> None:
             dialog.close()
-            self.select_tab("messages")
-            self.pop_to_root()
-            self.push(ChatScreen(self, node.get("user_id"), name, "mesh"))
+            self.open_route("chat/" + node.get("user_id", ""))
 
         def show() -> None:
             dialog.close()
@@ -338,41 +359,38 @@ class MeshSatApp(Adw.Application):
         dialog.present(self.window)
 
     def on_banner(self, kind: str) -> None:
-        if kind == "sos":
-            self.select_tab("setup")
-            self.pop_to_root()
-            self.push(SafetyScreen(self))
-        else:
-            self.open_lane("mesh")
+        """The SOS banner opens the SOS screen, the node banner the node's page (NodeLinkBanner.kt)."""
+        self.open_route("sos" if kind == "sos" else "setup/node")
 
     # Every poll: the strip, the banners, the screen on view
     def on_state(self, s: api.State) -> bool:
         self.state = s
         # While this window is the one in front, the notifier keeps quiet about new texts.
-        flag = os.path.join(GLib.get_user_runtime_dir(), "meshsat-app-active")
-        try:
-            if self.window is not None and self.window.is_active():
-                with open(flag, "w", encoding="utf-8"):
-                    pass
-            elif os.path.exists(flag):
-                os.remove(flag)
-        except OSError:
-            pass
-        own = s.own_node() or {}
+        if not TEST:
+            flag = os.path.join(GLib.get_user_runtime_dir(), "meshsat-app-active")
+            try:
+                if self.window is not None and self.window.is_active():
+                    with open(flag, "w", encoding="utf-8"):
+                        pass
+                elif os.path.exists(flag):
+                    os.remove(flag)
+            except OSError:
+                pass
+        bars = (s.signal or {}).get("bars", 0)
         if s.modem_connected():
-            self.strip.set_lane("satellite", "working", f"{(s.signal or {}).get('bars', 0)}/5")
+            self.strip.set_lane("satellite", "working", f"{bars}/5", f"Satellite signal {bars} of 5")
         elif s.modem and s.modem.get("port") not in ("", "supervisor", None):
-            self.strip.set_lane("satellite", "trying")
+            self.strip.set_lane("satellite", "trying", "", "Satellite not connected")
         else:
-            self.strip.set_lane("satellite", "off")
+            self.strip.set_lane("satellite", "off", "", "Satellite not connected")
         if s.mesh_connected():
-            self.strip.set_lane("mesh", "working", str(len(s.others())))
+            self.strip.set_lane("mesh", "working", str(len(s.others())), f"Mesh {words.count(len(s.others()), 'node')}")
         elif s.node_service or s.bridge_service:
-            self.strip.set_lane("mesh", "trying")
+            self.strip.set_lane("mesh", "trying", "", "Mesh not connected")
         else:
-            self.strip.set_lane("mesh", "off")
-        hub = s.hub or {}
-        self.strip.set_lane("hub", "working" if hub.get("bridge_id") else "trying" if hub.get("url") else "off")
+            self.strip.set_lane("mesh", "off", "", "Mesh not connected")
+        hub_state, _detail = hub_lane(s)
+        self.strip.set_lane("hub", hub_state)
         self.strip.set_lane("sms", "working" if s.sms_ready() else "off")
         self.strip.set_lane("location", "working" if s.position() else "off")
 
@@ -401,6 +419,33 @@ class MeshSatApp(Adw.Application):
         if not getattr(self, "_opened", True):
             GLib.idle_add(self.open_window)
         return False
+
+
+def hub_lane(s: api.State) -> tuple:
+    """The Hub lane's state and words (HomeLanes.kt:217-222). The Bridge tells the app its Hub
+    settings, not yet whether the link is up (MESHSAT Bridge change B12): with settings and no
+    word on the link it is "trying", never "working" on a guess."""
+    hub = s.hub or {}
+    if not s.bridge or not hub.get("url"):
+        return "off", "Scan the Hub's QR code to connect this phone."
+    link = hub.get("link") or hub.get("state") or ""
+    if link == "connected":
+        return "working", f"Connected as {hub.get('bridge_id') or ''}."
+    if link == "error":
+        return "failed", "Cannot reach the Hub. It keeps trying by itself."
+    if link == "disconnected":
+        return "trying", "Not connected. It keeps trying by itself."
+    return "trying", "Connecting to the Hub."
+
+
+def signal_words(node: dict) -> str:
+    """A node's signal as NodeDetailSheet shows it: the RSSI in dBm, with the SNR beside it."""
+    rssi, snr = node.get("rssi"), node.get("snr")
+    if rssi:
+        return f"{rssi} dBm" + (f", SNR {snr:.1f} dB" if snr else "")
+    if snr:
+        return f"SNR {snr:.1f} dB"
+    return "-"
 
 
 def main() -> int:

@@ -11,83 +11,127 @@ import datetime
 import json
 import os
 import re
-import subprocess
 import threading
 import time
 import urllib.error
 import urllib.request
 
+from . import store, system, trace
+
 try:
     from gi.repository import GLib
-except ImportError:  # the unit tests, on a machine without GTK
+except (ImportError, ValueError):  # the unit tests, on a machine without GTK
     GLib = None
 
 
 def state_dir() -> str:
     """Where this app keeps what it records (XDG state)."""
-    if GLib is not None:
-        return GLib.get_user_state_dir()
-    return os.environ.get("XDG_STATE_HOME") or os.path.join(os.path.expanduser("~"), ".local", "state")
+    return store.state_dir()
 
 
 BRIDGE = os.environ.get("MESHSAT_APP_BRIDGE", "http://127.0.0.1:6050")
 STATUS_PATH = os.environ.get("MESHSAT_APP_STATUS", "/run/meshsat-node/status")
-# What this app sent, one JSON record per line: the Bridge keeps a sent mesh text only in its
-# packet feed (in memory, gone at its next start), never in the message store, so the app keeps
-# its own record, as the Android app keeps its own database.
-SENT_LOG = os.path.join(state_dir(), "meshsat", "sent.jsonl")
 EVERYONE = "!ffffffff"
 
 
-def get(path: str, timeout: float = 2.0):
-    """A JSON answer of the Bridge, or None when it does not answer."""
+class Answer:
+    """One answer of the Bridge: `status` (0 when it did not answer at all), `body` (the JSON,
+    or None), `error` (the Bridge's own words, or the reason there was no answer)."""
+
+    __slots__ = ("status", "body", "error")
+
+    def __init__(self, status: int = 0, body=None, error: str | None = None):
+        self.status, self.body, self.error = status, body, error
+
+    @property
+    def ok(self) -> bool:
+        return 200 <= self.status < 300
+
+    @property
+    def down(self) -> bool:
+        """No answer at all: the Bridge is not running, or not yet."""
+        return self.status == 0
+
+    def __repr__(self) -> str:
+        return f"Answer({self.status}, error={self.error!r})"
+
+
+def request(method: str, path: str, body: dict | None = None, timeout: float = 8.0) -> Answer:
+    """One call to the Bridge, on the calling thread."""
+    data = json.dumps(body or {}).encode() if method != "GET" else None
+    req = urllib.request.Request(BRIDGE + path, data=data, headers={"Content-Type": "application/json"} if data is not None else {}, method=method)
+    started = time.time()
     try:
-        with urllib.request.urlopen(BRIDGE + path, timeout=timeout) as response:
-            return json.load(response)
-    except (OSError, ValueError, urllib.error.URLError):
-        return None
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            raw = response.read()
+            answer = Answer(response.status, json.loads(raw) if raw.strip() else None)
+    except urllib.error.HTTPError as error:
+        try:
+            parsed = json.load(error)
+        except ValueError:
+            parsed = None
+        words = parsed.get("error") if isinstance(parsed, dict) and parsed.get("error") else f"HTTP {error.code}"
+        answer = Answer(error.code, parsed, str(words))
+    except ValueError:
+        answer = Answer(200, None, "The Bridge answered something that is not JSON.")
+    except (OSError, urllib.error.URLError) as error:
+        answer = Answer(0, None, f"The Bridge is not answering: {getattr(error, 'reason', error)}")
+    trace.event("http", method=method, path=path, status=answer.status, ms=int((time.time() - started) * 1000), error=answer.error)
+    return answer
+
+
+def fetch(path: str, on_done, method: str = "GET", body: dict | None = None, timeout: float = 8.0) -> None:
+    """A call off the main loop; `on_done(answer)` on it (straight from the thread when there
+    is no main loop, as in the unit tests)."""
+    def run() -> None:
+        answer = request(method, path, body, timeout)
+        if GLib is not None:
+            GLib.idle_add(lambda: on_done(answer) or False)
+        else:
+            on_done(answer)
+
+    threading.Thread(target=run, daemon=True).start()
+
+
+def get(path: str, timeout: float = 2.0):
+    """A JSON answer of the Bridge, or None when it does not answer or answers with an error."""
+    answer = request("GET", path, timeout=timeout)
+    return answer.body if answer.ok else None
 
 
 def post(path: str, body: dict | None = None, timeout: float = 8.0, method: str = "POST"):
-    data = json.dumps(body or {}).encode()
-    request = urllib.request.Request(BRIDGE + path, data=data, headers={"Content-Type": "application/json"}, method=method)
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            return json.load(response)
-    except urllib.error.HTTPError as error:
-        try:
-            return json.load(error)
-        except ValueError:
-            return {"error": str(error)}
-    except (OSError, ValueError, urllib.error.URLError) as error:
-        return {"error": str(error)}
+    """The Bridge's JSON answer; on any failure a dict with `error` in the Bridge's own words,
+    or the reason it did not answer."""
+    answer = request(method, path, body, timeout)
+    if answer.ok:
+        return answer.body if answer.body is not None else {}
+    if isinstance(answer.body, dict) and answer.body.get("error"):
+        return answer.body
+    return {"error": answer.error or f"HTTP {answer.status}"}
 
 
 def put(path: str, body: dict | None = None, timeout: float = 8.0):
     return post(path, body, timeout, method="PUT")
 
 
+def delete(path: str, timeout: float = 8.0):
+    return post(path, None, timeout, method="DELETE")
+
+
+# The texts this app sent, as the Android app keeps its own database (store.SentLog).
+sent_log = store.SentLog()
+
+
 def record_sent(text: str, to: str | None, lane: str, me: str | None) -> dict:
     """A text this app just sent, in the shape of the Bridge's stored messages, appended to
     the sent log."""
-    record = {"id": -int(time.time() * 1000), "from_node": me or "", "to_node": to or EVERYONE, "portnum": 1, "portnum_name": "TEXT_MESSAGE_APP",
-              "decoded_text": text, "rx_time": int(time.time()), "direction": "tx", "transport": {"satellite": "iridium", "sms": "sms"}.get(lane, "radio"),
-              "delivery_status": "sent", "local": True}
-    try:
-        os.makedirs(os.path.dirname(SENT_LOG), exist_ok=True)
-        with open(SENT_LOG, "a", encoding="utf-8") as handle:
-            handle.write(json.dumps(record) + "\n")
-    except OSError:
-        pass
+    record = store.sent_record(text, to, lane, me, EVERYONE)
+    sent_log.append(record)
     return record
 
 
 def read_sent() -> list:
-    try:
-        with open(SENT_LOG, encoding="utf-8") as handle:
-            return [json.loads(line) for line in handle if line.strip()]
-    except (OSError, ValueError):
-        return []
+    return sent_log.read()
 
 
 def packet_texts(packets: list, me: str | None) -> list:
@@ -172,22 +216,12 @@ NAME_FIELDS = ("num", "long_name", "short_name", "hw_model", "hw_model_name")
 
 
 def read_names() -> dict:
-    try:
-        with open(NODES_CACHE, encoding="utf-8") as handle:
-            data = json.load(handle)
-        return data if isinstance(data, dict) else {}
-    except (OSError, ValueError):
-        return {}
+    data = store.read_json(NODES_CACHE, {})
+    return data if isinstance(data, dict) else {}
 
 
 def write_names(names: dict) -> None:
-    try:
-        os.makedirs(os.path.dirname(NODES_CACHE), exist_ok=True)
-        with open(NODES_CACHE + ".tmp", "w", encoding="utf-8") as handle:
-            json.dump(names, handle)
-        os.replace(NODES_CACHE + ".tmp", NODES_CACHE)
-    except OSError:
-        pass
+    store.write_json(NODES_CACHE, names)
 
 
 def remember_names(nodes: list, names: dict, now: float | None = None) -> bool:
@@ -309,11 +343,7 @@ def check_hardware() -> str | None:
     """Asks the device to look for its node again (the cover put on or taken off): starts
     meshsat-hardware.service, which polkit allows the person at the screen. None when it
     worked, else the reason."""
-    try:
-        run = subprocess.run(["systemctl", "start", "meshsat-hardware.service"], capture_output=True, text=True, timeout=20)
-    except (OSError, subprocess.SubprocessError) as error:
-        return str(error)
-    return None if run.returncode == 0 else (run.stderr.strip() or f"systemctl exited {run.returncode}")
+    return system.start_unit("meshsat-hardware.service")
 
 
 # The node over Bluetooth: the Bridge scans, pairs, connects and remembers (MESHSAT-1390); the
@@ -341,18 +371,21 @@ def ble_forget(bond: bool = False):
 
 
 def unit_active(unit: str) -> bool:
-    try:
-        return subprocess.run(["systemctl", "is-active", "--quiet", unit], timeout=3).returncode == 0
-    except (OSError, subprocess.SubprocessError):
-        return False
+    return system.unit_active(unit)
 
 
 def watchdog_status() -> dict:
     try:
         with open(STATUS_PATH, encoding="utf-8") as handle:
-            return json.load(handle)
+            data = json.load(handle)
+        return data if isinstance(data, dict) else {}
     except (OSError, ValueError):
         return {}
+
+
+# What the Bridge answers about itself and its links; cleared when it stops answering, so no
+# lane keeps saying "ready" about a modem or a SIM nobody can reach.
+LIVE = ("modem", "signal", "hub", "sos", "deadman", "keys", "cellular", "message_stats", "ble")
 
 
 class State:
@@ -417,15 +450,15 @@ class State:
         return bool(self.bridge and self.bridge.get("connected"))
 
     def modem_connected(self) -> bool:
-        return bool(self.modem and self.modem.get("connected"))
+        return bool(self.bridge and self.modem and self.modem.get("connected"))
 
     def hub_configured(self) -> bool:
-        return bool(self.hub and self.hub.get("url"))
+        return bool(self.bridge and self.hub and self.hub.get("url"))
 
     def sms_ready(self) -> bool:
-        """The SIM can send: a modem, a SIM in it, and a network."""
+        """The SIM can send: the Bridge answering, a modem, a SIM in it, and a network."""
         c = self.cellular or {}
-        return bool(c.get("connected")) and c.get("sim_state") == "READY" and str(c.get("registration", "")).startswith("registered")
+        return bool(self.bridge) and bool(c.get("connected")) and c.get("sim_state") == "READY" and str(c.get("registration", "")).startswith("registered")
 
     def sms_reason(self) -> str | None:
         """Why SMS cannot go, in the words the Android app uses for its own reasons; None when it can."""
@@ -476,16 +509,72 @@ class State:
         return sum(1 for n in self.others() if (n.get("last_heard") or 0) >= cutoff)
 
 
-class Poller:
-    """Polls the Bridge every few seconds on a thread; `on_update(state)` runs on the main loop."""
+def poll_state(s: "State", names: dict, asker: "NameAsker") -> "State":
+    """One poll of everything the screens show, into `s`, on the calling thread: pure of GTK,
+    so the unit tests run it against a scripted Bridge."""
+    bridge = get("/api/status")
+    s.bridge = bridge
+    if bridge is None:
+        for field in LIVE:
+            setattr(s, field, None)
+        s.sms = []
+    else:
+        nodes = (get("/api/nodes") or {}).get("nodes") or []
+        if remember_names(nodes, names):
+            write_names(names)
+        s.nodes = name_nodes(nodes, names)
+        stored = (get("/api/messages?limit=200") or {}).get("messages") or []
+        me = bridge.get("node_id")
+        sent = read_sent()
+        packets = (get("/api/packets?limit=200") or {}).get("packets") or []
+        s.messages = merge_messages(stored, sent, packet_texts(packets, me))
+        s.last_tx = max(last_transmission(packets, sent), s.last_tx)
+        candidates = s.nodes + recent_senders(s.messages, s.nodes, names)
+        for _node_id, outcome in asker.ask(candidates, me, s.last_tx):
+            if outcome == "nodeinfo request sent":
+                s.last_tx = time.time()
+        s.name_requests = asker.log
+        s.message_stats = get("/api/messages/stats")
+        s.modem = get("/api/iridium/modem")
+        s.signal = get("/api/iridium/signal")
+        s.hub = get("/api/routing/hub")
+        s.sos = get("/api/sos/status")
+        s.deadman = get("/api/deadman")
+        s.keys = get("/api/keys/stats")
+        s.cellular = get("/api/cellular/status")
+        sms = get("/api/cellular/sms?limit=200")
+        s.sms = sms if isinstance(sms, list) else []
+    s.hardware = hardware()
+    if bridge is not None and s.node_mode() == "bluetooth":
+        s.ble = ble_status()
+    s.node_service = unit_active("meshtasticd.service")
+    s.bridge_service = unit_active("meshsat-bridge.service")
+    # The radio watchdog watches the cover; its last verdict means nothing to a node over Bluetooth.
+    s.watchdog = watchdog_status() if s.node_mode() == "cover" else {}
+    if s.mesh_connected():
+        s.unreachable_since = None
+    elif s.unreachable_since is None:
+        s.unreachable_since = time.time()
+    s.polled_at = time.time()
+    return s
 
-    def __init__(self, on_update, interval: float = 4.0):
+
+class Poller:
+    """Polls the Bridge every few seconds on one worker thread; `on_update(state)` runs on the
+    main loop. `poll_now()` wakes the worker (never a second thread on the same state); the
+    pace slows while the window is not in front."""
+
+    FRONT = float(os.environ.get("MESHSAT_APP_POLL", "4"))
+    BEHIND = max(FRONT, 15.0)
+
+    def __init__(self, on_update, interval: float | None = None):
         self.on_update = on_update
-        self.interval = interval
+        self.interval = interval or self.FRONT
         self.state = State()
         self.names = read_names()
         self.asker = NameAsker()
         self._stop = threading.Event()
+        self._wake = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True)
 
     def start(self):
@@ -493,55 +582,23 @@ class Poller:
 
     def stop(self):
         self._stop.set()
+        self._wake.set()
 
     def poll_now(self):
-        threading.Thread(target=self._poll_once, daemon=True).start()
+        self._wake.set()
+
+    def set_pace(self, in_front: bool) -> None:
+        self.interval = self.FRONT if in_front else self.BEHIND
 
     def _run(self):
         while not self._stop.is_set():
+            self._wake.clear()
             self._poll_once()
-            self._stop.wait(self.interval)
+            self._wake.wait(self.interval)
 
     def _poll_once(self):
-        s = self.state
-        bridge = get("/api/status")
-        s.bridge = bridge
-        if bridge is not None:
-            nodes = (get("/api/nodes") or {}).get("nodes") or []
-            if remember_names(nodes, self.names):
-                write_names(self.names)
-            s.nodes = name_nodes(nodes, self.names)
-            stored = (get("/api/messages?limit=200") or {}).get("messages") or []
-            me = bridge.get("node_id")
-            sent = read_sent()
-            packets = (get("/api/packets?limit=200") or {}).get("packets") or []
-            s.messages = merge_messages(stored, sent, packet_texts(packets, me))
-            s.last_tx = max(last_transmission(packets, sent), s.last_tx)
-            candidates = s.nodes + recent_senders(s.messages, s.nodes, self.names)
-            for node_id, outcome in self.asker.ask(candidates, me, s.last_tx):
-                if outcome == "nodeinfo request sent":
-                    s.last_tx = time.time()
-            s.name_requests = self.asker.log
-            s.message_stats = get("/api/messages/stats")
-            s.modem = get("/api/iridium/modem")
-            s.signal = get("/api/iridium/signal")
-            s.hub = get("/api/routing/hub")
-            s.sos = get("/api/sos/status")
-            s.deadman = get("/api/deadman")
-            s.keys = get("/api/keys/stats")
-            s.cellular = get("/api/cellular/status")
-            sms = get("/api/cellular/sms?limit=200")
-            s.sms = sms if isinstance(sms, list) else []
-        s.hardware = hardware()
-        if bridge is not None and s.node_mode() == "bluetooth":
-            s.ble = ble_status()
-        s.node_service = unit_active("meshtasticd.service")
-        s.bridge_service = unit_active("meshsat-bridge.service")
-        # The radio watchdog watches the cover; its last verdict means nothing to a node over Bluetooth.
-        s.watchdog = watchdog_status() if s.node_mode() == "cover" else {}
-        if s.mesh_connected():
-            s.unreachable_since = None
-        elif s.unreachable_since is None:
-            s.unreachable_since = time.time()
-        s.polled_at = time.time()
-        GLib.idle_add(self.on_update, s)
+        s = poll_state(self.state, self.names, self.asker)
+        if GLib is not None:
+            GLib.idle_add(self.on_update, s)
+        else:
+            self.on_update(s)

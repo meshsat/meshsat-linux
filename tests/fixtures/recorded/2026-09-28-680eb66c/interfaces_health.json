@@ -1,0 +1,20 @@
+[
+ {
+  "available": true,
+  "cost_score": 50,
+  "interface_id": "iridium_imt_0",
+  "latency_ms": 0,
+  "score": 60,
+  "signal": 0,
+  "success_rate": 1
+ },
+ {
+  "available": true,
+  "cost_score": 100,
+  "interface_id": "mesh_0",
+  "latency_ms": 0,
+  "score": 70,
+  "signal": 0,
+  "success_rate": 1
+ }
+]

@@ -1,0 +1,35 @@
+{
+ "links": [],
+ "nodes": [
+  {
+   "battery": 101,
+   "id": "52cb81e7",
+   "label": "meshsat-pinephone-pro",
+   "last_seen": 1790617380,
+   "online": true,
+   "snr": 0
+  },
+  {
+   "battery": 0,
+   "id": "a1b3c2ec",
+   "label": "meshsat-tdeck-pro-a",
+   "last_seen": 1790612929,
+   "online": false,
+   "snr": 6.75
+  },
+  {
+   "battery": 0,
+   "id": "8b04a69e",
+   "label": "MeshSat flaneur",
+   "last_seen": 0,
+   "online": false,
+   "snr": 0
+  }
+ ],
+ "stats": {
+  "avg_snr": 6.75,
+  "online_nodes": 1,
+  "total_links": 0,
+  "total_nodes": 3
+ }
+}

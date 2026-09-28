@@ -1,0 +1,17 @@
+{
+ "by_portnum": {
+  "NODEINFO_APP": 5,
+  "PRIVATE_APP": 10,
+  "ROUTING_APP": 47,
+  "TELEMETRY_APP": 967,
+  "TEXT_MESSAGE_APP": 10
+ },
+ "by_transport": {
+  "radio": 1039
+ },
+ "newest_at": "2026-09-28 17:43:01",
+ "oldest_at": "2026-09-28 02:19:54",
+ "today": 1039,
+ "today_text": 10,
+ "total": 1039
+}

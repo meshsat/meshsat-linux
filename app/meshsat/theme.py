@@ -188,6 +188,26 @@ toast label {{ color: {TEXT_PRIMARY}; font-size: {px(14)}; }}
 .kv-value {{ color: {TEXT_PRIMARY}; font-size: {px(14)}; }}
 .dialog {{ background-color: {SURFACE_HIGH}; border: 1px solid {BORDER}; border-radius: {px(16)}; padding: {px(24)}; }}
 .dialog-title {{ font-size: {px(20)}; font-weight: 600; }}
+.field.error {{ border-color: {RED}; }}
+.switch-row {{ min-height: {px(56)}; }}
+.check-row {{ padding: {px(8)} 0; }}
+.check {{ border: 2px solid {TEXT_MUTED}; border-radius: {px(3)}; min-width: {px(18)}; min-height: {px(18)}; }}
+.check.on {{ border-color: {SIGNAL_ORANGE}; background-color: {SIGNAL_ORANGE}; }}
+.pick-row {{ padding: {px(10)} {px(4)}; border-radius: {px(8)}; }}
+.radio {{ border: 2px solid {TEXT_MUTED}; border-radius: {px(10)}; min-width: {px(16)}; min-height: {px(16)}; }}
+.radio.on {{ border-color: {SIGNAL_ORANGE}; background: radial-gradient(circle, {SIGNAL_ORANGE} 0%, {SIGNAL_ORANGE} 45%, transparent 50%); }}
+.hold {{ background: none; border: 2px solid {SIGNAL_ORANGE}; border-radius: {px(12)}; padding: 0; box-shadow: none; min-height: {px(64)}; }}
+.hold.danger {{ border-color: {RED}; }}
+.status-banner {{ border-radius: {px(8)}; padding: {px(10)} {px(12)}; }}
+.status-banner.amber {{ background-color: alpha({AMBER}, 0.12); border: 1px solid alpha({AMBER}, 0.4); }}
+.status-banner.red {{ background-color: {ERROR_CONTAINER}; border: 1px solid alpha({RED}, 0.4); }}
+.status-banner.green {{ background-color: alpha({GREEN}, 0.10); border: 1px solid alpha({GREEN}, 0.35); }}
+.status-banner.muted {{ background-color: {SURFACE}; border: 1px solid {BORDER}; }}
+alertdialog, dialog {{ background-color: {SURFACE_HIGH}; color: {TEXT_PRIMARY}; }}
+alertdialog .heading, alertdialog .title {{ color: {TEXT_PRIMARY}; font-size: {px(20)}; font-weight: 600; }}
+alertdialog .body {{ color: {TEXT_SECONDARY}; font-size: {px(14)}; }}
+alertdialog button {{ background: none; border: none; box-shadow: none; color: {SIGNAL_ORANGE}; font-weight: 500; }}
+alertdialog button.destructive-action {{ color: {RED}; }}
 scrolledwindow, viewport {{ background: none; }}
 scrollbar {{ background: none; }}
 scrollbar slider {{ background-color: {SURFACE_LIGHT}; min-width: {px(4)}; border-radius: {px(4)}; }}

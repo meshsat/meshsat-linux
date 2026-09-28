@@ -12,7 +12,8 @@ import time
 from gi.repository import Gdk, GLib, Gtk
 
 from . import api, theme
-from .widgets import Card, SubHeader, clear, filled_button, page, scroller, spacer, text, text_button
+from .screen import Screen
+from .widgets import Card, Field, Sheet, SubHeader, clear, page, scroller, spacer, text, text_button
 
 # Elevation environment presets, the Bridge's and Android's
 ELEV_PRESETS = ((5, "Open", "Open field or rooftop"), (20, "Trees", "Some trees or low buildings"), (40, "City", "Tall buildings, narrow streets"), (60, "Canyon", "Deep valley or dense city"))
@@ -306,10 +307,10 @@ class SegmentedChoice(Gtk.Box):
             (button.add_css_class if o == option else button.remove_css_class)("on")
 
 
-class PassesScreen(Gtk.Box):
+class PassesScreen(Screen):
     def __init__(self, app):
-        super().__init__(orientation=Gtk.Orientation.VERTICAL)
-        self.app = app
+        super().__init__(app)
+        self.title = "Satellite passes"
         self.window_hours, self.min_elev = 12, 5
         self.passes, self.signals, self.sessions = [], [], []
         self.loading, self.error, self.expanded = False, None, False
@@ -396,8 +397,11 @@ class PassesScreen(Gtk.Box):
         self.append(scroller(self.column))
         self.set_min_elev(5, reload=False)
         self.render()
-        self._ticker = GLib.timeout_add_seconds(1, self.tick)
         self.update(app.state)
+
+    def on_show(self) -> None:
+        # The countdowns tick once a second while the page is on view, and stop with it.
+        self.every(1, self.tick)
 
     # Choices
     def set_window(self, hours: int) -> None:
@@ -638,36 +642,27 @@ class PassesScreen(Gtk.Box):
         return row
 
 
-class PositionDialog(Gtk.Window):
+class PositionDialog(Sheet):
     """A position typed by hand, for a phone without a fix: kept by the app, and given to the
     Bridge as the node's fixed position so the SOS and the mesh carry it too."""
 
     def __init__(self, app, screen: PassesScreen):
-        super().__init__(title="Your position", modal=True, transient_for=app.window, decorated=False)
-        self.app, self.screen = app, screen
-        self.set_default_size(340, -1)
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(12))
-        box.add_css_class("dialog")
-        box.append(text("Your position", "dialog-title"))
-        box.append(text("Decimal degrees, as a map shows them. Used for the passes here, and given to the node as its fixed position.", "body-medium", theme.TEXT_SECONDARY, wrap=True))
+        super().__init__(app, "Your position", width=340)
+        self.screen = screen
+        self.body.append(text("Decimal degrees, as a map shows them. Used for the passes here, and given to the node as its fixed position.", "body-medium", theme.TEXT_SECONDARY, wrap=True))
         current = app.state.entered
-        self.lat = Gtk.Entry(placeholder_text="Latitude, 52.1601", input_purpose=Gtk.InputPurpose.NUMBER)
-        self.lon = Gtk.Entry(placeholder_text="Longitude, 4.4970", input_purpose=Gtk.InputPurpose.NUMBER)
-        for entry, value in ((self.lat, current and current[0]), (self.lon, current and current[1])):
-            entry.add_css_class("field")
+        self.lat = Field("Latitude", "52.1601", purpose=Gtk.InputPurpose.NUMBER)
+        self.lon = Field("Longitude", "4.4970", purpose=Gtk.InputPurpose.NUMBER)
+        for field, value in ((self.lat, current and current[0]), (self.lon, current and current[1])):
             if value is not None:
-                entry.set_text(f"{value:.5f}")
-            box.append(entry)
-        buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
-        buttons.set_halign(Gtk.Align.END)
-        buttons.append(text_button("Cancel", self.close))
-        buttons.append(filled_button("Use this position", self.use, expand=False))
-        box.append(buttons)
-        self.set_child(box)
+                field.set_text(f"{value:.5f}")
+            self.body.append(field)
+        self.button("Cancel", self.close)
+        self.button("Use this position", self.use, kind="filled")
 
     def use(self) -> None:
         try:
-            lat, lon = float(self.lat.get_text().replace(",", ".")), float(self.lon.get_text().replace(",", "."))
+            lat, lon = float(self.lat.text.replace(",", ".")), float(self.lon.text.replace(",", "."))
             if not (-90 <= lat <= 90 and -180 <= lon <= 180) or (lat == 0 and lon == 0):
                 raise ValueError
         except ValueError:
@@ -675,7 +670,10 @@ class PositionDialog(Gtk.Window):
             return
         self.close()
         self.app.set_entered_position(lat, lon)
-        result = api.post("/api/position/fixed", {"latitude": lat, "longitude": lon, "altitude": 0})
-        self.app.toast("The node carries this position now." if not result.get("error") else f"Kept for the passes; the node did not take it: {result['error']}")
-        self.screen.loaded_for = None
-        self.screen.reload()
+
+        def done(answer: api.Answer) -> None:
+            self.app.toast("The node carries this position now." if answer.ok else f"Kept for the passes; the node did not take it: {answer.error}")
+            self.screen.loaded_for = None
+            self.screen.reload()
+
+        api.fetch("/api/position/fixed", done, method="POST", body={"latitude": lat, "longitude": lon, "altitude": 0})
