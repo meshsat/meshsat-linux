@@ -5,18 +5,19 @@ Priority: optional
 Architecture: @ARCH@
 Maintainer: MeshSat <hello@meshsat.net>
 Installed-Size: @SIZE@
-Depends: python3, python3-venv, python3-gi, gir1.2-gtk-4.0, gir1.2-adw-1, gir1.2-graphene-1.0, gir1.2-shumate-1.0, gir1.2-geoclue-2.0, gir1.2-webkit-6.0, systemd, adduser, i2c-tools, openssl, curl, libc6, libstdc++6, libgcc-s1, zlib1g, libasound2t64, libasyncns0, libbrotli1, libbsd0, libcap2, libcom-err2, libcurl3t64-gnutls, libdbus-1-3, libdecor-0-0, libdrm2, libexpat1, libffi8, libflac14, libgbm1, libgmp10, libgnutls30t64, libgpiod3, libgssapi-krb5-2, libhogweed6t64, libi2c0, libidn2-0, libjansson4, libjsoncpp26, libk5crypto3, libkeyutils1, libkrb5-3, libkrb5support0, libldap2, libmd0, libmicrohttpd12t64, libmp3lame0, libmpg123-0t64, libnettle8t64, libnghttp2-14, libnghttp3-9, libngtcp2-16, libngtcp2-crypto-gnutls8, libogg0, libopus0, liborcania2.3, libp11-kit0, libpsl5t64, libpulse0, librtmp1, libsamplerate0, libsasl2-2, libsdl2-2.0-0, libsndfile1, libssh2-1t64, libssl3t64, libsystemd0, libtasn1-6, libudev1, libulfius2.7t64, libunistring5, libusb-1.0-0, libuv1t64, libvorbis0a, libvorbisenc2, libwayland-client0, libwayland-cursor0, libwayland-egl1, libx11-6, libx11-xcb1, libxau6, libxcb1, libxcursor1, libxdmcp6, libxext6, libxfixes3, libxi6, libxkbcommon0, libxrandr2, libxrender1, libxss1, libyaml-cpp0.8, libyder2.0t64, libzstd1
-Recommends: libnotify-bin
+Depends: python3, python3-venv, python3-gi, gir1.2-gtk-4.0, gir1.2-adw-1, gir1.2-graphene-1.0, gir1.2-shumate-1.0, gir1.2-geoclue-2.0, gir1.2-webkit-6.0, systemd, adduser, openssl, curl, libc6@NODE_DEPENDS@
+Recommends: libnotify-bin, bluez
 Homepage: https://meshsat.net
-Description: MeshSat node and pocket Bridge for the PinePhone LoRa back cover
- Makes a PinePhone or PinePhone Pro with the Pine64 LoRa back cover a
- Meshtastic node (Meshtastic's Linux daemon with the MeshSat bridge layer
- for the cover's ATtiny I2C-to-SPI bridge), runs the MeshSat Bridge beside
- it over TCP, and puts the Bridge's interface in a phone-sized app with an
- icon in the app grid. A watchdog tells the user when the radio stopped
- answering and the cover must be re-seated, and starts the node again when
- it answers.
+Description: MeshSat for Linux phones: the mesh, the satellite and the Hub in your pocket
+ The MeshSat Bridge on this device, and the MeshSat app in the app grid with
+ the same screens as MeshSat Android and iOS: a router between a Meshtastic
+ mesh, a satellite modem and the MeshSat Hub. The app adopts a Meshtastic
+ node over Bluetooth, as the other apps do; on a PinePhone with the Pine64
+ LoRa back cover the package finds the cover by itself and runs the node on
+ the phone (Meshtastic's Linux daemon with the MeshSat bridge layer for the
+ cover's ATtiny I2C-to-SPI bridge), with a watchdog that tells the user when
+ the radio stopped answering and the cover must be re-seated.
  .
  Pre-release. The radio in the cover is qualified at 0 dBm only (a plain
  crystal that drifts as the amplifier heats); range at that power is a
- house or a street. Built for Debian 13 (Mobian) on arm64.
+ house or a street. Built for Debian 13 (Mobian on arm64, desktops on amd64).

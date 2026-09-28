@@ -2,4 +2,4 @@
 """MeshSat for Linux phones and desktops: the MeshSat Android app's screens, look and words,
 drawn with GTK 4 and libadwaita over the MeshSat Bridge running on this device."""
 
-__version__ = "0.5.0"
+__version__ = "0.5.1"

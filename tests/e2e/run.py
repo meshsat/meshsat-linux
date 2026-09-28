@@ -28,13 +28,16 @@ from driver.report import Report  # noqa: E402
 
 
 class Context:
-    """What a case gets: the app, its tree, the Bridge, and where to leave artifacts."""
+    """What a case gets: the app, its tree, the Bridge, the notifier and the notification
+    daemon when the module asked for them, and where to leave artifacts."""
 
-    def __init__(self, app: App, bridge, report: Report, module: str, name: str):
+    def __init__(self, app: App, bridge, report: Report, module: str, name: str, notifications=None, notifier=None):
         self.app = app
         self.tree = app.tree
         self.bridge = bridge
         self.report = report
+        self.notifications = notifications
+        self.notifier = notifier
         self.module, self.name = module, name
         self.dir = report.case_dir(module, name)
         self.shots = 0
@@ -74,6 +77,8 @@ def run_module(path: str, args, report: Report) -> None:
     os.makedirs(work, exist_ok=True)
     bridge = None
     app = None
+    notifications = None
+    notifier = None
     try:
         if tier in ("h", "s"):
             bridge = Scripted(getattr(module, "SCENARIO", "mesh-only"))
@@ -81,9 +86,17 @@ def run_module(path: str, args, report: Report) -> None:
         else:
             bridge = Live()
             url = bridge.url
-        hardware = getattr(module, "HARDWARE", None)
-        units = getattr(module, "UNITS", "meshtasticd.service=active,meshsat-bridge.service=active")
+        hardware = getattr(module, "HARDWARE", "real" if tier == "l" else None)
+        units = getattr(module, "UNITS", "real" if tier == "l" else "meshtasticd.service=active,meshsat-bridge.service=active")
         app = App(work, url, app_dir=args.app_dir, hardware=hardware, units=units, poll=getattr(module, "POLL", 2.0)).start()
+        if getattr(module, "NOTIFIER", False):
+            from driver.notifications import NotificationDaemon  # noqa: PLC0415
+
+            notifications = NotificationDaemon().start()
+            import subprocess  # noqa: PLC0415
+
+            notifier = subprocess.Popen(["python3", "-m", "meshsat.notify"], env=app.environment(), stdout=subprocess.DEVNULL, stderr=open(os.path.join(work, "notify.stderr"), "w", encoding="utf-8"), cwd=work)
+            time.sleep(3)
     except Exception as error:  # noqa: BLE001
         for case_name, _fn in cases:
             report.record(name, case_name, tier, "fail", 0.0, HarnessError(f"the module could not start: {error}"))
@@ -94,7 +107,7 @@ def run_module(path: str, args, report: Report) -> None:
         return
     for case_name, fn in cases:
         started = time.time()
-        ctx = Context(app, bridge, report, name, case_name)
+        ctx = Context(app, bridge, report, name, case_name, notifications, notifier)
         before = len(app.tracebacks())
         try:
             fn(ctx)
@@ -120,6 +133,14 @@ def run_module(path: str, args, report: Report) -> None:
                     handle.write(json.dumps(event) + "\n")
     with open(os.path.join(work, "app.stderr.txt"), "w", encoding="utf-8") as handle:
         handle.write(app.stderr())
+    if notifier is not None:
+        notifier.terminate()
+        try:
+            notifier.wait(timeout=5)
+        except Exception:  # noqa: BLE001
+            notifier.kill()
+    if notifications is not None:
+        notifications.stop()
     app.stop()
     if hasattr(bridge, "stop"):
         bridge.stop()
@@ -131,7 +152,13 @@ def main() -> int:
     parser.add_argument("--out", required=True)
     parser.add_argument("--app-dir", default=None, help="the app's package directory (default: the installed /usr/lib/meshsat/app)")
     parser.add_argument("--cases", nargs="*", default=None, help="module name patterns to run")
+    parser.add_argument("--inbound", default="", help="tier l: the text the far end sent before this run")
+    parser.add_argument("--expect-file", default="", help="tier l: where a case writes the text the far end must hear")
     args = parser.parse_args()
+    if args.inbound:
+        os.environ["MESHSAT_E2E_INBOUND"] = args.inbound
+    if args.expect_file:
+        os.environ["MESHSAT_E2E_EXPECT_FILE"] = args.expect_file
     if not os.environ.get("WAYLAND_DISPLAY"):
         print("no WAYLAND_DISPLAY: run inside tests/e2e/headless.sh or a session", file=sys.stderr)
         return 2
