@@ -47,7 +47,7 @@ The measurements behind every line: [meshsat-lora-backplate](https://github.com/
 |---|---|
 | `meshsat-app` | the app (also in the app grid) |
 | `http://localhost:6050/` | the Bridge's interface, in any browser |
-| `http://localhost:9443/` | Meshtastic's own web client, served by the daemon (desktop layout) |
+| `https://localhost:9443/` | Meshtastic's own web client, served by the daemon with the package's self-signed certificate (accept it once; desktop layout) |
 | `/etc/meshsat/bridge.env` | the Bridge's settings (Hub key, ports) |
 | `/etc/meshtasticd/` | the daemon's configuration |
 | `/var/lib/meshtasticd/.portduino/default/prefs` | the node's keys, channels and node database |
