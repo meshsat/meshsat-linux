@@ -1,0 +1,13 @@
+[Unit]
+Description=MeshSat outside its window: notifications, the satellite signal, the status for the panel
+Documentation=https://github.com/meshsat/meshsat-linux/blob/main/docs/INSTALL.md
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+ExecStart=/usr/bin/meshsat-notify
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target

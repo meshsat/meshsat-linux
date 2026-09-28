@@ -1,0 +1,6 @@
+[Plugin]
+Id=meshsat-quick-setting
+Name=MeshSat
+Types=quick-setting;
+Comment=The satellite signal and the mesh, from MeshSat; a tap opens the app
+Plugin=@plugins_dir@/libphosh-plugin-meshsat-quick-setting.so

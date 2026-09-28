@@ -15,7 +15,7 @@
 #   $BACKPLATE                   a checkout of meshsat-lora-backplate at the pinned commit
 set -eu
 
-VERSION=0.4.0
+VERSION=0.5.0
 ARCH=arm64
 INPUTS=$HOME/build/meshsat-linux/inputs
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -101,6 +101,29 @@ python3 "$HERE/package/make-icons.py" "$HERE/app/meshsat/brand/app-icon-1024.png
 # The apps' symbolic icons (Material and MeshSat's own), in the icon theme so GTK recolours them
 install -d "$ROOT/usr/share/icons/hicolor/scalable/actions"
 install -m 0644 "$HERE"/app/meshsat/icons/hicolor/scalable/actions/meshsat-*-symbolic.svg "$ROOT/usr/share/icons/hicolor/scalable/actions/"
+# The satellite signal, 0 to 5 bars, for notifications, the panel and a tray (tools/make-signal-icons.py).
+install -d "$ROOT/usr/share/icons/hicolor/scalable/status"
+install -m 0644 "$HERE"/app/meshsat/icons/hicolor/scalable/status/meshsat-*-symbolic.svg "$ROOT/usr/share/icons/hicolor/scalable/status/"
+# MeshSat outside its window: the notifier, a user service of every session.
+install -D -m 0755 "$HERE/bin/meshsat-notify" "$ROOT/usr/bin/meshsat-notify"
+install -D -m 0644 "$HERE/package/rootfs/usr/lib/systemd/user/meshsat-notify.service" "$ROOT/usr/lib/systemd/user/meshsat-notify.service"
+# MeshSat in Phosh: the quick-settings tile and the lock-screen widget (phosh-plugins/, built on
+# a phone by phosh-plugins/build.sh, as the daemon is). Phosh finds them at its next start.
+case "$ARCH" in
+    arm64) TRIPLET=aarch64-linux-gnu ;;
+    amd64) TRIPLET=x86_64-linux-gnu ;;
+    *) TRIPLET= ;;
+esac
+if [ -n "$TRIPLET" ] && [ -f "$INPUTS/phosh-plugins/libphosh-plugin-meshsat-quick-setting.so" ]; then
+    PLUGINS="/usr/lib/$TRIPLET/phosh/plugins"
+    for n in quick-setting lockscreen; do
+        install -D -m 0644 "$INPUTS/phosh-plugins/libphosh-plugin-meshsat-$n.so" "$ROOT$PLUGINS/libphosh-plugin-meshsat-$n.so"
+        sed "s#@plugins_dir@#$PLUGINS#" "$HERE/phosh-plugins/meshsat-$n.plugin.in" > "$ROOT$PLUGINS/meshsat-$n.plugin"
+        chmod 0644 "$ROOT$PLUGINS/meshsat-$n.plugin"
+    done
+else
+    say "no Phosh plugins in $INPUTS/phosh-plugins: the package goes without the quick-settings tile and the lock-screen widget"
+fi
 
 # IBM Plex, the apps' typeface (OFL), the same files the Android and iOS apps carry
 install -d "$ROOT/usr/share/fonts/truetype/meshsat"

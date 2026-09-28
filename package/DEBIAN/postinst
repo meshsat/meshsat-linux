@@ -64,6 +64,14 @@ case "$1" in
         # The apps' typeface.
         if command -v fc-cache >/dev/null 2>&1; then fc-cache -f /usr/share/fonts/truetype/meshsat >/dev/null 2>&1 || true; fi
 
+        # MeshSat's tile and lock-screen widget for Phosh: Phosh reads its plugin directory's
+        # module cache when it starts, so they are there from the next start of the shell.
+        for q in /usr/lib/*/glib-2.0/gio-querymodules; do
+            [ -x "$q" ] || continue
+            d=$(dirname "$(dirname "$q")")/phosh/plugins
+            if [ -d "$d" ]; then "$q" "$d" 2>/dev/null || true; fi
+        done
+
         # The app in the app grid.
         if command -v gtk-update-icon-cache >/dev/null 2>&1; then gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor 2>/dev/null || true; fi
         if command -v update-desktop-database >/dev/null 2>&1; then update-desktop-database -q 2>/dev/null || true; fi
@@ -77,6 +85,15 @@ case "$1" in
             systemctl stop meshsat-radio-watch.timer meshtasticd.service 2>/dev/null || true
             systemctl start meshsat-hardware.service || true
             systemctl restart meshsat-bridge.service || true
+            # MeshSat outside its window (notifications, the satellite signal): a user service
+            # of every graphical session from now on, and of the sessions that are running.
+            systemctl --global enable meshsat-notify.service >/dev/null 2>&1 || true
+            for uid in $(loginctl list-users --no-legend 2>/dev/null | awk '{print $1}'); do
+                [ "$uid" -ge 1000 ] 2>/dev/null || continue
+                user=$(id -nu "$uid" 2>/dev/null) || continue
+                systemctl --user --machine="$user@.host" daemon-reload >/dev/null 2>&1 || true
+                systemctl --user --machine="$user@.host" restart meshsat-notify.service >/dev/null 2>&1 || true
+            done
         fi
         node=$(sed -n 's/^MESHSAT_NODE=//p' /run/meshsat/hardware.env 2>/dev/null)
         if [ "$node" = cover ]; then

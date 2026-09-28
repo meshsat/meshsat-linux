@@ -4,6 +4,7 @@ with their own stacks, the navigation bar), night mode as the colour matrix Andr
 and the few things the screens ask of it: push, pop, toast, copy, open a lane, pick a tab."""
 import json
 import os
+import subprocess
 import sys
 import time
 
@@ -59,6 +60,12 @@ class MeshSatApp(Adw.Application):
         Adw.Application.do_startup(self)
         Adw.StyleManager.get_default().set_color_scheme(Adw.ColorScheme.FORCE_DARK)
         theme.apply()
+        # MeshSat outside its window (notifications, the satellite signal) runs with the
+        # session; a session older than the package gets it with the app's first start.
+        try:
+            subprocess.Popen(["systemctl", "--user", "start", "meshsat-notify.service"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except OSError:
+            pass
         prefs = self.prefs()
         self.night = bool(prefs.get("night", False))
         entered = prefs.get("position")
@@ -341,6 +348,16 @@ class MeshSatApp(Adw.Application):
     # Every poll: the strip, the banners, the screen on view
     def on_state(self, s: api.State) -> bool:
         self.state = s
+        # While this window is the one in front, the notifier keeps quiet about new texts.
+        flag = os.path.join(GLib.get_user_runtime_dir(), "meshsat-app-active")
+        try:
+            if self.window is not None and self.window.is_active():
+                with open(flag, "w", encoding="utf-8"):
+                    pass
+            elif os.path.exists(flag):
+                os.remove(flag)
+        except OSError:
+            pass
         own = s.own_node() or {}
         if s.modem_connected():
             self.strip.set_lane("satellite", "working", f"{(s.signal or {}).get('bars', 0)}/5")

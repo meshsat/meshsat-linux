@@ -1,0 +1,6 @@
+[Plugin]
+Id=meshsat-lockscreen
+Name=MeshSat
+Types=lockscreen;
+Comment=The satellite signal and the mesh on the lock screen, from MeshSat
+Plugin=@plugins_dir@/libphosh-plugin-meshsat-lockscreen.so
