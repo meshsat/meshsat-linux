@@ -36,6 +36,11 @@
   </recommends>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.3.0" date="2026-09-28">
+      <description>
+        <p>SMS as on the other apps: the lane on Home, SMS chats, texts to a number, Setup > SMS, and emergency contacts under Safety who get the SOS by SMS from the phone's own SIM. The Bridge takes the modem from ModemManager; the wordmark is drawn sharp.</p>
+      </description>
+    </release>
     <release version="0.2.1" date="2026-09-28">
       <description>
         <p>Satellite passes as on the other apps: the pass overhead or the next one, the chart of passes against the modem's signal, the surroundings, every pass in the window. The phone's position comes from the system's location service, the node, or a position typed in; the map shows the phone.</p>

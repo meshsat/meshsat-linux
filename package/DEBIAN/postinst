@@ -55,6 +55,12 @@ case "$1" in
             sleep 2
         fi
 
+        # A bridge.env kept from an earlier version (dpkg keeps an edited conffile) learns the
+        # settings later versions added, each once.
+        if [ -f /etc/meshsat/bridge.env ] && ! grep -q '^MESHSAT_CELLULAR_PORT=' /etc/meshsat/bridge.env; then
+            printf '\n# SMS through ModemManager (the phone'"'"'s SIM); added by the meshsat package.\nMESHSAT_CELLULAR_PORT=modemmanager\n' >> /etc/meshsat/bridge.env
+        fi
+
         # The apps' typeface.
         if command -v fc-cache >/dev/null 2>&1; then fc-cache -f /usr/share/fonts/truetype/meshsat >/dev/null 2>&1 || true; fi
 

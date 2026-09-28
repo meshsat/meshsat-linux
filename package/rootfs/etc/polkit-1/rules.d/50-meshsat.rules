@@ -1,0 +1,8 @@
+// The MeshSat Bridge runs as the system user "meshsat" with no login session, and sends and
+// receives SMS through ModemManager, whose D-Bus methods polkit protects. This lets that user,
+// and nobody else, use the modem's messaging, control and device-control actions.
+polkit.addRule(function(action, subject) {
+    if (action.id.indexOf("org.freedesktop.ModemManager1.") === 0 && subject.user === "meshsat") {
+        return polkit.Result.YES;
+    }
+});
