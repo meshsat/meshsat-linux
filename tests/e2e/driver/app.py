@@ -101,6 +101,15 @@ class App:
         """One poll now (F5): the way a test waits for a changed scenario to reach the screen."""
         self.action("refresh")
 
+    def open_uri(self, uri: str) -> None:
+        """A link handed to the app as the desktop hands a meshsat:// link to it (GApplication's
+        org.freedesktop.Application.Open)."""
+        path = "/" + self.app_id.replace(".", "/")
+        run = subprocess.run(["gdbus", "call", "--session", "--dest", self.app_id, "--object-path", path, "--method", "org.freedesktop.Application.Open",
+                              f"['{uri}']", "{}"], capture_output=True, text=True, timeout=10)
+        if run.returncode != 0:
+            raise HarnessError(f"Open {uri[:30]}: {run.stderr.strip()}")
+
     def press(self, kind: str, lat: float, lon: float) -> None:
         """A finger on the map on view: "tap" or "long" at a place (the app's test action)."""
         self.action("map-press", f"{kind},{lat},{lon}")

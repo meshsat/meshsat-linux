@@ -14,7 +14,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
-from . import __version__, api, maptiles, routes, sosflow, store, theme, trace  # noqa: E402
+from . import __version__, api, flows, maptiles, routes, sosflow, store, theme, trace  # noqa: E402
 from .home import HomeScreen  # noqa: E402
 from .mapview import MapScreen  # noqa: E402
 from .messages import ChatScreen, MessagesScreen, name_of  # noqa: E402
@@ -35,13 +35,18 @@ GLib.set_application_name("MeshSat")
 
 class MeshSatApp(Adw.Application):
     def __init__(self):
-        super().__init__(application_id=APP_ID, flags=Gio.ApplicationFlags.DEFAULT_FLAGS)
+        # HANDLES_OPEN: a meshsat://provision/ link opens the app (the desktop entry's scheme handler).
+        super().__init__(application_id=APP_ID, flags=Gio.ApplicationFlags.HANDLES_OPEN)
         self.window = None
         self.poller = api.Poller(self.on_state)
         self.state = self.poller.state
         self.prefs = store.Prefs()
         # The map's tiles, one source for both maps, so the Map tab and Zones agree on being offline.
         self.tiles = maptiles.Tiles(self.prefs)
+        # What the Setup scanner and a provisioning link lead to, held by the app (ProvisionClaimHost).
+        self.keys = flows.KeyImports(self)
+        self.provisioning = flows.Provisioning(self)
+        self._links = []
         # The SOS in progress, or the last one (sos/SosController.kt): the banner, the Home
         # card and the result screen read it.
         self.sos = sosflow.Flow(self.prefs, lambda: GLib.idle_add(self.on_sos_change))
@@ -143,6 +148,19 @@ class MeshSatApp(Adw.Application):
         self.state.entered = (lat, lon)
         self.prefs.set(position=[lat, lon])
 
+    def do_open(self, files, n_files, hint):
+        """MainActivity.takeProvisionLink: only meshsat://provision/ links; every other address the
+        scheme handler hands over is ignored, as Android never sees them."""
+        self.activate()
+        for file in files:
+            uri = file.get_uri() or ""
+            if uri.startswith("meshsat://provision/"):
+                trace.event("link", uri=uri[:40])
+                if self.window is not None and getattr(self, "_opened", False):
+                    self.provisioning.from_link(uri)
+                else:
+                    self._links.append(uri)
+
     def do_activate(self):
         if self.window is not None:
             self.window.present()
@@ -160,6 +178,9 @@ class MeshSatApp(Adw.Application):
             self._opened = True
             self.window.present()
             self.release()
+            for uri in self._links:  # a link that started the app waits for its window
+                self.provisioning.from_link(uri)
+            self._links = []
         return False
 
     def do_shutdown(self):
@@ -532,7 +553,7 @@ def main() -> int:
     if "--version" in sys.argv[1:]:
         print(f"meshsat-app {__version__}")
         return 0
-    return MeshSatApp().run([sys.argv[0]])
+    return MeshSatApp().run(sys.argv)
 
 
 if __name__ == "__main__":

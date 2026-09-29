@@ -38,6 +38,11 @@ remote() {  # remote <command with no single quotes>; stdin passes through both 
 hop() {  # a command on the laptop (the far end's host)
     if [ -n "$HOP" ]; then $HOP "$1"; else bash -c "$1"; fi
 }
+# e2e-remote.sh holds this lock for its whole run; the bundle must not land under a run still going
+if ! remote "flock -n /tmp/meshsat-e2e.lock true" </dev/null; then
+    echo "another e2e run is on the phone; wait for it to finish" >&2
+    exit 3
+fi
 BUNDLE=$(mktemp /tmp/meshsat-e2e-XXXXXX.tgz)
 tar czf "$BUNDLE" -C "$HERE" app tests tools
 echo "bundle: $(du -h "$BUNDLE" | cut -f1)"

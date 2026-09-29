@@ -98,6 +98,13 @@ def settings(node_id: str = None, long_name: str = "meshsat-pinephone-pro", shor
     }
 
 
+# The fixed vector's card as the Bridge signs it with no node name (seed 00..1f, MESHSAT-1416).
+MY_CARD = {"text": "meshsat:contact:1:TWVzaFNhdCBwaG9uZR9BNkVIdl9QT0VMNGRjTjBZNTB2QW1XZmsxakNicFExZkhkeUdaQkpWTWJnHx8fMTc4OTkwMDAwMA."
+                   "OGA5_8_Q-mGL0x0kavwMIeFHryIyk4UagJH4KlmSgNDR4Xq9Nzzi98e7TS9eN3ZSCTeAV8GmhK5YVVk8H_sxAA",
+           "fingerprint": "5647 5aa7 5463 474c", "signing_pub": "03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8", "name": "MeshSat phone",
+           "mesh_node_id": "", "bridge_id": "", "issued_at": 1789900000}
+
+
 def base() -> dict:
     """The bench phone in cover mode: the node up, one other node heard and named, a few
     texts, no modem, no SIM, no Hub."""
@@ -144,6 +151,7 @@ def base() -> dict:
         "_gateways": {},  # no gateway set up: GET /api/gateways/{type} answers 404, as the Bridge
         "_zones": [],  # the geofence monitor running, no zone yet
         "_positions": [],  # no position logged
+        "_card": MY_CARD,  # the card the Bridge signs for "My card" (the fixed vector's key)
     }
 
 

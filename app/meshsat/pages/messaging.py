@@ -69,6 +69,10 @@ class MessagingScreen(SubScreen):
         self.no_sms = text(model.NO_SMS_LINK, "body-small", theme.AMBER, wrap=True)
         self.no_sms.set_visible(False)
         enc.append(self.no_sms)
+        # SettingsScreen.kt:863-884: the Hub's key by QR code, through the Setup router.
+        scan = filled_button(model.SCAN_KEY, self.scan_key, expand=True)
+        scan.add_css_class("small-text")
+        enc.append(scan)
         enc.append(text(model.FALLBACK_NOTE, "body-small", theme.TEXT_MUTED, wrap=True))
         self.column.append(enc)
 
@@ -249,6 +253,15 @@ class MessagingScreen(SubScreen):
             self.app.toast(model.BAD_KEY)
             return
         self.use_key(typed.lower(), model.KEY_SAVED)
+
+    def scan_key(self) -> None:
+        from .. import flows  # noqa: PLC0415
+        from ..scan import Scanner  # noqa: PLC0415
+
+        def got(value, _how) -> None:
+            flows.route_setup_code(self.app, value, lambda key: self.use_key(key, model.KEY_FROM_QR))
+
+        Scanner(self.app, model.SCAN_PROMPT, got, on_error=lambda reason: self.app.toast(model.scanner_missing(reason))).present()
 
     def toggle_show(self) -> None:
         showing = not self.key.get_visibility()

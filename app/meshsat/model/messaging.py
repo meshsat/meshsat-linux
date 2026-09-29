@@ -23,6 +23,15 @@ KEY_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 
 # ── Encryption ───────────────────────────────────────────────────────────────────────────────
 KEY_LABEL = "AES-256-GCM Key (hex)"
+SCAN_KEY = "Scan QR Code (Hub Key Sync)"
+SCAN_PROMPT = "Scan Hub encryption key QR code"
+KEY_FROM_QR = "Key imported via QR"
+
+
+def scanner_missing(reason) -> str:
+    return f"QR scanner not available: {reason}"
+
+
 FALLBACK_NOTE = ("Fallback key — used when no per-conversation key is set. "
                  "To sync with Hub: go to Hub dashboard > Devices > select device > Generate Key, "
                  "then scan the QR code or paste the 64-char hex key.")

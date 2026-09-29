@@ -5,6 +5,9 @@
 set -u
 TIERS=${1:-h}; INSTALLED=${2:-0}; INBOUND=${3:--}; shift 3 2>/dev/null
 B=/tmp/meshsat-e2e
+# one run at a time: a second would unpack over this one's tree and take its session
+exec 9>/tmp/meshsat-e2e.lock
+flock -n 9 || { echo "another e2e run holds the phone"; exit 3; }
 cd "$B" || exit 2
 rm -rf out; mkdir -p out
 cd tree || exit 2

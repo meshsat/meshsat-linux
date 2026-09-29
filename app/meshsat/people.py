@@ -7,7 +7,8 @@ from gi.repository import Gtk
 
 from . import api, theme
 from .model import words
-from .widgets import Card, Chip, ago, clear, filled_button, hscroll, outlined_button, page, scroller, text, text_button
+from .pages.cards import CardsSection
+from .widgets import Chip, ago, clear, filled_button, hscroll, page, scroller, text
 
 
 class PeopleScreen(Gtk.Box):
@@ -20,18 +21,12 @@ class PeopleScreen(Gtk.Box):
         self.heard = text("0 nodes heard, 0 in the last 15 min", "body-large", theme.TEXT_SECONDARY)
         column.append(self.heard)
 
-        carry = Card(spacing=8)
+        # People you carry (ContactCards.kt): 16 dp at the sides and 8 dp above and below.
+        carry = CardsSection(app)
         carry.set_margin_start(theme.dp(16))
         carry.set_margin_end(theme.dp(16))
-        carry.append(text("People you carry", "title-medium"))
-        carry.append(text("Cards swapped face to face by QR code. Read the fingerprint aloud to each other: it is what says the card is theirs.", "body-medium", theme.TEXT_SECONDARY, wrap=True))
-        buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(12))
-        buttons.append(outlined_button("My card", lambda: app.toast("Your card is the Bridge's key bundle: Setup > Advanced > Certificates and keys.")))
-        buttons.append(outlined_button("Scan a card", lambda: app.toast("This device has no card scanner yet. Paste a card instead.")))
-        carry.append(buttons)
-        carry.append(text_button("Paste a card instead", lambda: app.toast("Paste a card: not on this device yet.")))
-        self.cards_empty = text("No cards yet.", "body-medium", theme.TEXT_SECONDARY)
-        carry.append(self.cards_empty)
+        carry.set_margin_top(theme.dp(8))
+        carry.set_margin_bottom(theme.dp(8))
         column.append(carry)
 
         self.empty = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(12))

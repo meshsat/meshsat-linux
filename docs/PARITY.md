@@ -2,9 +2,9 @@
 
 MeshSat Android is the reference, pinned at `v2.19.4`. One row per screen, tab, card, dialog, banner and notification of the Android app; a row is done when the Linux app has it, in Android's words, and a test proves it. Kept by `tools/parity-check.py` from `tests/parity/ledger.json`; the words by `tools/android-strings.py`.
 
-**Rows:** 136: 10 missing, 11 partial, 19 built, 85 verified, 9 excluded, 2 blocked.
+**Rows:** 140: 6 missing, 10 partial, 19 built, 94 verified, 9 excluded, 2 blocked.
 
-**Words:** 1040 of 1410 readable strings of Android's `ui/` and `sos/` are in the Linux sources, 2 excluded with a reason, 368 still to port.
+**Words:** 1194 of 1407 readable strings of Android's `ui/` and `sos/` are in the Linux sources, 2 excluded with a reason, 211 still to port.
 
 States: `missing` (not there), `partial` (some of it), `built` (there, untested), `verified` (there, in Android's words, with a test that ran green on the phone), `excluded` (not ported, with the reason), `blocked` (built and tested against the scripted Bridge, waiting for hardware the bench lacks).
 
@@ -47,10 +47,10 @@ States: `missing` (not there), `partial` (some of it), `built` (there, untested)
 | map.chrome | card | `ui/components/MapChrome.kt:107-194` | `mapwidget.py:MeshMap` | both | verified | h_maps::f_offline_the_detailed_map_serves | the round 48 dp buttons (Zoom in, Zoom out and the screen's own), the note in the corner: the OpenStreetMap credit online, 'Offline map: <name>. Outside it, the world overview.' or the world overview's sentence offline; offline after three failed downloads in a row, back with one that works (shared by both maps); the Map tab zooms out to 5 offline with only the world overview |
 | map.panel | card | `ui/screens/MapScreen.kt:418-620` | `mapview.py:MapScreen.fill_panel` | both | verified | h_tracks::b_a_hidden_node_loses_marker_and_track | Layers and nodes: the summary, the three layers with their dots, this phone's row with its accuracy, Show all and Hide all, the node rows newest first (a check box hides the marker and the track; the row centres the map on the node at zoom max(current, 14)); the list at most half the map area's height; the hidden nodes are kept, so a node heard later shows |
 | map.tracks | behaviour | `map/MapTracks.kt, ui/screens/MapScreen.kt:101-233` | `model/tracks.py:group, mapview.py` | both | verified | h_tracks::a_the_map_and_its_panel | the positions of the last 24 hours from the Bridge (GET /api/positions, 5,000 newest, all nodes together), re-read every 30 s while on view; a dashed sand line per node (75 %, 3 dp, 8 on 5 off, round caps), joined to its marker, two points at least; 'Track of <name>'; stations only the position log knows (APRS, TAK) are markers and tracks too |
-| people | screen | `ui/screens/PeersScreen.kt` | `people.py:PeopleScreen` | both | partial | h_names::a_name_heard_once_survives_a_bridge_restart | '(you)' and the cards come later |
+| people | screen | `ui/screens/PeersScreen.kt` | `people.py:PeopleScreen` | both | partial | h_names::a_name_heard_once_survives_a_bridge_restart | '(you)' and the second empty text come with 0.12.0; the cards are their own rows (people.cards) |
 | people.names | behaviour | `ui/Peers.kt:displayName` | `messages.py:name_of` | both | verified | h_names::a_name_heard_once_survives_a_bridge_restart |  |
 | people.empty | strings | `ui/screens/PeersScreen.kt:155-165` | `people.py:update` | both | built |  |  |
-| people.cards | card | `ui/screens/ContactCards.kt` | `` | both | missing |  | 0.11.0 |
+| people.cards | card | `ui/screens/ContactCards.kt:83-150` | `pages/cards.py:CardsSection, model/cards.py` | both | verified | h_cards::d_a_pasted_card_is_added_as_imported | People you carry: My card, Scan a card, Paste a card instead, the list sorted as SQLite's NOCASE with 'Scanned in person' / 'Imported as text' and the node and bridge ids, Forget at once; the cards kept in cards.json on this phone, as Android's Room table; the card format and its checks ported case for case (ContactQRTest), with the fixed vector the Bridge's Go test holds too |
 | people.sheet | sheet | `ui/components/NodeDetailSheet.kt` | `__main__.py:node_sheet, model/nodes.py` | both | verified | h_tracks::g_the_node_sheet_and_show_on_map | the title (' (your node)'), the short name and id two spaces apart, the rows with their 96 dp labels (Last heard and Signal not for your own node, Hardware when known, Position '%.5f, %.5f, ago' or 'Not shared yet...'), Message (not for your own node) and Show on map (only with a position); the signal words from the node list (the Bridge keeps no last-packet signal per node: 'as your node last measured it'); battery: the Bridge's 0 is Android's -1, 'Not reported' |
 | setup | screen | `ui/screens/SetupScreen.kt` | `setup.py:SetupScreen` | both | built |  |  |
 | setup.node | screen | `ui/screens/SettingsScreen.kt:384-525` | `setup.py:NodeScreen` | both | built |  | the Bluetooth card as Android's; the cover card and the device card are this edition's |
@@ -62,11 +62,11 @@ States: `missing` (not there), `partial` (some of it), `built` (there, untested)
 | passes | screen | `ui/screens/PassPredictorScreen.kt` | `passes.py:PassesScreen` | both | built |  |  |
 | passes.position | linux-only | `-` | `passes.py:PositionDialog` | both | built |  | a position typed in, for a phone without a fix |
 | setup.hub | screen | `ui/screens/SettingsScreen.kt:1625-1900` | `setup.py:HubScreen` | both | partial |  | the six states, the form and 'Reach a kit' come with 0.9.1 |
-| setup.hub.provision | dialog | `ui/components/ProvisionLinkDialog.kt` | `` | both | missing |  | 0.11.0 |
-| setup.hub.key-changed | dialog | `ui/screens/SettingsScreen.kt:222-256` | `` | both | missing |  | 0.9.1 |
+| setup.hub.provision | dialog | `ui/components/ProvisionLinkDialog.kt, ProvisionClaimHost.kt, crypto/ProvisionImporter.kt` | `flows.py:Provisioning, model/provision.py` | both | verified | h_provision::a_a_scanned_code_is_claimed_then_asked_about | the Hub's code scanned (claimed through the Hub's 503s, then 'Use these Hub settings?') or its meshsat://provision/ link opened (the desktop entry's scheme handler; asked first, then claimed and applied); the settings to the Bridge (PUT /api/routing/hub, the CA always sent), the client certificate to its store, the Bridge restarted; 'No settings from the Hub' with Android's messages. ProvisionLinkTest and ProvisionClaimRetryTest ported. Not applied yet: the bundle's Reticulum peer (it needs the Bridge's Reticulum TCP client, 0.11.2) |
+| setup.hub.key-changed | dialog | `ui/screens/SettingsScreen.kt:222-259, 295-333, crypto/KeyBundleImporter.kt` | `flows.py:KeyImports, model/keybundle.py` | both | verified | h_keys::c_a_changed_key_asks_first | key bundles checked as Android checks them (KeyBundleImporterTest ported) with the kits' keys pinned on first use in bridge_trust.json; the keys stored by the Bridge (POST /api/keys/import), whose count the toasts give; 'This kit's key has changed' with Trust the new key / Keep the old key. Differences: a v1 bundle is refused by the Bridge without the kit's key; the audit event bridge_key_repinned has no write endpoint in the Bridge and is not written |
 | setup.sms | screen | `ui/screens/SettingsScreen.kt:1903-1981` | `setup.py:SmsScreen` | both | verified | h_messaging::no_recipient_number_goes_over_the_sms_gateway | Text messages (the SIM through the Bridge, ModemManager) and Where a text goes with no recipient |
 | setup.safety | screen | `ui/screens/SosScreens.kt:SafetyScreen` | `pages/safety.py:SafetyScreen` | both | verified | h_sos::safety_page_contacts_and_check_in_timer |  |
-| setup.safety.contacts | card | `ui/screens/SosScreens.kt:contacts` | `pages/safety.py:SafetyScreen` | both | partial | h_sos::safety_page_contacts_and_check_in_timer | typed numbers as Android's; 'Choose from your contacts' (the address book) comes with 0.11.0 |
+| setup.safety.contacts | card | `ui/screens/SosScreens.kt:445-659, data/EmergencyContact.kt` | `pages/safety.py:SafetyScreen, addressbook.py, model/contacts.py` | both | verified | h_contacts::a_a_contact_picked_from_the_address_book | Choose from your contacts (the address book: Evolution Data Server, one row per number, nothing kept but the row picked; the picker is the app's own, Android shows the system's), Or type a number, Android's rules and words (EmergencyContactAddingTest ported) and where each error shows |
 | setup.safety.checkin | card | `ui/screens/SettingsScreen.kt:992-1061` | `pages/safety.py:SafetyScreen` | both | verified | h_sos::safety_page_contacts_and_check_in_timer |  |
 | sos | screen | `ui/screens/SosScreens.kt:SosScreen` | `pages/sos.py:SosScreen` | both | verified | h_sos::sos_screen_shows_where_it_went_and_the_cancellation |  |
 | sos.test | dialog | `ui/screens/SosScreens.kt:424-450` | `sosflow.py:Flow.start, model/sosrun.py` | both | verified | h_sos::alarm_test_goes_route_by_route_and_settles | the mesh leg heard by the T-Deck on the bench (l_alarm) |
@@ -137,7 +137,7 @@ States: `missing` (not there), `partial` (some of it), `built` (there, untested)
 | radio-config.not-loaded | banner | `ui/screens/RadioConfigScreen.kt:142-164, 216-225` | `pages/radio.py:not_loaded` | both | verified | h_radio::not_connected_offers_the_node_page | not connected: the card and Connect your node (to the Node page); not loaded: Android's two sentences; against a real Bridge with no node: s_radio::without_a_node_nothing_is_written |
 | radio-config.words | strings | `ui/screens/RadioConfigScreen.kt` | `model/radio.py` | both | verified | RadioTabTest.test_only_what_changed_is_sent | labels, limits, the changes each tab sends, the questions and the toasts; a refusal of the Bridge in Android's words (409, 503) or its own (400) |
 | setup.messaging.encryption | card | `ui/screens/SettingsScreen.kt:736-894` | `pages/messaging.py (Encryption)` | both | verified | h_messaging::a_generated_key_becomes_the_sms_chains | as Android, the SMS link's: encrypt on send, an optional decrypt on receive (Auto-decrypt: a text from an ordinary phone is kept, not dropped); Show, Generate, Save, Copy, Paste; Share saves a file (the approved share-sheet exclusion); a key that is not 64 hex characters is refused before it goes (the Bridge refuses it too, and no longer sends plain text with it, MESHSAT-1411); the QR button comes with the scanner (0.11.0, row setup.messaging.scan) |
-| setup.messaging.scan | behaviour | `ui/screens/SettingsScreen.kt:862-884` | `` | both | missing |  | Scan QR Code (Hub Key Sync): with the scanner in 0.11.0 |
+| setup.messaging.scan | behaviour | `ui/screens/SettingsScreen.kt:283-344, 862-892` | `pages/messaging.py:scan_key, flows.py:route_setup_code` | both | verified | h_keys::d_a_hex_key_becomes_the_sms_key | Scan QR Code (Hub Key Sync) and the Setup router in Android's order: a provisioning code, a key bundle, a 64-hex key ('Key imported via QR'), else 'QR code doesn't contain a valid key or bundle' |
 | setup.messaging.compression | card | `ui/screens/SettingsScreen.kt:896-983` | `pages/messaging.py (Message compression)` | both | verified | h_messaging::compression_where_the_bridge_can_encode | SMS and Iridium SBD, Off or MSVQ-SC, the stages; MSVQ-SC offered only where the Bridge can encode (GET /api/transforms/capabilities; this phone has no encoder: the Linux sentence says so); Android's MQTT (Hub) row is not here: the Bridge's Hub link has no transform chain |
 | setup.messaging.quick | card | `ui/screens/SettingsScreen.kt:1134-1177, codec/CannedCodebook.kt` | `pages/messaging.py (Quick messages), model/messaging.py:CODEBOOK` | both | verified | CannedCodebookTest.test_known_messages_match_expected_text | the 30 brevity codes (CannedCodebookTest ported); the Bridge now reads a received code as its words (MESHSAT-1412), so 'Auto-detected on receive' holds |
 | setup.sms.no-recipient | card | `ui/screens/SettingsScreen.kt:1945-1981` | `setup.py:SmsScreen.save_number` | both | verified | h_messaging::no_recipient_number_goes_over_the_sms_gateway | the SMS gateway's default number (destination_numbers), written with the gateway's switch and masked secrets kept (MESHSAT-1412); empty = a text with no recipient is not sent, as Android; against a real Bridge: s_messaging::the_sms_gateway_without_a_default_number |
@@ -146,48 +146,52 @@ States: `missing` (not there), `partial` (some of it), `built` (there, untested)
 | geofence.delete | dialog | `ui/screens/GeofenceScreen.kt:528-554` | `pages/zones.py:ZonesScreen.ask_delete` | both | verified | h_zones::e_delete_asks_first | Delete <name>?, Delete zone (red), Keep it; the alerts stay |
 | geofence.alerts | card | `ui/screens/GeofenceScreen.kt:494-523` | `pages/zones.py:ZonesScreen.fill_list` | both | verified | h_zones::f_a_node_crossing_is_listed | Recent alerts: the newest 20 of the Bridge's 50, '<who> entered|left <zone>, <ago>', the node's name when the radio knows one |
 | setup.maps.delete | dialog | `ui/screens/SettingsScreen.kt:2189-2221` | `pages/maps.py:MapsScreen.ask_delete` | both | verified | h_maps::h_delete_asks_first | Delete this map?, Delete (red), Keep it; 'Map deleted: <name>' |
+| people.cards.mine | dialog | `ui/screens/ContactCards.kt:240-319` | `pages/cards.py:MyCardDialog` | both | verified | s_cards::my_card_is_signed_by_the_bridges_routing_key | the card the Bridge signs with its routing identity (GET /api/contacts/card, MESHSAT-1416: the same key its Reticulum announces and key bundles carry, as Android's routing identity), as a QR code at level L with a four-module quiet zone (zxing's defaults), the fingerprint at 18 sp, Copy with 'Card copied'; with no key yet, Android's sentence and no Copy |
+| people.cards.add | dialog | `ui/screens/ContactCards.kt:189-237` | `pages/cards.py:AddDialog` | both | verified | h_cards::f_a_card_read_by_the_camera_is_added_as_scanned | Add {name}?, the fingerprint to compare, the mesh node and Hub lines, how it came (scanned or imported); the three errors as toasts |
+| people.cards.paste | dialog | `ui/screens/ContactCards.kt:157-187` | `pages/cards.py:PasteDialog` | both | verified | h_cards::e_the_three_errors | Paste a card, its text empty each time, Read it |
+| scanner | behaviour | `ui/screens/ContactCards.kt:100-116, ui/screens/SettingsScreen.kt:283-344 (zxing CaptureActivity)` | `scan.py:Scanner` | both | verified | h_cards::f_a_card_read_by_the_camera_is_added_as_scanned | the camera through libcamera and GStreamer (the PinePhone Pro's rear camera), decoded by GStreamer's zbar element, the caller's prompt as the heading, closed on the first QR code; Linux adds 'Open an image' for a device with no camera (a code from a file counts as imported); the tests show the scanner a PNG through the same pipeline |
 
 ## Words, per Android file
 
 | file | carried | excluded | missing |
 |---|---|---|---|
-| `ui/screens/SettingsScreen.kt` | 60/251 | 0 | 191 |
-| `ui/screens/ContactCards.kt` | 12/34 | 0 | 22 |
+| `ui/screens/SettingsScreen.kt` | 161/244 | 0 | 83 |
 | `ui/screens/AboutScreen.kt` | 16/32 | 0 | 16 |
-| `ui/screens/Onboarding.kt` | 12/27 | 0 | 15 |
 | `ui/components/CheckMailboxButton.kt` | 3/18 | 0 | 15 |
 | `ui/screens/MessagesScreen.kt` | 59/73 | 0 | 14 |
-| `ui/components/ProvisionClaimHost.kt` | 3/17 | 0 | 14 |
+| `ui/screens/Onboarding.kt` | 13/27 | 0 | 14 |
 | `ui/screens/DashboardScreen.kt` | 19/31 | 0 | 12 |
 | `sos/SosController.kt` | 17/26 | 0 | 9 |
 | `ui/screens/PassPredictorScreen.kt` | 32/39 | 0 | 7 |
-| `ui/screens/SosScreens.kt` | 65/72 | 0 | 7 |
-| `ui/components/ProvisionLinkDialog.kt` | 2/9 | 0 | 7 |
 | `ui/screens/TopologyScreen.kt` | 25/29 | 0 | 4 |
 | `ui/components/NodeDetailSheet.kt` | 12/16 | 0 | 4 |
 | `ui/components/PermissionAsk.kt` | 0/4 | 0 | 4 |
 | `sos/SosRun.kt` | 12/16 | 0 | 4 |
 | `ui/screens/HomeLanes.kt` | 34/37 | 0 | 3 |
-| `sos/SosMessages.kt` | 8/11 | 0 | 3 |
+| `ui/screens/SosScreens.kt` | 69/72 | 0 | 3 |
 | `ui/screens/AuditScreen.kt` | 41/43 | 0 | 2 |
 | `ui/screens/InterfacesScreen.kt` | 57/59 | 0 | 2 |
 | `ui/screens/MapScreen.kt` | 28/30 | 0 | 2 |
 | `ui/screens/SetupScreen.kt` | 53/55 | 0 | 2 |
+| `sos/SosMessages.kt` | 13/15 | 0 | 2 |
 | `ui/Peers.kt` | 5/6 | 0 | 1 |
 | `ui/screens/CredentialsScreen.kt` | 14/15 | 0 | 1 |
 | `ui/screens/DecryptScreen.kt` | 13/14 | 0 | 1 |
-| `ui/screens/DeliveryScreen.kt` | 68/69 | 0 | 1 |
 | `ui/screens/GeofenceScreen.kt` | 45/46 | 0 | 1 |
 | `ui/components/HoldToSend.kt` | 0/1 | 0 | 1 |
 | `ui/components/Lane.kt` | 2/3 | 0 | 1 |
 | `ui/components/NodeLinkBanner.kt` | 6/7 | 0 | 1 |
+| `ui/components/ProvisionClaimHost.kt` | 16/17 | 0 | 1 |
 | `ui/components/RegionCheck.kt` | 4/5 | 0 | 1 |
 | `ui/MeshSatUI.kt` | 23/23 | 0 | 0 |
 | `ui/Words.kt` | 26/26 | 0 | 0 |
+| `ui/screens/ContactCards.kt` | 34/34 | 0 | 0 |
+| `ui/screens/DeliveryScreen.kt` | 69/69 | 0 | 0 |
 | `ui/screens/NodeLogScreen.kt` | 11/13 | 2 | 0 |
 | `ui/screens/PeersScreen.kt` | 13/13 | 0 | 0 |
 | `ui/screens/RadioConfigScreen.kt` | 146/146 | 0 | 0 |
 | `ui/screens/RulesScreen.kt` | 83/83 | 0 | 0 |
 | `ui/components/Chrome.kt` | 1/1 | 0 | 0 |
 | `ui/components/MapChrome.kt` | 3/3 | 0 | 0 |
+| `ui/components/ProvisionLinkDialog.kt` | 9/9 | 0 | 0 |
 | `ui/components/SkyChart.kt` | 7/7 | 0 | 0 |
