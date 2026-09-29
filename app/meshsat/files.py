@@ -53,6 +53,37 @@ def pick(app, title: str, on_picked, patterns=("*.pem", "*.crt", "*.cer", "*.key
     dialog.open(app.window, None, done)
 
 
+def pick_file(app, title: str, on_picked, patterns=()) -> None:
+    """`on_picked(Gio.File)` for a file the person picks, or `on_picked(None)`: the file itself,
+    not its bytes (an offline map can be hundreds of megabytes; the caller copies it off the
+    main loop)."""
+    if system.TEST:
+        # MESHSAT_APP_PICK, or the file it links to: the tests pick files by their own names.
+        path = os.path.realpath(os.environ.get("MESHSAT_APP_PICK", "")) if os.environ.get("MESHSAT_APP_PICK") else ""
+        trace.event("pick", title=title, path=path)
+        on_picked(Gio.File.new_for_path(path) if path and os.path.exists(path) else None)
+        return
+    dialog = Gtk.FileDialog(title=title, modal=True)
+    if patterns:
+        filters = Gio.ListStore.new(Gtk.FileFilter)
+        wanted = Gtk.FileFilter(name=title)
+        for pattern in patterns:
+            wanted.add_pattern(pattern)
+        filters.append(wanted)
+        anything = Gtk.FileFilter(name="All files")
+        anything.add_pattern("*")
+        filters.append(anything)
+        dialog.set_filters(filters)
+
+    def done(d, result) -> None:
+        try:
+            on_picked(d.open_finish(result))
+        except GLib.Error:
+            on_picked(None)
+
+    dialog.open(app.window, None, done)
+
+
 def save(app, name: str, text: str, on_saved) -> None:
     """A copy of `text` where the person chooses, first named `name`; `on_saved(True)` once
     written, `on_saved(False)` when it could not be, `on_saved(None)` when they chose nothing."""

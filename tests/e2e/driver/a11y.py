@@ -39,7 +39,7 @@ class Node:
 
     @property
     def checked(self) -> bool:
-        return bool(self.states and self.states.contains(Atspi.StateType.CHECKED))
+        return bool(self.states and (self.states.contains(Atspi.StateType.CHECKED) or self.states.contains(Atspi.StateType.PRESSED)))
 
     def actions(self) -> list:
         try:

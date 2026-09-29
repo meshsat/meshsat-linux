@@ -14,14 +14,14 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
-from . import __version__, api, routes, sosflow, store, theme, trace  # noqa: E402
+from . import __version__, api, maptiles, routes, sosflow, store, theme, trace  # noqa: E402
 from .home import HomeScreen  # noqa: E402
 from .mapview import MapScreen  # noqa: E402
 from .messages import ChatScreen, MessagesScreen, name_of  # noqa: E402
 from .model import words  # noqa: E402
 from .people import PeopleScreen  # noqa: E402
 from .setup import SetupScreen  # noqa: E402
-from .widgets import Banner, Filtered, KeyValue, NavBar, StatusStrip, ago, filled_button, outlined_button, text  # noqa: E402
+from .widgets import Banner, Filtered, NavBar, StatusStrip, filled_button, outlined_button, text  # noqa: E402
 
 # The application id is the package's; a test instance takes its own so the two never meet.
 APP_ID = os.environ.get("MESHSAT_APP_ID", "net.meshsat.Bridge")
@@ -40,6 +40,8 @@ class MeshSatApp(Adw.Application):
         self.poller = api.Poller(self.on_state)
         self.state = self.poller.state
         self.prefs = store.Prefs()
+        # The map's tiles, one source for both maps, so the Map tab and Zones agree on being offline.
+        self.tiles = maptiles.Tiles(self.prefs)
         # The SOS in progress, or the last one (sos/SosController.kt): the banner, the Home
         # card and the result screen read it.
         self.sos = sosflow.Flow(self.prefs, lambda: GLib.idle_add(self.on_sos_change))
@@ -59,7 +61,8 @@ class MeshSatApp(Adw.Application):
         # open "'setup/node'"), which is how the parity captures and the tests drive the app.
         # `inspect "'/tmp/tree.json'"` writes every widget on view with its size, for the tests.
         for name, handler in (("tab", lambda _a, p: self.select_tab(p.get_string())), ("open", lambda _a, p: self.open_route(p.get_string())),
-                              ("inspect", lambda _a, p: self.inspect(p.get_string()))):
+                              ("inspect", lambda _a, p: self.inspect(p.get_string())), ("map-press", lambda _a, p: self.map_press(p.get_string())),
+                              ("close-dialog", lambda _a, _p: self.close_dialog())):
             action = Gio.SimpleAction.new(name, GLib.VariantType.new("s"))
             action.connect("activate", handler)
             self.add_action(action)
@@ -224,6 +227,9 @@ class MeshSatApp(Adw.Application):
                 child = child.get_next_sibling()
 
         walk(self.window, 0, False)
+        from .mapwidget import find_maps  # noqa: PLC0415
+
+        out["maps"] = [m.facts() for m in find_maps(self.window)]
         try:
             if path:
                 with open(path + ".tmp", "w", encoding="utf-8") as handle:
@@ -237,6 +243,26 @@ class MeshSatApp(Adw.Application):
         except OSError:
             pass
         return False
+
+    def map_press(self, argument: str) -> None:
+        """Tests only: a finger on the map on view, "tap,<lat>,<lon>" or "long,<lat>,<lon>"
+        (AT-SPI has no way to press at a place)."""
+        if not TEST or self.window is None:
+            return
+        from .mapwidget import find_maps  # noqa: PLC0415
+
+        try:
+            kind, lat, lon = argument.split(",")
+            for view in find_maps(self.window):
+                view.press(kind.strip(), float(lat), float(lon))
+        except ValueError:
+            return
+
+    def close_dialog(self) -> None:
+        """Tests only: the sheet in front closed, as a swipe down closes it (a sheet has no button
+        for it, as on Android)."""
+        if TEST and self.window is not None and self.window.get_visible_dialog() is not None:
+            self.window.get_visible_dialog().close()
 
     # What the screens ask of the app
     def visible_screen(self):
@@ -329,24 +355,30 @@ class MeshSatApp(Adw.Application):
         self.toast("Copied")
 
     def node_sheet(self, node: dict) -> None:
-        """A node's card, as the sheet the Android People screen opens: who, how well heard,
-        where, and the two things to do with them."""
-        # NodeDetailSheet.kt: the long name, or the id, and "(your node)" for the phone's own.
-        node_id = node.get("user_id", "?")
-        name = node.get("long_name") or node_id
-        mine = node_id == (self.state.bridge or {}).get("node_id")
-        dialog = Adw.Dialog(title=name, content_width=360)
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(8))
-        box.add_css_class("sheet")
-        box.append(text(name + (" (your node)" if mine else ""), "title-large"))
-        box.append(text(node.get("user_id", ""), "body-medium", theme.TEXT_SECONDARY, mono=True))
-        battery = node.get("battery_level") or 0
-        position = f"{node['latitude']:.5f}, {node['longitude']:.5f}" if node.get("latitude") else "Unknown"
-        for k, v in (("Hardware", node.get("hw_model_name") or "-"), ("Signal", signal_words(node)),
-                     ("Battery", "USB" if battery > 100 else f"{battery}%" if battery else "-"), ("Position", position), ("Last heard", ago(node.get("last_heard")))):
-            box.append(KeyValue(k, v, mono=k in ("Position",)))
-        buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(12))
-        buttons.set_margin_top(theme.dp(8))
+        """A node's sheet (NodeDetailSheet.kt): who, how they are heard, where, and the two things
+        to do with them: message them, or find them on the map (only once they sent a position)."""
+        from .model import nodes as sheet  # noqa: PLC0415
+
+        mine = node.get("user_id") == (self.state.bridge or {}).get("node_id")
+        dialog = Adw.Dialog(title=sheet.title(node, mine), content_width=360)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(12))
+        box.add_css_class("node-sheet")
+        head = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(2))
+        head.append(text(sheet.title(node, mine), "title-large", wrap=True))
+        head.append(text(sheet.subtitle(node), "body-medium", theme.TEXT_MUTED, mono=True))
+        box.append(head)
+        for label, value, mono in sheet.rows(node, mine, time.time()):
+            row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+            key = text(label, "body-medium", theme.TEXT_MUTED)
+            key.set_size_request(theme.dp(96), -1)
+            key.set_valign(Gtk.Align.START)
+            row.append(key)
+            shown = text(value, "body-medium", theme.TEXT_SECONDARY, wrap=True, mono=mono)
+            shown.set_hexpand(True)
+            row.append(shown)
+            box.append(row)
+        buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(12), homogeneous=True)
+        buttons.set_margin_top(theme.dp(4))
 
         def message() -> None:
             dialog.close()
@@ -354,18 +386,27 @@ class MeshSatApp(Adw.Application):
 
         def show() -> None:
             dialog.close()
-            self.select_tab("map")
-            screen = self.visible_screen()
-            if hasattr(screen, "map") and node.get("latitude"):
-                screen.map.center_on(node["latitude"], node["longitude"])
-            elif not node.get("latitude"):
-                self.toast(f"{name} has not shared a position.")
+            self.show_on_map(node.get("user_id", ""))
 
-        buttons.append(outlined_button("Show on map", show))
-        buttons.append(filled_button("Message", message))
+        if not mine:
+            send = filled_button(sheet.MESSAGE, message)
+            send.add_css_class("tall")
+            buttons.append(send)
+        where = outlined_button(sheet.SHOW_ON_MAP, show)
+        where.add_css_class("tall")
+        where.set_sensitive(sheet.has_position(node))
+        buttons.append(where)
         box.append(buttons)
         dialog.set_child(box)
         dialog.present(self.window)
+
+    def show_on_map(self, node_id: str) -> None:
+        """MapFocus: the Map tab, as the tab bar opens it, then the node on it."""
+        self.select_tab("map")
+        self.pop_to_root()
+        screen = self.visible_screen()
+        if hasattr(screen, "focus"):
+            screen.focus(node_id)
 
     def on_banner(self, kind: str) -> None:
         """The SOS banner opens the SOS screen, the node banner the node's page (NodeLinkBanner.kt)."""
@@ -485,16 +526,6 @@ def hub_lane(s: api.State) -> tuple:
     if link == "disconnected":
         return "trying", "Not connected. It keeps trying by itself."
     return "trying", "Connecting to the Hub."
-
-
-def signal_words(node: dict) -> str:
-    """A node's signal as NodeDetailSheet shows it: the RSSI in dBm, with the SNR beside it."""
-    rssi, snr = node.get("rssi"), node.get("snr")
-    if rssi:
-        return f"{rssi} dBm" + (f", SNR {snr:.1f} dB" if snr else "")
-    if snr:
-        return f"SNR {snr:.1f} dB"
-    return "-"
 
 
 def main() -> int:

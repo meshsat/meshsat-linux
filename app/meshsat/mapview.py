@@ -1,139 +1,73 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Map, as ui/screens/MapScreen.kt and ui/components/MapChrome.kt: OpenStreetMap's tiles drawn
-through the Android app's dark-tile matrix, the round buttons (centre on me, show everyone,
-zoom), the OpenStreetMap credit, this phone as an orange dot, the nodes as diamonds with
-their name, and the "Layers and nodes" panel under the map. The markers sit in a layer of
-their own above the filtered tiles, so they keep their exact colours, as on Android."""
+"""The Map tab (ui/screens/MapScreen.kt, map/MapTracks.kt, ui/components/MapChrome.kt): the
+nodes as diamonds with their names, this phone as an orange dot with its accuracy circle, the
+tracks of the last 24 hours as dashed sand lines, the round buttons, the note in the corner,
+and the "Layers and nodes" panel under the map. Built once and kept for the app's life, as on
+Android: its layers, hidden nodes and camera last until the app closes. Tracks are read from
+the Bridge (GET /api/positions) when the tab comes on view and every 30 s while it stays."""
 import time
+import urllib.parse
 
-import gi
-
-from gi.repository import Gdk, Gtk
+from gi.repository import GLib, Gtk
 
 from . import api, theme
-from .model import words
-from .widgets import CheckRow, Filtered, ago, clear, icon, icon_button, page, scroller, text
+from .mapwidget import MeshMap
+from .model import tracks
+from .screen import Screen
+from .widgets import CheckRow, clear, icon, name_widget, paint, scroller, text, text_button
 
-try:
-    gi.require_version("Shumate", "1.0")
-    from gi.repository import Shumate
-except (ValueError, ImportError):
-    Shumate = None
-
-# The tiles every MeshSat app shows (osmdroid's MAPNIK source on Android).
-OSM_TILES = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-WORLD = (20.0, 0.0, 3.0)  # where the map opens without a position, as on Android
-HERE_ZOOM = 14.0
-STALE_AFTER = 15 * 60
+FOCUS_ZOOM = 14.0  # a node from the panel or from People: zoom max(current, 14)
+ME_ZOOM = 15.0  # Centre on me: zoom max(current, 15)
+FIRST_FIX_ZOOM = 14.0
 
 
-class Diamond(Gtk.DrawingArea):
-    """A node on the map: a 14 dp diamond in the mesh colour, muted once the node is stale."""
+class MapScreen(Screen):
+    route = "map"
 
-    def __init__(self, stale: bool):
-        super().__init__()
-        size = theme.dp(14)
-        self.set_content_width(size)
-        self.set_content_height(size)
-        self.colour = theme.TEXT_MUTED if stale else theme.MESH
-        self.set_draw_func(self.draw)
-
-    def draw(self, area, cr, width, height):
-        rgba = Gdk.RGBA()
-        rgba.parse(self.colour)
-        cr.set_source_rgba(rgba.red, rgba.green, rgba.blue, 1.0)
-        cr.move_to(width / 2, 0)
-        cr.line_to(width, height / 2)
-        cr.line_to(width / 2, height)
-        cr.line_to(0, height / 2)
-        cr.close_path()
-        cr.fill_preserve()
-        ink = Gdk.RGBA()
-        ink.parse(theme.SPACE_BLACK)
-        cr.set_source_rgba(ink.red, ink.green, ink.blue, 1.0)
-        cr.set_line_width(1.5)
-        cr.stroke()
-
-
-class MapScreen(Gtk.Box):
     def __init__(self, app):
-        super().__init__(orientation=Gtk.Orientation.VERTICAL)
-        self.app = app
-        self.positions = []
-        self.panel_open = False
-        # The layers (MapChrome.kt): this phone, the nodes, the tracks; and the nodes hidden one
-        # by one from the list. The list is rebuilt only when the nodes change.
+        super().__init__(app)
+        # The layers, all on at first; the nodes hidden one by one (the hidden ones are kept, so a
+        # node heard later is on the map by itself).
         self.show_phone = True
         self.show_nodes = True
-        self.show_tracks = False
+        self.show_tracks = True
         self.hidden = set()
+        self.rows = []  # the positions of the last 24 hours, newest first
+        self.markers = []
+        self.labels = {}
+        self.fitted = False  # the first view with node positions, once in the app's life
+        self.fixed = False  # before that, the first fix of the phone, once
+        self.focus_id = None  # MapFocus: a node People asked to be shown
+        self.panel_open = False
         self._panel_key = None
-        column = page(spacing=theme.dp(12))
-        column.append(text("Map", "headline-medium"))
+        self._limit = 0
 
+        column = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(8))
+        column.add_css_class("map-page")
+        column.set_vexpand(True)
+        column.append(text(tracks.MAP, "headline-medium"))
+        self.area = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(8))
+        self.area.set_vexpand(True)
         frame = Gtk.Box()
         frame.add_css_class("map-frame")
         frame.set_overflow(Gtk.Overflow.HIDDEN)
         frame.set_vexpand(True)
-        frame.set_size_request(-1, theme.dp(360))
-        overlay = Gtk.Overlay()
-        overlay.set_hexpand(True)
-        overlay.set_vexpand(True)
-        self.markers = None
-        if Shumate is not None:
-            self.map = Shumate.Map()
-            self.map.set_hexpand(True)
-            self.map.set_vexpand(True)
-            source = Shumate.RasterRenderer.new_from_url(OSM_TILES)
-            source.set_id("osm")
-            source.set_name("OpenStreetMap")
-            source.set_license("© OpenStreetMap contributors")
-            self.map.set_map_source(source)
-            self.map.add_layer(Shumate.MapLayer.new(source, self.map.get_viewport()))
-            self.map.get_viewport().set_zoom_level(WORLD[2])
-            self.map.center_on(WORLD[0], WORLD[1])
-            overlay.set_child(Filtered(self.map, theme.DARK_TILES_MATRIX))
-            # The markers: a layer on the same viewport, outside the filter, and never in the
-            # way of a finger (touches go to the map underneath).
-            self.markers = Shumate.MarkerLayer.new(self.map.get_viewport())
-            self.markers.set_can_target(False)
-            overlay.add_overlay(self.markers)
-        else:
-            missing = text("The map needs libshumate (gir1.2-shumate-1.0).", "body-medium", theme.TEXT_SECONDARY, xalign=0.5)
-            missing.set_vexpand(True)
-            overlay.set_child(missing)
-        top = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(8))
-        top.set_halign(Gtk.Align.END)
-        top.set_valign(Gtk.Align.START)
-        top.set_margin_top(theme.dp(12))
-        top.set_margin_end(theme.dp(12))
-        top.append(self.round("outlined-my-location", self.centre_on_me, "Centre on me"))
-        top.append(self.round("outlined-zoom-out-map", self.show_everyone, "Show everyone on the map"))
-        overlay.add_overlay(top)
-        bottom = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(8))
-        bottom.set_halign(Gtk.Align.END)
-        bottom.set_valign(Gtk.Align.END)
-        bottom.set_margin_bottom(theme.dp(12))
-        bottom.set_margin_end(theme.dp(12))
-        bottom.append(self.round("outlined-add", lambda: self.zoom(1), "Zoom in"))
-        bottom.append(self.round("outlined-remove", lambda: self.zoom(-1), "Zoom out"))
-        overlay.add_overlay(bottom)
-        credit = Gtk.Label(label="© OpenStreetMap contributors")
-        credit.add_css_class("map-credit")
-        credit.set_halign(Gtk.Align.START)
-        credit.set_valign(Gtk.Align.END)
-        credit.set_margin_start(theme.dp(8))
-        credit.set_margin_bottom(theme.dp(8))
-        overlay.add_overlay(credit)
-        frame.append(overlay)
-        column.append(frame)
+        self.map = MeshMap(app)
+        self.map.add_button("outlined-my-location", self.centre_on_me, tracks.CENTRE_ON_ME)
+        self.map.add_button("outlined-zoom-out-map", self.show_everyone, tracks.SHOW_EVERYONE)
+        frame.append(self.map)
+        self.area.append(frame)
+        self.area.append(self.build_panel())
+        column.append(self.area)
+        self.append(column)
 
-        # The panel under the map: a 56 dp bar that opens to the layers and the node list.
+    # The panel (MapScreen.kt:418-620)
+    def build_panel(self) -> Gtk.Widget:
         panel = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         panel.add_css_class("card")
-        bar = Gtk.Button()
-        bar.add_css_class("flat")
-        bar.connect("clicked", lambda *_: self.toggle_panel())
+        self.bar = Gtk.Button()
+        self.bar.add_css_class("flat")
+        self.bar.connect("clicked", lambda *_: self.toggle_panel())
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(12))
         row.add_css_class("panel-bar")
         layers = icon("outlined-layers", 24, theme.TEXT_SECONDARY)
@@ -142,137 +76,264 @@ class MapScreen(Gtk.Box):
         texts = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         texts.set_hexpand(True)
         texts.set_valign(Gtk.Align.CENTER)
-        texts.append(text("Layers and nodes", "title-small"))
-        self.summary = text("No node positions yet", "body-small", theme.TEXT_MUTED, ellipsize=True)
+        texts.append(text(tracks.PANEL, "title-small"))
+        self.summary = text(tracks.NO_NODE_POSITIONS, "body-small", theme.TEXT_MUTED, ellipsize=True)
         texts.append(self.summary)
         row.append(texts)
-        self.expand_icon = icon("outlined-expand-less", 24, theme.TEXT_SECONDARY)
-        self.expand_icon.set_valign(Gtk.Align.CENTER)
-        row.append(self.expand_icon)
-        bar.set_child(row)
-        panel.append(bar)
-        self.panel_body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(6))
-        self.panel_body.set_margin_start(theme.dp(12))
-        self.panel_body.set_margin_end(theme.dp(12))
-        self.panel_body.set_margin_bottom(theme.dp(12))
-        self.panel_body.set_visible(False)
-        panel.append(self.panel_body)
-        column.append(panel)
-        self.append(scroller(column))
-
-    def round(self, name: str, on_click, tooltip: str) -> Gtk.Button:
-        button = icon_button(name, on_click, 24, theme.TEXT_PRIMARY, tooltip)
-        button.remove_css_class("icon-button")
-        button.add_css_class("round")
-        return button
+        self.chevron = icon("outlined-expand-less", 24, theme.TEXT_SECONDARY)
+        self.chevron.set_valign(Gtk.Align.CENTER)
+        row.append(self.chevron)
+        self.bar.set_child(row)
+        name_widget(self.bar, tracks.OPEN_PANEL)
+        panel.append(self.bar)
+        self.body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        divider = Gtk.Box()
+        divider.add_css_class("divider")
+        self.body.append(divider)
+        self.list = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self.list.set_margin_bottom(theme.dp(8))
+        self.scroll = scroller(self.list)
+        self.scroll.set_propagate_natural_height(True)
+        self.scroll.set_vexpand(False)
+        self.body.append(self.scroll)
+        self.body.set_visible(False)
+        panel.append(self.body)
+        # The layer rows are made once: a tap never rebuilds the row under the finger.
+        self.layer_rows = {}
+        for key, title, dot in (("show_phone", tracks.THIS_PHONE, theme.SIGNAL_ORANGE), ("show_nodes", tracks.NODES, theme.MESH),
+                                ("show_tracks", tracks.TRACKS, theme.MESH)):
+            self.layer_rows[key] = CheckRow(title, lambda on, k=key: self.set_layer(k, on), active=True, dot=dot, style="body-medium")
+        return panel
 
     def toggle_panel(self) -> None:
         self.panel_open = not self.panel_open
-        self.panel_body.set_visible(self.panel_open)
-        self.expand_icon.set_from_icon_name(f"meshsat-outlined-{'expand-more' if self.panel_open else 'expand-less'}-symbolic")
+        self.body.set_visible(self.panel_open)
+        self.chevron.set_from_icon_name(f"meshsat-outlined-{'expand-more' if self.panel_open else 'expand-less'}-symbolic")
+        name_widget(self.bar, tracks.CLOSE_PANEL if self.panel_open else tracks.OPEN_PANEL)
+        self.limit_list()
+        self.fill_panel(force=True)
 
-    def zoom(self, step: int) -> None:
-        if Shumate is None:
-            return
-        viewport = self.map.get_viewport()
-        viewport.set_zoom_level(max(viewport.get_min_zoom_level(), min(viewport.get_max_zoom_level(), viewport.get_zoom_level() + step)))
+    def limit_list(self) -> None:
+        """The list is at most half the map area's height (MapScreen.kt:353), and never so tall
+        that the map's two columns of round buttons meet (a 360 px phone's map area is short)."""
+        height = self.area.get_height()
+        limit = max(theme.dp(120), min(height // 2, height - theme.dp(56 + 8 + 250)))
+        if limit != self._limit:
+            self._limit = limit
+            self.scroll.set_max_content_height(limit)
 
-    def go_to(self, latitude: float, longitude: float, zoom: float) -> None:
-        if Shumate is None:
-            return
-        viewport = self.map.get_viewport()
-        viewport.set_zoom_level(max(viewport.get_zoom_level(), zoom))
-        self.map.go_to(latitude, longitude)
-
-    def centre_on_me(self) -> None:
-        position = self.app.state.position()
-        if Shumate is None or not position:
-            self.app.toast("Waiting for a position. Allow location, or enter one under Satellite passes.")
-            return
-        self.go_to(position[0], position[1], HERE_ZOOM)
-
-    def show_everyone(self) -> None:
-        if Shumate is None or not self.positions:
-            self.app.toast("No node with a position yet.")
-            return
-        lats = [p[0] for p in self.positions]
-        lons = [p[1] for p in self.positions]
-        if len(self.positions) == 1:
-            self.go_to(lats[0], lons[0], HERE_ZOOM)
-            return
-        self.map.get_viewport().set_zoom_level(10)
-        self.map.go_to((min(lats) + max(lats)) / 2, (min(lons) + max(lons)) / 2)
-
-    def set_layer(self, layer: str, on: bool) -> None:
-        setattr(self, layer, on)
-        self.update(self.app.state)
-
-    def set_hidden(self, node_id: str, hidden: bool) -> None:
-        (self.hidden.add if hidden else self.hidden.discard)(node_id)
-        self.update(self.app.state)
-
-    def update(self, s: api.State) -> None:
-        me = (s.bridge or {}).get("node_id")
-        nodes = [n for n in s.nodes if n.get("latitude") and n.get("longitude") and n.get("user_id") != me]
-        phone = s.position()  # this phone: its own fix, the node's position, or the one typed in
-        positioned = [(n["latitude"], n["longitude"]) for n in nodes] + ([(phone[0], phone[1])] if phone else [])
-        first_fix = positioned and not self.positions
-        self.positions = positioned
-        others = nodes
-        shown = [n for n in others if n.get("user_id") not in self.hidden] if self.show_nodes else []
-        # MapChrome.kt: "N of M nodes shown", "This phone only", or nothing yet.
-        self.summary.set_text("No node positions yet" if not positioned else f"{len(shown)} of {words.count(len(others), 'node')} shown" if others else "This phone only")
-        if Shumate is not None and self.markers is not None:
-            self.markers.remove_all()
-            now = time.time()
-            drawn = ([{"latitude": phone[0], "longitude": phone[1], "mine": True}] if phone and self.show_phone else []) + shown
-            for n in drawn:
-                mine = n.get("mine", False)
-                marker = Shumate.Marker()
-                box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(2))
-                box.set_halign(Gtk.Align.CENTER)
-                if mine:
-                    dot = Gtk.Box()
-                    dot.add_css_class("marker-me")
-                    dot.set_halign(Gtk.Align.CENTER)
-                    box.append(dot)
-                else:
-                    shape = Diamond(stale=(n.get("last_heard") or 0) < now - STALE_AFTER)
-                    shape.set_halign(Gtk.Align.CENTER)
-                    box.append(shape)
-                    name = Gtk.Label(label=n.get("long_name") or n.get("short_name") or n.get("user_id", ""))
-                    name.add_css_class("marker-label")
-                    box.append(name)
-                marker.set_child(box)
-                marker.set_location(n["latitude"], n["longitude"])
-                self.markers.add_marker(marker)
-            if first_fix and phone:
-                self.go_to(phone[0], phone[1], HERE_ZOOM)
-        # The panel's rows are rebuilt only when the nodes change: a row a finger is on must
-        # not vanish under it at the next poll.
-        key = (bool(phone), tuple((n.get("user_id"), n.get("long_name"), (n.get("last_heard") or 0) // 60) for n in others))
-        if key == self._panel_key:
+    def fill_panel(self, force: bool = False) -> None:
+        s = self.app.state
+        phone = s.position()
+        # The rows are made again only when the nodes or their names change; the heard lines and
+        # the stale colour change in place, so a row under a finger stays where it is.
+        key = (tuple((m["id"], m["label"]) for m in self.markers), tracks.phone_line(phone[0], phone[1], self.accuracy()) if phone else None)
+        if not force and key == self._panel_key:
+            self.sync_checks()
+            self.refresh_rows()
             return
         self._panel_key = key
-        clear(self.panel_body)
-        self.panel_body.append(text("Layers", "label-medium", theme.TEXT_SECONDARY))
-        for title, layer, on in (("This phone", "show_phone", self.show_phone), ("Nodes", "show_nodes", self.show_nodes), ("Tracks from the last 24 hours", "show_tracks", self.show_tracks)):
-            row = CheckRow(title, lambda v, k=layer: self.set_layer(k, v), active=on)
-            row.set_sensitive(layer != "show_tracks")  # tracks come with the position log
-            self.panel_body.append(row)
-        self.panel_body.append(text("Nodes", "label-medium", theme.TEXT_SECONDARY))
-        if not others:
-            self.panel_body.append(text("No node has shared a position yet.", "body-medium", theme.TEXT_MUTED, wrap=True))
-        for n in others:
-            row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(4))
-            check = CheckRow(n.get("long_name") or n.get("user_id", ""), lambda v, i=n.get("user_id"): self.set_hidden(i, not v), active=n.get("user_id") not in self.hidden)
-            check.set_hexpand(True)
+        if not self.panel_open:
+            return
+        for row in self.layer_rows.values():
+            if row.get_parent() is not None:
+                row.get_parent().remove(row)
+        clear(self.list)
+        heading = text(tracks.LAYERS, "title-small", theme.TEXT_SECONDARY)
+        heading.add_css_class("panel-heading")
+        self.list.append(heading)
+        for row in self.layer_rows.values():
+            row.add_css_class("layer-row")
+            self.list.append(row)
+        if phone:
+            me = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(2))
+            me.add_css_class("panel-item")
+            me.append(text(tracks.THIS_PHONE, "body-medium"))
+            me.append(text(tracks.phone_line(phone[0], phone[1], self.accuracy()), "body-small", theme.TEXT_MUTED, wrap=True))
+            self.list.append(me)
+        nodes_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(4))
+        nodes_row.add_css_class("panel-heading-row")
+        nodes_heading = text(tracks.NODES, "title-small", theme.TEXT_SECONDARY)
+        nodes_heading.set_hexpand(True)
+        nodes_heading.set_valign(Gtk.Align.CENTER)
+        nodes_row.append(nodes_heading)
+        if self.markers:
+            nodes_row.append(text_button(tracks.SHOW_ALL, self.show_all))
+            nodes_row.append(text_button(tracks.HIDE_ALL, self.hide_all))
+        self.list.append(nodes_row)
+        if not self.markers:
+            empty = text(tracks.EMPTY_NODES, "body-medium", theme.TEXT_SECONDARY, wrap=True)
+            empty.add_css_class("panel-item")
+            self.list.append(empty)
+        now = time.time()
+        self.node_checks = {}
+        self.node_lines = {}
+        for m in self.markers:
+            row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
+            row.add_css_class("node-row")
+            check = CheckRow("", lambda on, i=m["id"]: self.set_hidden(i, not on), active=m["id"] not in self.hidden)
+            name_widget(check, tracks.show_label(m["label"]))
+            check.set_valign(Gtk.Align.CENTER)
+            self.node_checks[m["id"]] = check
             row.append(check)
             go = Gtk.Button()
             go.add_css_class("flat")
-            go.set_child(text("Heard " + ago(n.get("last_heard")), "body-medium", theme.TEXT_SECONDARY))
-            go.set_tooltip_text("Show on map")
-            go.update_property([Gtk.AccessibleProperty.LABEL], [f"Show {n.get('long_name') or n.get('user_id', '')} on map"])
-            go.connect("clicked", lambda _b, lat=n["latitude"], lon=n["longitude"]: self.go_to(lat, lon, HERE_ZOOM))
+            go.set_hexpand(True)
+            inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(2))
+            inner.set_valign(Gtk.Align.CENTER)
+            name = text(m["label"], "body-medium", theme.TEXT_SECONDARY if m["stale"] else theme.TEXT_PRIMARY, ellipsize=True)
+            inner.append(name)
+            heard = text(tracks.heard(m["heard"], now), "body-small", theme.TEXT_MUTED, ellipsize=True)
+            inner.append(heard)
+            self.node_lines[m["id"]] = (name, heard)
+            go.set_child(inner)
+            name_widget(go, tracks.centre_label(m["label"]))
+            go.connect("clicked", lambda _b, i=m["id"]: self.centre_on(i))
             row.append(go)
-            self.panel_body.append(row)
+            self.list.append(row)
+
+    def refresh_rows(self) -> None:
+        now = time.time()
+        for m in self.markers:
+            lines = getattr(self, "node_lines", {}).get(m["id"])
+            if lines is not None:
+                paint(lines[0], theme.TEXT_SECONDARY if m["stale"] else theme.TEXT_PRIMARY)
+                words = tracks.heard(m["heard"], now)
+                if lines[1].get_text() != words:
+                    lines[1].set_text(words)
+
+    def sync_checks(self) -> None:
+        for key, row in self.layer_rows.items():
+            row.set_checked(getattr(self, key))
+        for node_id, check in getattr(self, "node_checks", {}).items():
+            check.set_checked(node_id not in self.hidden)
+
+    # What the panel and the buttons do
+    def set_layer(self, key: str, on: bool) -> None:
+        setattr(self, key, on)
+        self.layer_rows[key].set_checked(on)
+        self.redraw()
+
+    def set_hidden(self, node_id: str, hidden: bool) -> None:
+        (self.hidden.add if hidden else self.hidden.discard)(node_id)
+        self.redraw()
+
+    def show_all(self) -> None:
+        self.hidden.clear()
+        self.sync_checks()
+        self.redraw()
+
+    def hide_all(self) -> None:
+        self.hidden = {m["id"] for m in self.markers}
+        self.sync_checks()
+        self.redraw()
+
+    def centre_on(self, node_id: str) -> None:
+        """A node row, or People's "Show on map": the node back on the map, the Nodes layer on,
+        and the map on it at zoom max(current, 14)."""
+        marker = next((m for m in self.markers if m["id"] == node_id), None)
+        if marker is None:
+            self.app.toast(tracks.NO_NODE_POSITION)
+            return
+        self.hidden.discard(node_id)
+        self.show_nodes = True
+        self.sync_checks()
+        self.redraw()
+        self.map.go_to(marker["lat"], marker["lon"], max(self.map.zoom_level(), FOCUS_ZOOM))
+
+    def centre_on_me(self) -> None:
+        phone = self.app.state.position()
+        if not phone:
+            self.app.toast(tracks.NO_POSITION)
+            return
+        self.set_layer("show_phone", True)
+        self.map.go_to(phone[0], phone[1], max(self.map.zoom_level(), ME_ZOOM))
+
+    def show_everyone(self) -> None:
+        phone = self.app.state.position()
+        points = [(m["lat"], m["lon"]) for m in self.shown()] + ([(phone[0], phone[1])] if phone and self.show_phone else [])
+        if not points:
+            self.app.toast(tracks.NO_POSITIONS)
+            return
+        self.map.show_points(points, animate=True)
+
+    def focus(self, node_id: str) -> None:
+        """MapFocus.show: centre on the node once the positions are in (they are: the poll has
+        the node list), then forget the request."""
+        self.focus_id = node_id
+        GLib.idle_add(self.apply_focus)
+
+    def apply_focus(self) -> bool:
+        node_id, self.focus_id = self.focus_id, None
+        if node_id is not None:
+            self.update(self.app.state)
+            self.centre_on(node_id)
+        return False
+
+    # The data
+    def on_show(self) -> None:
+        self.map.reload_tiles()  # the detailed map may have changed in Setup > Maps
+        self.map.refresh_note()
+        self.every(tracks.RELOAD_S, self.load_tracks)
+        self.update(self.app.state)
+
+    def load_tracks(self) -> None:
+        path = f"/api/positions?since={urllib.parse.quote(tracks.since_param())}&limit={tracks.LIMIT}"
+        self.fetch(path, self.got_tracks)
+
+    def got_tracks(self, answer) -> None:
+        if not answer.ok or not isinstance(answer.body, dict):
+            return  # MapTracks: an error keeps the tracks there are
+        self.rows = [r for r in (answer.body.get("positions") or []) if isinstance(r, dict) and r.get("latitude") is not None]
+        self.update(self.app.state)
+
+    def skip(self, s: api.State) -> set:
+        """The node that is this phone: in cover mode the node is the phone's own radio, and the
+        phone is drawn as the orange dot already. A node over Bluetooth is a device of its own."""
+        me = (s.bridge or {}).get("node_id")
+        return {me} if me and s.node_mode() == "cover" else set()
+
+    def accuracy(self):
+        s = self.app.state
+        position = s.position()
+        if position and s.phone and position[2] in ("GPS", "Network"):
+            return s.phone[2]
+        return None
+
+    def shown(self) -> list:
+        return [m for m in self.markers if m["id"] not in self.hidden] if self.show_nodes else []
+
+    def update(self, s: api.State) -> None:
+        now = time.time()
+        skip = self.skip(s)
+        self.markers = tracks.markers(s.nodes, self.rows, skip, now)
+        self.labels = {m["id"]: m["label"] for m in self.markers}
+        phone = s.position()
+        # The camera (MapScreen.kt:285-304): the first node positions fit everyone, once; before
+        # them, the phone's first fix, once.
+        if not self.fitted and self.markers:
+            self.fitted = self.fixed = True
+            self.map.show_points([(m["lat"], m["lon"]) for m in self.markers] + ([(phone[0], phone[1])] if phone else []), animate=False)
+        elif not self.fixed and phone:
+            self.fixed = True
+            self.map.go_to(phone[0], phone[1], FIRST_FIX_ZOOM, animate=False)
+        self.redraw()
+        if self.panel_open:
+            self.limit_list()
+        self.fill_panel()
+
+    def redraw(self) -> None:
+        s = self.app.state
+        now = time.time()
+        shown = self.shown()
+        self.map.set_nodes([{**m, "snippet": tracks.marker_snippet(m, now)} for m in shown])
+        latest = {m["id"]: (m["lat"], m["lon"]) for m in shown}
+        skip = self.skip(s)
+        paths = tracks.group([r for r in self.rows if r.get("node_id") not in skip], self.hidden, latest) if self.show_tracks else {}
+        self.map.set_tracks(paths, {k: tracks.track_title(self.labels.get(k, k)) for k in paths})
+        phone = s.position() if self.show_phone else None
+        accuracy = self.accuracy()
+        self.map.set_phone(phone, accuracy, tracks.accuracy(accuracy))
+        total = len(self.markers)
+        self.summary.set_text(tracks.summary(len(shown), total))
+

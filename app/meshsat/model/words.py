@@ -117,6 +117,13 @@ def ago(epoch_s: float, now_s: float | None = None) -> str:
     return count(s // 86400, "day") + " ago"
 
 
+def ago_ms(epoch_ms: int, now_ms: int | None = None) -> str:
+    """Words.ago on milliseconds, as Android's (the Bridge's zone log keeps them)."""
+    if not epoch_ms or epoch_ms <= 0:
+        return "never"
+    return ago(epoch_ms / 1000, None if now_ms is None else now_ms / 1000)
+
+
 def in_time(epoch_s: float, now_s: float | None = None) -> str:
     """A moment ahead, relative: "now", "in 4 min", "in 2 h 10 min"."""
     now_s = time.time() if now_s is None else now_s

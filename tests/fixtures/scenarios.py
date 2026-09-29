@@ -6,6 +6,7 @@ is about; what no recording holds is written here in the Bridge's shapes."""
 import copy
 import glob
 import json
+import math
 import os
 import time
 
@@ -141,6 +142,8 @@ def base() -> dict:
         "_settings": settings(),
         "_radio_log": [],
         "_gateways": {},  # no gateway set up: GET /api/gateways/{type} answers 404, as the Bridge
+        "_zones": [],  # the geofence monitor running, no zone yet
+        "_positions": [],  # no position logged
     }
 
 
@@ -356,9 +359,60 @@ def messaging(encoder: bool = False) -> dict:
     return routes
 
 
+def circle(lat: float, lon: float, r: float, n: int = 32) -> list:
+    """A zone's polygon as MeshSat Android saves one (GeofenceScreen.circlePolygon)."""
+    out = []
+    for i in range(n):
+        a = 2 * math.pi * i / n
+        out.append({"lat": lat + math.degrees(r * math.cos(a) / 6371000.0), "lon": lon + math.degrees(r * math.sin(a) / (6371000.0 * math.cos(math.radians(lat))))})
+    return out
+
+
+HOME = (52.3731, 4.8932)
+STATION = (52.0907, 5.1214)
+
+
+def zones() -> dict:
+    """Zones, tracks and positions (every age in the middle of its minute, so the words hold for
+    half a minute either way): MSPA at home (heard 2 min ago), Far Hill at the station (heard
+    30 min ago, so stale), a node that never sent a position, an APRS station only the position
+    log knows; two zones, two crossings; tracks of the last hours (and one row older than a day,
+    which the map must leave out)."""
+    routes = base()
+    me = node(ME, "meshsat-pinephone-pro", "MSPP", NOW - 5, hw_model=255, hw_model_name="PORTDUINO", battery_level=101, rssi=0, snr=0)
+    near = node(OTHER, "MSPA", "MSPA", NOW - 105, hw_model=50, hw_model_name="T_DECK", latitude=HOME[0], longitude=HOME[1], altitude=12)
+    far = node(THIRD, "Far Hill", "FARH", NOW - 1785, hw_model=43, hw_model_name="HELTEC_V3", battery_level=40, hops_away=2, snr=0, rssi=0,
+               latitude=STATION[0], longitude=STATION[1])
+    quiet = node("!c0ffee01", "Quiet One", "QUIE", NOW - 600, battery_level=0)
+    routes["GET /api/nodes"] = {"nodes": [me, near, far, quiet]}
+    routes["_zones"] = [
+        {"id": "zone_1", "name": "Home", "polygon": circle(HOME[0], HOME[1], 200), "alert_on": "enter", "message": ""},
+        {"id": "zone_2", "name": "Station", "polygon": circle(STATION[0], STATION[1], 1000), "alert_on": "both", "message": "Pick-up point"},
+    ]
+    routes["_zone_events"] = [{"zone_name": "Home", "node_id": OTHER, "event": "enter", "timestamp": (NOW - 225) * 1000},
+                              {"zone_name": "Station", "node_id": "!0badf00d", "event": "exit", "timestamp": (NOW - 7200) * 1000}]
+    rows = []
+    for i, (who, lat, lon, ago) in enumerate([
+        (OTHER, HOME[0], HOME[1], 150), (OTHER, 52.3700, 4.8900, 1800), (OTHER, 52.3650, 4.8850, 3600), (OTHER, 52.3600, 4.8800, 5400),
+        (THIRD, STATION[0], STATION[1], 1900), (THIRD, 52.0950, 5.1100, 4000), (THIRD, 52.1000, 5.1000, 7000),
+        ("PA3XYZ-9", 52.2000, 5.0000, 1185), ("PA3XYZ-9", 52.2100, 5.0100, 2000),
+        (OTHER, 50.0, 4.0, 90000)]):
+        rows.append({"id": 100 - i, "node_id": who, "latitude": lat, "longitude": lon, "altitude": 0, "sats_in_view": 0, "ground_speed": 0, "ground_track": 0,
+                     "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(NOW - ago))})
+    routes["_positions"] = sorted(rows, key=lambda r: r["created_at"], reverse=True)
+    return routes
+
+
+def zones_down() -> dict:
+    """The Bridge up without its geofence monitor: zones answer 503."""
+    routes = base()
+    routes.pop("_zones")
+    return routes
+
+
 SCENARIOS = {"fresh": fresh, "mesh-only": mesh_only, "one-node": one_node, "nameless-node": nameless_node, "satellite-3-bars": satellite_3_bars, "sim-ready": sim_ready,
              "all-four": all_four, "hub-set-up": hub_set_up, "sos-active": sos_active, "bluetooth-pairing": bluetooth_pairing, "bluetooth-connected": bluetooth_connected,
-             "queue-busy": queue_busy, "advanced": advanced, "messaging": messaging, "messaging-encoder": lambda: messaging(True)}
+             "queue-busy": queue_busy, "advanced": advanced, "messaging": messaging, "messaging-encoder": lambda: messaging(True), "zones": zones, "zones-down": zones_down}
 
 
 def build(name: str) -> dict:

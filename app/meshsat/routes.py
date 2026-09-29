@@ -25,7 +25,8 @@ ROUTES = {
     "setup/sms": ("setup", "setup", "SmsScreen"),
     "setup/safety": ("setup", "pages.safety", "SafetyScreen"),
     "setup/messaging": ("setup", "pages.messaging", "MessagingScreen"),
-    "setup/maps": ("setup", "setup", "MapsScreen"),
+    "setup/maps": ("setup", "pages.maps", "MapsScreen"),
+    "geofence": ("setup", "pages.zones", "ZonesScreen"),
     "setup/integrations": ("setup", "setup", "IntegrationsScreen"),
     "setup/advanced": ("setup", "setup", "AdvancedScreen"),
     "setup/about": ("setup", "setup", "AboutScreen"),
@@ -40,7 +41,7 @@ ROUTES = {
 
 # The names the `open` action took before the routes were Android's (kept for the tools).
 ALIASES = {"node": "setup/node", "satellite": "setup/satellite", "hub": "setup/hub", "sms": "setup/sms", "safety": "setup/safety",
-           "messaging": "setup/messaging", "maps": "setup/maps", "integrations": "setup/integrations", "radio": "radio-config",
+           "messaging": "setup/messaging", "maps": "setup/maps", "zones": "geofence", "integrations": "setup/integrations", "radio": "radio-config",
            "advanced": "setup/advanced", "everyone": "chat/!ffffffff", "links": "interfaces", "queue": "deliveries", "diagnostics": "setup/diagnostics"}
 
 # Which routes a notification may open (MainActivity.kt OPENABLE_ROUTES), and where a lane leads.

@@ -41,8 +41,8 @@ class SafetyScreen(SubScreen):
     def __init__(self, app):
         super().__init__(app, "Safety")
         self.route = "setup/safety"
-        zones = NavRow("outlined-fence", "Zones", lambda: app.toast("Zones come with 0.10.0."))
-        zones.set_detail("Not on this device yet")
+        zones = NavRow("outlined-fence", "Zones", lambda: app.open_route("geofence"))
+        zones.set_detail("Alerts when someone enters or leaves an area")
         self.column.append(zones)
 
         card = self.card("SOS")

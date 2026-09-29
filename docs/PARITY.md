@@ -2,9 +2,9 @@
 
 MeshSat Android is the reference, pinned at `v2.19.4`. One row per screen, tab, card, dialog, banner and notification of the Android app; a row is done when the Linux app has it, in Android's words, and a test proves it. Kept by `tools/parity-check.py` from `tests/parity/ledger.json`; the words by `tools/android-strings.py`.
 
-**Rows:** 131: 12 missing, 15 partial, 20 built, 73 verified, 9 excluded, 2 blocked.
+**Rows:** 136: 10 missing, 11 partial, 19 built, 85 verified, 9 excluded, 2 blocked.
 
-**Words:** 972 of 1410 readable strings of Android's `ui/` and `sos/` are in the Linux sources, 2 excluded with a reason, 436 still to port.
+**Words:** 1040 of 1410 readable strings of Android's `ui/` and `sos/` are in the Linux sources, 2 excluded with a reason, 368 still to port.
 
 States: `missing` (not there), `partial` (some of it), `built` (there, untested), `verified` (there, in Android's words, with a test that ran green on the phone), `excluded` (not ported, with the reason), `blocked` (built and tested against the scripted Bridge, waiting for hardware the bench lacks).
 
@@ -43,15 +43,15 @@ States: `missing` (not there), `partial` (some of it), `built` (there, untested)
 | chat.composer-words | strings | `ui/screens/MessagesScreen.kt:586-647` | `model/chat.py` | both | verified | h_chat::the_composer_says_how_the_message_goes | the four placeholders, the six footer lines, the bytes and credits, the 340-byte limit that disables Send; the node-down toast (h_chat::the_mesh_down_refuses_the_send) |
 | chat.ticks | behaviour | `ui/screens/MessagesScreen.kt:DeliveryMark` | `messages.py:ChatScreen.bubble` | both | verified | h_chat::own_bubbles_carry_a_delivery_mark | a clock, one check, a question mark, a red mark, two checks; from the Bridge's delivery_status; the Hub's receipt and the carrier's report are not in the Bridge's feed yet (one check for them) |
 | chat.key | sheet | `ui/screens/SettingsScreen.kt:KeyManagementSection` | `` | both | missing |  | 0.12.0 |
-| map | screen | `ui/screens/MapScreen.kt` | `mapview.py:MapScreen` | both | partial |  | the phone row, the toasts and Show on map come with 0.10.0 |
-| map.chrome | card | `ui/components/MapChrome.kt` | `mapview.py:MapScreen` | both | partial |  | the offline-map notes come with 0.10.0 |
-| map.panel | card | `ui/components/MapChrome.kt:layers` | `mapview.py:update` | both | built |  | layers and per-node hide |
-| map.tracks | behaviour | `map/MapTracks.kt` | `` | both | missing |  | 0.10.0 |
+| map | screen | `ui/screens/MapScreen.kt:345-415` | `mapview.py:MapScreen, mapwidget.py:MeshMap` | both | verified | h_tracks::a_the_map_and_its_panel | one map for the app's life, as Android's (layers, hidden nodes and camera kept); the camera rules (the first node positions fit everyone once, before them the phone's first fix at 14); Centre on me (the phone layer on, zoom max(current, 15)), Show everyone (showPoints), the three toasts; the markers drawn above the dark filter: sand diamonds 22 dp faded after 15 min with their names on a pill, this phone an 18 dp orange dot with its accuracy circle; bubbles on markers and tracks (osmdroid's info window: title and snippet), a marker tap pans to it. In cover mode the node that is the phone's own radio is the orange dot, not a diamond; a node over Bluetooth is a device of its own and a diamond |
+| map.chrome | card | `ui/components/MapChrome.kt:107-194` | `mapwidget.py:MeshMap` | both | verified | h_maps::f_offline_the_detailed_map_serves | the round 48 dp buttons (Zoom in, Zoom out and the screen's own), the note in the corner: the OpenStreetMap credit online, 'Offline map: <name>. Outside it, the world overview.' or the world overview's sentence offline; offline after three failed downloads in a row, back with one that works (shared by both maps); the Map tab zooms out to 5 offline with only the world overview |
+| map.panel | card | `ui/screens/MapScreen.kt:418-620` | `mapview.py:MapScreen.fill_panel` | both | verified | h_tracks::b_a_hidden_node_loses_marker_and_track | Layers and nodes: the summary, the three layers with their dots, this phone's row with its accuracy, Show all and Hide all, the node rows newest first (a check box hides the marker and the track; the row centres the map on the node at zoom max(current, 14)); the list at most half the map area's height; the hidden nodes are kept, so a node heard later shows |
+| map.tracks | behaviour | `map/MapTracks.kt, ui/screens/MapScreen.kt:101-233` | `model/tracks.py:group, mapview.py` | both | verified | h_tracks::a_the_map_and_its_panel | the positions of the last 24 hours from the Bridge (GET /api/positions, 5,000 newest, all nodes together), re-read every 30 s while on view; a dashed sand line per node (75 %, 3 dp, 8 on 5 off, round caps), joined to its marker, two points at least; 'Track of <name>'; stations only the position log knows (APRS, TAK) are markers and tracks too |
 | people | screen | `ui/screens/PeersScreen.kt` | `people.py:PeopleScreen` | both | partial | h_names::a_name_heard_once_survives_a_bridge_restart | '(you)' and the cards come later |
 | people.names | behaviour | `ui/Peers.kt:displayName` | `messages.py:name_of` | both | verified | h_names::a_name_heard_once_survives_a_bridge_restart |  |
 | people.empty | strings | `ui/screens/PeersScreen.kt:155-165` | `people.py:update` | both | built |  |  |
 | people.cards | card | `ui/screens/ContactCards.kt` | `` | both | missing |  | 0.11.0 |
-| people.sheet | sheet | `ui/components/NodeDetailSheet.kt` | `__main__.py:node_sheet` | both | partial |  | the signal words and the sheet's layout come with 0.12.0 |
+| people.sheet | sheet | `ui/components/NodeDetailSheet.kt` | `__main__.py:node_sheet, model/nodes.py` | both | verified | h_tracks::g_the_node_sheet_and_show_on_map | the title (' (your node)'), the short name and id two spaces apart, the rows with their 96 dp labels (Last heard and Signal not for your own node, Hardware when known, Position '%.5f, %.5f, ago' or 'Not shared yet...'), Message (not for your own node) and Show on map (only with a position); the signal words from the node list (the Bridge keeps no last-packet signal per node: 'as your node last measured it'); battery: the Bridge's 0 is Android's -1, 'Not reported' |
 | setup | screen | `ui/screens/SetupScreen.kt` | `setup.py:SetupScreen` | both | built |  |  |
 | setup.node | screen | `ui/screens/SettingsScreen.kt:384-525` | `setup.py:NodeScreen` | both | built |  | the Bluetooth card as Android's; the cover card and the device card are this edition's |
 | setup.node.cover | linux-only | `-` | `setup.py:NodeScreen.update_cover` | cover | built |  | the PinePhone's LoRa back cover as the node |
@@ -70,9 +70,9 @@ States: `missing` (not there), `partial` (some of it), `built` (there, untested)
 | setup.safety.checkin | card | `ui/screens/SettingsScreen.kt:992-1061` | `pages/safety.py:SafetyScreen` | both | verified | h_sos::safety_page_contacts_and_check_in_timer |  |
 | sos | screen | `ui/screens/SosScreens.kt:SosScreen` | `pages/sos.py:SosScreen` | both | verified | h_sos::sos_screen_shows_where_it_went_and_the_cancellation |  |
 | sos.test | dialog | `ui/screens/SosScreens.kt:424-450` | `sosflow.py:Flow.start, model/sosrun.py` | both | verified | h_sos::alarm_test_goes_route_by_route_and_settles | the mesh leg heard by the T-Deck on the bench (l_alarm) |
-| geofence | screen | `ui/screens/GeofenceScreen.kt` | `` | both | missing |  | 0.10.0 |
+| geofence | screen | `ui/screens/GeofenceScreen.kt` | `pages/zones.py:ZonesScreen` | both | verified | h_zones::a_the_list_in_androids_words | the map over the top half (long press to place or move, Centre on me, the zones in amber, the nodes, this phone), the list or the editor under it; the zones live in the Bridge (MESHSAT-1414: every mesh position checked, the crossings kept in memory until it restarts, as Android's service), read every 5 s; the alerts go nowhere but this list, as on Android |
 | setup.messaging | screen | `ui/screens/SettingsScreen.kt:736-983, 1134-1177` | `pages/messaging.py:MessagingScreen` | both | verified | h_messaging::the_three_cards_in_androids_words | the settings live in the Bridge's link chains (PUT /api/interfaces/{id}/transforms, MESHSAT-1412); the app's preferences keep what the chains cannot (the key while encryption is off) |
-| setup.maps | screen | `ui/screens/SettingsScreen.kt:maps` | `setup.py:MapsScreen` | both | partial |  | 0.10.0 |
+| setup.maps | screen | `ui/screens/SettingsScreen.kt:1984-2223` | `pages/maps.py:MapsScreen` | both | verified | h_maps::b_a_map_added_is_in_use | Offline maps: the world overview always there (Android's own world.mbtiles, byte for byte), the detailed maps with their size and zooms, In use, the vector line, Use my detailed map (keeps its file), Add a detailed map (the copy is checked before it replaces a map of the same name, where Android overwrote first; a file named world.mbtiles keeps a name of its own), the three add toasts |
 | setup.integrations | screen | `ui/screens/SettingsScreen.kt:integrations` | `setup.py:IntegrationsScreen` | both | partial |  | read only until 0.9.1 |
 | radio-config | screen | `ui/screens/RadioConfigScreen.kt` | `pages/radio.py:RadioConfigScreen` | both | verified | h_radio::name_tab_facts_and_save | seven tabs over the Bridge's named settings (GET /api/config?format=names, MESHSAT-1405); every Apply sends only what changed and the Bridge lays it over the node's own section; a tab is drawn again only when its settings change, so a poll keeps what is typed (remember(loaded)) |
 | setup.advanced | screen | `ui/screens/SetupScreen.kt:162-170` | `setup.py:AdvancedScreen` | both | verified | h_shell::every_route_opens_and_fits_the_screen | every row a native page since 0.8.0; the Diagnostics row reads "Link health, service" (no batch queue, no local crash telemetry here) |
@@ -141,39 +141,43 @@ States: `missing` (not there), `partial` (some of it), `built` (there, untested)
 | setup.messaging.compression | card | `ui/screens/SettingsScreen.kt:896-983` | `pages/messaging.py (Message compression)` | both | verified | h_messaging::compression_where_the_bridge_can_encode | SMS and Iridium SBD, Off or MSVQ-SC, the stages; MSVQ-SC offered only where the Bridge can encode (GET /api/transforms/capabilities; this phone has no encoder: the Linux sentence says so); Android's MQTT (Hub) row is not here: the Bridge's Hub link has no transform chain |
 | setup.messaging.quick | card | `ui/screens/SettingsScreen.kt:1134-1177, codec/CannedCodebook.kt` | `pages/messaging.py (Quick messages), model/messaging.py:CODEBOOK` | both | verified | CannedCodebookTest.test_known_messages_match_expected_text | the 30 brevity codes (CannedCodebookTest ported); the Bridge now reads a received code as its words (MESHSAT-1412), so 'Auto-detected on receive' holds |
 | setup.sms.no-recipient | card | `ui/screens/SettingsScreen.kt:1945-1981` | `setup.py:SmsScreen.save_number` | both | verified | h_messaging::no_recipient_number_goes_over_the_sms_gateway | the SMS gateway's default number (destination_numbers), written with the gateway's switch and masked secrets kept (MESHSAT-1412); empty = a text with no recipient is not sent, as Android; against a real Bridge: s_messaging::the_sms_gateway_without_a_default_number |
+| map.focus | behaviour | `ui/components/MapFocus.kt, ui/screens/MapScreen.kt:306-320` | `__main__.py:show_on_map, mapview.py:MapScreen.focus` | both | verified | h_tracks::g_the_node_sheet_and_show_on_map | People's Show on map: the Map tab as the tab bar opens it, the node back on the map, the Nodes layer on, zoom max(current, 14); 'This node has not sent a position yet.' when there is none |
+| geofence.editor | card | `ui/screens/GeofenceScreen.kt:557-668` | `pages/zones.py:ZonesScreen.build_editor` | both | verified | h_zones::b_a_long_press_places_a_zone_and_save_sends_it | New zone: the centre line, Name, the logarithmic slider (50 m to 5 km in 10, 25, 100 m steps) and the metres field (10 to 50,000, digits only) in step, 'About ... across.', Alert when a node, the note, Save zone and Cancel; the three errors at once; saved as Android's 32-vertex circle; the draft a 60-point geodesic circle in orange |
+| geofence.delete | dialog | `ui/screens/GeofenceScreen.kt:528-554` | `pages/zones.py:ZonesScreen.ask_delete` | both | verified | h_zones::e_delete_asks_first | Delete <name>?, Delete zone (red), Keep it; the alerts stay |
+| geofence.alerts | card | `ui/screens/GeofenceScreen.kt:494-523` | `pages/zones.py:ZonesScreen.fill_list` | both | verified | h_zones::f_a_node_crossing_is_listed | Recent alerts: the newest 20 of the Bridge's 50, '<who> entered|left <zone>, <ago>', the node's name when the radio knows one |
+| setup.maps.delete | dialog | `ui/screens/SettingsScreen.kt:2189-2221` | `pages/maps.py:MapsScreen.ask_delete` | both | verified | h_maps::h_delete_asks_first | Delete this map?, Delete (red), Keep it; 'Map deleted: <name>' |
 
 ## Words, per Android file
 
 | file | carried | excluded | missing |
 |---|---|---|---|
-| `ui/screens/SettingsScreen.kt` | 44/251 | 0 | 207 |
-| `ui/screens/GeofenceScreen.kt` | 13/46 | 0 | 33 |
+| `ui/screens/SettingsScreen.kt` | 60/251 | 0 | 191 |
 | `ui/screens/ContactCards.kt` | 12/34 | 0 | 22 |
 | `ui/screens/AboutScreen.kt` | 16/32 | 0 | 16 |
-| `ui/screens/MapScreen.kt` | 15/30 | 0 | 15 |
 | `ui/screens/Onboarding.kt` | 12/27 | 0 | 15 |
 | `ui/components/CheckMailboxButton.kt` | 3/18 | 0 | 15 |
 | `ui/screens/MessagesScreen.kt` | 59/73 | 0 | 14 |
 | `ui/components/ProvisionClaimHost.kt` | 3/17 | 0 | 14 |
 | `ui/screens/DashboardScreen.kt` | 19/31 | 0 | 12 |
 | `sos/SosController.kt` | 17/26 | 0 | 9 |
-| `ui/components/NodeDetailSheet.kt` | 8/16 | 0 | 8 |
 | `ui/screens/PassPredictorScreen.kt` | 32/39 | 0 | 7 |
 | `ui/screens/SosScreens.kt` | 65/72 | 0 | 7 |
 | `ui/components/ProvisionLinkDialog.kt` | 2/9 | 0 | 7 |
 | `ui/screens/TopologyScreen.kt` | 25/29 | 0 | 4 |
+| `ui/components/NodeDetailSheet.kt` | 12/16 | 0 | 4 |
 | `ui/components/PermissionAsk.kt` | 0/4 | 0 | 4 |
 | `sos/SosRun.kt` | 12/16 | 0 | 4 |
 | `ui/screens/HomeLanes.kt` | 34/37 | 0 | 3 |
-| `ui/screens/SetupScreen.kt` | 52/55 | 0 | 3 |
 | `sos/SosMessages.kt` | 8/11 | 0 | 3 |
 | `ui/screens/AuditScreen.kt` | 41/43 | 0 | 2 |
 | `ui/screens/InterfacesScreen.kt` | 57/59 | 0 | 2 |
-| `ui/components/MapChrome.kt` | 1/3 | 0 | 2 |
+| `ui/screens/MapScreen.kt` | 28/30 | 0 | 2 |
+| `ui/screens/SetupScreen.kt` | 53/55 | 0 | 2 |
 | `ui/Peers.kt` | 5/6 | 0 | 1 |
 | `ui/screens/CredentialsScreen.kt` | 14/15 | 0 | 1 |
 | `ui/screens/DecryptScreen.kt` | 13/14 | 0 | 1 |
 | `ui/screens/DeliveryScreen.kt` | 68/69 | 0 | 1 |
+| `ui/screens/GeofenceScreen.kt` | 45/46 | 0 | 1 |
 | `ui/components/HoldToSend.kt` | 0/1 | 0 | 1 |
 | `ui/components/Lane.kt` | 2/3 | 0 | 1 |
 | `ui/components/NodeLinkBanner.kt` | 6/7 | 0 | 1 |
@@ -185,4 +189,5 @@ States: `missing` (not there), `partial` (some of it), `built` (there, untested)
 | `ui/screens/RadioConfigScreen.kt` | 146/146 | 0 | 0 |
 | `ui/screens/RulesScreen.kt` | 83/83 | 0 | 0 |
 | `ui/components/Chrome.kt` | 1/1 | 0 | 0 |
+| `ui/components/MapChrome.kt` | 3/3 | 0 | 0 |
 | `ui/components/SkyChart.kt` | 7/7 | 0 | 0 |

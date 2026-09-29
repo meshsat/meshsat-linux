@@ -695,11 +695,14 @@ class CheckRow(Gtk.ToggleButton):
     """A row with a check box and a title, as Android's Checkbox rows: one button, so a finger
     or a screen reader toggles it anywhere on the row."""
 
-    def __init__(self, title: str, on_change=None, active: bool = False, detail: str = ""):
+    def __init__(self, title: str, on_change=None, active: bool = False, detail: str = "", dot: str | None = None, style: str = "body-large"):
+        """`dot`: a 10 dp dot in that colour between the box and the title (the map's layer rows);
+        an empty title leaves the box alone (a node row's own check box)."""
         super().__init__(active=active)
         self.add_css_class("flat")
         self.add_css_class("check-row")
-        name_widget(self, title)
+        if title:
+            name_widget(self, title)
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(12))
         self.box = Gtk.Box()
         self.box.add_css_class("check")
@@ -709,12 +712,20 @@ class CheckRow(Gtk.ToggleButton):
         self.mark.set_valign(Gtk.Align.CENTER)
         self.box.append(self.mark)
         row.append(self.box)
-        texts = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(2))
-        texts.set_hexpand(True)
-        texts.append(text(title, "body-large"))
-        if detail:
-            texts.append(text(detail, "body-medium", theme.TEXT_SECONDARY, wrap=True))
-        row.append(texts)
+        if dot:
+            spot = Gtk.Box()
+            spot.add_css_class("layer-dot")
+            paint(spot, dot, background=True)
+            spot.set_valign(Gtk.Align.CENTER)
+            row.append(spot)
+        if title or detail:
+            texts = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(2))
+            texts.set_hexpand(True)
+            texts.set_valign(Gtk.Align.CENTER)
+            texts.append(text(title, style))
+            if detail:
+                texts.append(text(detail, "body-medium", theme.TEXT_SECONDARY, wrap=True))
+            row.append(texts)
         self.set_child(row)
         self._quiet = False
         self.on_change = on_change

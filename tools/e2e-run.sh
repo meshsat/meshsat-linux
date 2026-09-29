@@ -50,7 +50,8 @@ if [ -n "$FAREND" ]; then
     INBOUND="hello e2e $(date +%H%M%S)"
     echo "far end: sending '$INBOUND' from $FAREND"
     hop "python3 ~/meshsat-e2e/farend.py send --port $FAREND --text \"$INBOUND\"" </dev/null
-    hop "rm -f ~/meshsat-e2e/heard.jsonl; nohup python3 ~/meshsat-e2e/farend.py listen --port $FAREND --out ~/meshsat-e2e/heard.jsonl --seconds 1500 > ~/meshsat-e2e/listen.log 2>&1 & echo listener started" </dev/null
+    # It listens for as long as the phone's side may run (e2e-remote.sh's limit) and is ended below.
+    hop "rm -f ~/meshsat-e2e/heard.jsonl; nohup python3 ~/meshsat-e2e/farend.py listen --port $FAREND --out ~/meshsat-e2e/heard.jsonl --seconds 5400 > ~/meshsat-e2e/listen.log 2>&1 & echo listener started" </dev/null
     sleep 3
 fi
 remote "bash /tmp/meshsat-e2e/tree/tools/e2e-remote.sh $TIERS $INSTALLED \"$INBOUND\" ${CASES[*]}" </dev/null
@@ -59,6 +60,9 @@ tar xzf "$OUT/out.tgz" -C "$OUT" && rm -f "$OUT/out.tgz"
 if [ -n "$FAREND" ]; then
     # [f]arend: a pattern that does not match this very command line (pkill -f would end it)
     hop "pkill -f [f]arend.py; sleep 1; cat ~/meshsat-e2e/heard.jsonl 2>/dev/null" </dev/null > "$OUT/out/farend-heard.jsonl"
+    # The radio case sets the T-Deck's hop limit: it goes back to the bench's own 3, read back over USB.
+    hop "sleep 3; python3 ~/meshsat-e2e/farend.py config --port $FAREND --get lora.hop_limit --set 3 >/dev/null 2>&1; python3 ~/meshsat-e2e/farend.py config --port $FAREND --get lora.hop_limit" </dev/null \
+        | sed 's/^/far end restored: /' | tee -a "$OUT/out/summary.txt"
     # every line a live case wrote is a text the far end must have heard
     while IFS= read -r EXPECT; do
         [ -n "$EXPECT" ] || continue

@@ -89,7 +89,9 @@ def css() -> str:
     return f"""
 :root {{ --window-bg-color: {SPACE_BLACK}; --window-fg-color: {TEXT_PRIMARY}; --view-bg-color: {SPACE_BLACK}; --view-fg-color: {TEXT_PRIMARY};
   --dialog-bg-color: {SURFACE_HIGH}; --dialog-fg-color: {TEXT_PRIMARY}; --popover-bg-color: {SURFACE_HIGH}; --popover-fg-color: {TEXT_PRIMARY};
-  --accent-bg-color: {SIGNAL_ORANGE}; --accent-fg-color: {ON_PRIMARY}; --accent-color: {SIGNAL_ORANGE}; --headerbar-bg-color: {SURFACE}; --headerbar-fg-color: {TEXT_PRIMARY}; }}
+  --accent-bg-color: {SIGNAL_ORANGE}; --accent-fg-color: {ON_PRIMARY}; --accent-color: {SIGNAL_ORANGE}; --headerbar-bg-color: {SURFACE}; --headerbar-fg-color: {TEXT_PRIMARY};
+  --sheet-bg-color: {SURFACE}; --sheet-fg-color: {TEXT_PRIMARY}; }}
+bottom-sheet > sheet {{ background-color: {SURFACE}; }}
 window {{ background-color: {SPACE_BLACK}; color: {TEXT_PRIMARY}; font-family: "{FONT}", sans-serif; font-size: {px(16)}; }}
 * {{ outline-width: 0; -gtk-icon-style: symbolic; }}
 label {{ color: {TEXT_PRIMARY}; }}
@@ -124,6 +126,7 @@ toast label {{ color: {TEXT_PRIMARY}; font-size: {px(14)}; }}
 .lane-row {{ padding: {px(12)} {px(12)} {px(8)} {px(12)}; min-height: {px(76)}; }}
 .lane-sep {{ background-color: {BORDER}; min-height: 1px; }}
 .flat {{ background: none; border: none; box-shadow: none; padding: 0; border-radius: 0; }}
+button label.body-large, button label.body-medium, button label.body-small {{ font-weight: 400; }}
 .flat:hover {{ background-color: {SURFACE_LIGHT}; }}
 .icon-button {{ background: none; border: none; box-shadow: none; padding: {px(12)}; min-width: {px(24)}; min-height: {px(24)}; border-radius: {px(24)}; color: {TEXT_PRIMARY}; }}
 .icon-button:hover {{ background-color: {SURFACE_LIGHT}; }}
@@ -239,6 +242,29 @@ toast label {{ color: {TEXT_PRIMARY}; font-size: {px(14)}; }}
 .map-frame {{ background-color: {SURFACE}; border: 1px solid {BORDER}; border-radius: {px(8)}; }}
 .map-credit {{ background-color: alpha({SPACE_BLACK}, 0.7); color: {TEXT_SECONDARY}; border-radius: {px(4)}; padding: {px(2)} {px(6)}; font-size: {px(12)}; }}
 .panel-bar {{ min-height: {px(56)}; padding: 0 {px(12)}; }}
+.map-page {{ padding: {px(16)}; }}
+.map-box {{ background-color: {SPACE_BLACK}; }}
+.map-note {{ background-color: alpha({SPACE_BLACK}, 0.85); color: {TEXT_PRIMARY}; border-radius: {px(4)}; padding: {px(4)} {px(8)}; font-size: {px(12)}; }}
+.map-bubble {{ padding: {px(4)} {px(6)}; }}
+.layer-dot {{ border-radius: {px(5)}; min-width: {px(10)}; min-height: {px(10)}; }}
+.panel-heading {{ padding: {px(12)} {px(12)} {px(4)} {px(12)}; }}
+.panel-heading-row {{ padding: 0 {px(4)} 0 {px(12)}; }}
+.panel-item {{ padding: {px(8)} {px(12)}; }}
+.check-row.layer-row {{ min-height: {px(48)}; padding: 0 {px(12)}; }}
+.node-row {{ min-height: {px(56)}; padding-left: {px(12)}; }}
+.node-row .check-row {{ padding: 0 {px(12)} 0 0; }}
+.zones-map {{ margin: {px(12)} {px(16)} 0 {px(16)}; }}
+.zone-row {{ min-height: {px(64)}; padding-left: {px(12)}; }}
+.zone-texts {{ padding: {px(8)} 0; }}
+.alert-row {{ min-height: {px(40)}; }}
+.radio-row {{ min-height: {px(48)}; }}
+.filled.tall, .textbutton.tall, .outlined.tall {{ min-height: {px(48)}; }}
+.world-box {{ border: 1px solid {BORDER}; border-radius: {px(6)}; padding: {px(12)}; }}
+.map-row {{ border: 1px solid {BORDER}; border-radius: {px(6)}; padding-left: {px(12)}; }}
+.map-row.active {{ background-color: alpha({SIGNAL_ORANGE}, 0.10); border-color: alpha({SIGNAL_ORANGE}, 0.4); }}
+.map-row > button.flat {{ padding: {px(10)} 0; }}
+.map-row > button.flat:hover {{ background: none; }}
+.node-sheet {{ padding: {px(8)} {px(24)} {px(24)} {px(24)}; }}
 .subheader {{ min-height: {px(56)}; border-bottom: 1px solid {BORDER}; padding: 0 {px(4)}; }}
 .subheader.plain {{ min-height: {px(48)}; border-bottom: none; padding: 0; }}
 .compose {{ padding: {px(8)}; }}

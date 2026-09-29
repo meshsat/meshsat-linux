@@ -36,6 +36,11 @@
   </recommends>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.10.0" date="2026-09-29">
+      <description>
+        <p>Zones, offline maps and tracks, as MeshSat Android's. Zones: a long press on the map places a zone, saved in the Bridge, which checks every position a mesh node sends against it and lists who entered or left; the alerts go nowhere else. Offline maps: the built-in world overview, and detailed maps added from MBTiles files, used first and kept when the network is gone; the map says which map it shows. The Map tab draws where each node went in the last 24 hours, lists the nodes with their layers, and People's "Show on map" goes there.</p>
+      </description>
+    </release>
     <release version="0.9.1" date="2026-09-29">
       <description>
         <p>Setup > Messaging as MeshSat Android's: the encryption key of the SMS link (generate, save, copy, paste), encryption on or off, and the automatic decryption of incoming texts, which keeps a text from an ordinary phone as it came; message compression per link where the Bridge can compress; the 30 quick messages. The SMS page takes the number a text with no recipient goes to, or none. Underneath, the Bridge no longer sends a text in the clear on a link set to encrypt when its key cannot encrypt, and checks a key when it is saved.</p>
