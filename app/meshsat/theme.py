@@ -141,6 +141,8 @@ button label.body-large, button label.body-medium, button label.body-small {{ fo
 .nav-item:hover, .nav-item:active, .nav-item:focus, .lane-row:hover, .flat.nav-item:hover {{ background: none; }}
 .chip {{ background-color: {SURFACE}; border: 1px solid {OUTLINE}; border-radius: {px(8)}; padding: 0 {px(14)}; min-height: {px(32)}; color: {TEXT_PRIMARY}; font-size: {px(14)}; font-weight: 500; box-shadow: none; }}
 .chip.selected {{ background-color: {SURFACE_LIGHT}; border-color: {SURFACE_LIGHT}; }}
+.chip.filter-chip {{ font-size: {px(12)}; font-weight: 400; }}
+.chip.filter-chip.selected {{ background-color: alpha({SIGNAL_ORANGE}, 0.2); border-color: transparent; }}
 .tag {{ border-radius: {px(4)}; padding: {px(2)} {px(6)}; font-size: {px(12)}; font-weight: 500; }}
 .tag-mesh {{ background-color: {TAG_MESH}; color: {MESH}; }}
 .tag-satellite {{ background-color: {TAG_SATELLITE}; color: {IRIDIUM}; }}

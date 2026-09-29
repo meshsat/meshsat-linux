@@ -216,6 +216,28 @@ def hub_set_up() -> dict:
     return routes
 
 
+def integrations() -> dict:
+    """Setup > Ham radio, TAK and Reticulum: APRS on KISS through an external Direwolf, connected;
+    no TAK gateway; no Reticulum TCP interface."""
+    routes = base()
+    routes["_gateways"] = {"aprs": {"type": "aprs", "instance_id": "aprs_0", "enabled": True,
+                                    "config": {"callsign": "N0CALL", "ssid": 10, "mode": "kiss", "kiss_host": "127.0.0.1", "kiss_port": 8001,
+                                               "external_direwolf": True, "tx_delay": 300, "beacon_secs": 0, "relay_third_party": False,
+                                               "frequency_mhz": 144.8, "aprs_is_server": "rotate.aprs2.net:14580", "aprs_is_passcode": ""}}}
+    routes["GET /api/aprs/status"] = {"connected": True, "state": "connected", "mode": "kiss", "kiss_addr": "127.0.0.1:8001", "callsign": "N0CALL-10"}
+    routes["_ifaces"] = []
+    return routes
+
+
+def integrations_empty() -> dict:
+    """The same page on a Bridge with no APRS, TAK or Reticulum set up."""
+    routes = base()
+    routes["_gateways"] = {}
+    routes["GET /api/aprs/status"] = {"connected": False}
+    routes["_ifaces"] = []
+    return routes
+
+
 def sos_active() -> dict:
     routes = base()
     routes["_sos"] = {"active": True, "started_at": "2026-09-28T17:05:00Z", "sends": 2, "test": False}
@@ -422,7 +444,7 @@ def zones_down() -> dict:
 
 
 SCENARIOS = {"fresh": fresh, "mesh-only": mesh_only, "one-node": one_node, "nameless-node": nameless_node, "satellite-3-bars": satellite_3_bars, "sim-ready": sim_ready,
-             "all-four": all_four, "hub-set-up": hub_set_up, "sos-active": sos_active, "bluetooth-pairing": bluetooth_pairing, "bluetooth-connected": bluetooth_connected,
+             "all-four": all_four, "hub-set-up": hub_set_up, "integrations": integrations, "integrations-empty": integrations_empty, "sos-active": sos_active, "bluetooth-pairing": bluetooth_pairing, "bluetooth-connected": bluetooth_connected,
              "queue-busy": queue_busy, "advanced": advanced, "messaging": messaging, "messaging-encoder": lambda: messaging(True), "zones": zones, "zones-down": zones_down}
 
 

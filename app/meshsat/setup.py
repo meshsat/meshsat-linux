@@ -11,7 +11,6 @@ from . import __version__ as VERSION
 from . import api, system, theme
 from .model import hub as hub_model
 from .model import satellite as satellite_model
-from .model import words
 from .pages.safety import SafetyScreen  # noqa: F401  (the Setup row and the route table use it)
 from .passes import PassesScreen
 from .screen import Screen, SubScreen
@@ -40,7 +39,7 @@ class SetupScreen(Screen):
             ("outlined-health-and-safety", "Safety", "SOS, check-in timer, zones", lambda: app.push(SafetyScreen(app))),
             ("outlined-lock", "Messaging", "Encryption, compression, quick messages", lambda: app.open_route("setup/messaging")),
             ("outlined-map", "Maps", "Offline maps for when there is no internet", lambda: app.open_route("setup/maps")),
-            ("outlined-radio", "Ham radio, TAK and Reticulum", "Other networks MeshSat can bridge", lambda: app.push(IntegrationsScreen(app))),
+            ("outlined-radio", "Ham radio, TAK and Reticulum", "Other networks MeshSat can bridge", lambda: app.open_route("setup/integrations")),
             ("outlined-tune", "Mesh radio settings", "Region, channels, transmit power", lambda: app.open_route("radio-config")),
         )
         for name, title_text, detail, action in rows:
@@ -471,30 +470,6 @@ class SmsScreen(Page):
                      ("Network", (c.get("operator") or "-") + (f", {c['network_type']}" if c.get("network_type") else "")), ("Number", c.get("phone_number") or "-"),
                      ("Sent, received", f"{c.get('sms_sent', 0)}, {c.get('sms_received', 0)}")):
             self.details.append(KeyValue(k, v, mono=k == "Number"))
-
-
-class IntegrationsScreen(Page):
-    def __init__(self, app):
-        super().__init__(app, "Ham radio, TAK and Reticulum")
-        self.aprs = self.card("Ham radio (APRS)")
-        self.aprs_text = text("", "body-medium", theme.TEXT_SECONDARY, wrap=True)
-        self.aprs.append(self.aprs_text)
-        self.tak = self.card("TAK")
-        self.tak_text = text("", "body-medium", theme.TEXT_SECONDARY, wrap=True)
-        self.tak.append(self.tak_text)
-        self.rns = self.card("Reticulum")
-        self.rns_text = text("", "body-medium", theme.TEXT_SECONDARY, wrap=True)
-        self.rns.append(self.rns_text)
-        self.column.append(text("The Bridge on this phone carries these links; their settings live in its interface under Advanced.", "body-medium", theme.TEXT_SECONDARY, wrap=True))
-
-    def on_show(self) -> None:
-        # Read once when the page comes on view (and every 30 s while it stays), off the main loop.
-        self.every(30, self.load)
-
-    def load(self) -> None:
-        self.fetch("/api/aprs/status", lambda a: self.aprs_text.set_text("Working" if a.ok and (a.body or {}).get("connected") else "Off: no radio or TNC on this phone"))
-        self.fetch("/api/tak/enroll/status", lambda a: self.tak_text.set_text("Enrolled" if a.ok and ((a.body or {}).get("success") or (a.body or {}).get("enrolled")) else "Not set up"))
-        self.fetch("/api/rns/status", lambda a: self.rns_text.set_text(f"Working, {words.count((a.body or {}).get('links', 0), 'link')}" if a.ok and (a.body or {}).get("enabled") else "Off"))
 
 
 class AdvancedScreen(Page):
