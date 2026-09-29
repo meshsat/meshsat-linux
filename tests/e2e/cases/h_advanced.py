@@ -186,6 +186,8 @@ def case_node_log_follows_pauses_clears_and_shares(ctx):
     ctx.app.journal(["INFO  | 23:57:00 1912.0 [Router] e2e first new line"])
     ctx.tree.wait_text("23:57:00 INFO [Router] e2e first new line", timeout=10)
     ctx.tree.click("Pause")
+    # The tap is acknowledged before GTK has handled it: write only once the page is paused.
+    ctx.tree.find("button", name="Resume", timeout=5)
     ctx.app.journal(["INFO  | 23:57:10 1922.0 [Router] e2e held line"])
     time.sleep(5)
     assert not ctx.tree.has_text("e2e held line"), "a line showed while paused"

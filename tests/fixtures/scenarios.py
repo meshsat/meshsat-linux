@@ -140,6 +140,7 @@ def base() -> dict:
         "_credentials": [],
         "_settings": settings(),
         "_radio_log": [],
+        "_gateways": {},  # no gateway set up: GET /api/gateways/{type} answers 404, as the Bridge
     }
 
 
@@ -341,9 +342,23 @@ def advanced() -> dict:
     return routes
 
 
+def messaging(encoder: bool = False) -> dict:
+    """Setup > Messaging and the SMS page: the SMS link and the SBD link with empty chains, the
+    SMS gateway set up with one allowed sender and a secret (answered masked), MSVQ-SC's
+    encoder present or not."""
+    routes = base()
+    link = lambda id_, ct, label: {"id": id_, "channel_type": ct, "label": label, "enabled": True, "state": "online", "device_id": "", "device_port": "",
+                                    "last_activity": "0001-01-01T00:00:00Z", "ingress_transforms": "[]", "egress_transforms": "[]"}
+    routes["GET /api/interfaces"] = [link("mesh_0", "mesh", "Meshtastic LoRa"), link("cellular_0", "cellular", "Cellular SMS"), link("iridium_0", "iridium", "Iridium SBD")]
+    routes["_gateways"] = {"cellular": {"type": "cellular", "instance_id": "cellular_0", "enabled": True, "connected": False,
+                                        "config": {"destination_numbers": [], "allowed_senders": ["+31600000001"], "webhook_in_secret": "****", "max_sms_segments": 1}}}
+    routes["_msvqsc"] = encoder
+    return routes
+
+
 SCENARIOS = {"fresh": fresh, "mesh-only": mesh_only, "one-node": one_node, "nameless-node": nameless_node, "satellite-3-bars": satellite_3_bars, "sim-ready": sim_ready,
              "all-four": all_four, "hub-set-up": hub_set_up, "sos-active": sos_active, "bluetooth-pairing": bluetooth_pairing, "bluetooth-connected": bluetooth_connected,
-             "queue-busy": queue_busy, "advanced": advanced}
+             "queue-busy": queue_busy, "advanced": advanced, "messaging": messaging, "messaging-encoder": lambda: messaging(True)}
 
 
 def build(name: str) -> dict:

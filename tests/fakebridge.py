@@ -45,6 +45,8 @@ class FakeBridge:
         self.audit_broken_at = -1
         self.credentials = None  # the credential store (`_credentials`): upload, delete
         self.settings = None  # the node's settings as GET /api/config?format=names gives them (`_settings`)
+        self.gateways = None  # gateway configs by type (`_gateways`): GET and PUT /api/gateways/{type}
+        self.msvqsc = False  # MSVQ-SC can encode (`_msvqsc`)
         self.radio_log = None  # the radio log lines (`_radio_log`), and whether the node offers it over Bluetooth
         self.log_available = False
         self.follows = 0
@@ -131,6 +133,9 @@ class FakeBridge:
         self.credentials = [dict(c) for c in creds] if creds is not None else None
         settings = routes.pop("_settings", None)
         self.settings = json.loads(json.dumps(settings)) if settings is not None else None
+        gateways = routes.pop("_gateways", None)
+        self.gateways = json.loads(json.dumps(gateways)) if gateways is not None else None
+        self.msvqsc = bool(routes.pop("_msvqsc", False))
         log = routes.pop("_radio_log", None)
         self.radio_log = [dict(line) for line in log] if log is not None else None
         self.log_available = bool(routes.pop("_log_available", False))
@@ -305,6 +310,24 @@ class FakeBridge:
                 before = len(self.credentials)
                 self.credentials = [c for c in self.credentials if c["id"] != parts[3]]
                 return (200, {"status": "deleted"}) if len(self.credentials) < before else (404, {"error": "credential not found"})
+        # A link's transform chains on their own, as the Bridge's interfaces.go (MESHSAT-1412).
+        if path.startswith("/api/interfaces/") and path.endswith("/transforms") and method == "PUT":
+            return self.reduce_transforms(path.split("/")[3], body if isinstance(body, dict) else {})
+        if path == "/api/transforms/capabilities" and method == "GET":
+            return 200, {"msvqsc_encode": self.msvqsc, "msvqsc_decode": True, "types": ["encrypt", "decrypt", "base64", "zstd", "smaz2", "llamazip", "msvqsc", "fec"]}
+        if self.gateways is not None and path.startswith("/api/gateways/") and path.count("/") == 3:
+            kind = path.rsplit("/", 1)[1]
+            if method == "GET":
+                gw = self.gateways.get(kind)
+                return (200, json.loads(json.dumps(gw))) if gw is not None else (404, {"error": f"gateway {kind} not configured"})
+            if method == "PUT":
+                config = (body or {}).get("config") or {}
+                stored = (self.gateways.get(kind) or {}).get("config") or {}
+                for k, v in list(config.items()):
+                    if v == "****" and k in stored:
+                        config[k] = stored[k]
+                self.gateways[kind] = {"type": kind, "instance_id": kind + "_0", "enabled": bool((body or {}).get("enabled")), "config": config}
+                return 200, {"status": "ok"}
         # The node's settings, as the Bridge's node_config.go (MESHSAT-1405): a write names only
         # the fields it changes and is laid over the node's own; 400 for what cannot stand, 409
         # while the node has not sent the section.
@@ -336,6 +359,47 @@ class FakeBridge:
                     return 400, {"error": "device_id is required"}
                 return 200, {"status": "bound"}
         return None
+
+    def reduce_transforms(self, link: str, body: dict):
+        listed = self.routes.get("GET /api/interfaces")
+        record = next((i for i in listed if i.get("id") == link), None) if isinstance(listed, list) else None
+        if record is None:
+            return 404, {"error": "interface not found: " + link}
+        if "ingress_transforms" not in body and "egress_transforms" not in body:
+            return 400, {"error": "ingress_transforms or egress_transforms is required"}
+        errors = []
+        for side in ("egress_transforms", "ingress_transforms"):
+            if side not in body:
+                continue
+            try:
+                chain = json.loads(body[side] or "[]")
+            except ValueError:
+                errors.append(f"{side[:-11]}: invalid transforms JSON")
+                continue
+            binary = False
+            for step in chain:
+                kind, params = step.get("type"), step.get("params") or {}
+                if kind in ("encrypt", "decrypt"):
+                    key = params.get("key", "")
+                    if not key and not params.get("key_ref"):
+                        errors.append(f"{side[:-11]}: {kind} transform requires 'key' or 'key_ref' param")
+                    elif key and (len(key) not in (32, 48, 64) or any(c not in "0123456789abcdefABCDEF" for c in key)):
+                        errors.append(f"{side[:-11]}: {kind} key must be 64 hex characters (AES-256; 32 or 48 for AES-128 or -192)")
+                    binary = True
+                elif kind in ("msvqsc", "smaz2", "zstd", "llamazip", "fec"):
+                    binary = True
+                elif kind == "base64":
+                    binary = False
+                else:
+                    errors.append(f"{side[:-11]}: unknown transform type {kind!r}")
+            if binary and record.get("channel_type") in ("cellular", "mqtt", "webhook"):
+                errors.append(f"{side[:-11]}: text-only transport (SMS/MQTT/webhook) requires base64 as the final transform after encrypt/compress")
+        if errors:
+            return 400, {"error": "transform validation failed", "errors": errors, "warnings": None}
+        for side in ("egress_transforms", "ingress_transforms"):
+            if side in body:
+                record[side] = body[side]
+        return 200, dict(record)
 
     def reduce_settings(self, method: str, path: str, body, full_path: str):
         settings = self.settings
@@ -444,7 +508,8 @@ class FakeBridge:
             if order == "state":
                 return 200, {"sos": self.sos, "deadman": self.deadman, "down": self.down, "delay": self.delay, "deliveries": self.deliveries, "rules": self.rules,
                              "credentials": self.credentials, "audit_count": len(self.audit) if self.audit is not None else None, "settings": self.settings,
-                             "follows": self.follows}
+                             "follows": self.follows, "gateways": self.gateways,
+                             "interfaces": self.routes.get("GET /api/interfaces")}
         if order == "event":
             self.push(body)
             return 200, {"listeners": len(self.listeners)}

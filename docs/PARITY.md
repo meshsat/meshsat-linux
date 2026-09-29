@@ -2,9 +2,9 @@
 
 MeshSat Android is the reference, pinned at `v2.19.4`. One row per screen, tab, card, dialog, banner and notification of the Android app; a row is done when the Linux app has it, in Android's words, and a test proves it. Kept by `tools/parity-check.py` from `tests/parity/ledger.json`; the words by `tools/android-strings.py`.
 
-**Rows:** 126: 11 missing, 17 partial, 20 built, 67 verified, 9 excluded, 2 blocked.
+**Rows:** 131: 12 missing, 15 partial, 20 built, 73 verified, 9 excluded, 2 blocked.
 
-**Words:** 962 of 1410 readable strings of Android's `ui/` and `sos/` are in the Linux sources, 2 excluded with a reason, 446 still to port.
+**Words:** 972 of 1410 readable strings of Android's `ui/` and `sos/` are in the Linux sources, 2 excluded with a reason, 436 still to port.
 
 States: `missing` (not there), `partial` (some of it), `built` (there, untested), `verified` (there, in Android's words, with a test that ran green on the phone), `excluded` (not ported, with the reason), `blocked` (built and tested against the scripted Bridge, waiting for hardware the bench lacks).
 
@@ -64,14 +64,14 @@ States: `missing` (not there), `partial` (some of it), `built` (there, untested)
 | setup.hub | screen | `ui/screens/SettingsScreen.kt:1625-1900` | `setup.py:HubScreen` | both | partial |  | the six states, the form and 'Reach a kit' come with 0.9.1 |
 | setup.hub.provision | dialog | `ui/components/ProvisionLinkDialog.kt` | `` | both | missing |  | 0.11.0 |
 | setup.hub.key-changed | dialog | `ui/screens/SettingsScreen.kt:222-256` | `` | both | missing |  | 0.9.1 |
-| setup.sms | screen | `ui/screens/SettingsScreen.kt:sms` | `setup.py:SmsScreen` | both | partial |  | 'Where a text goes with no recipient' comes with 0.9.1 |
+| setup.sms | screen | `ui/screens/SettingsScreen.kt:1903-1981` | `setup.py:SmsScreen` | both | verified | h_messaging::no_recipient_number_goes_over_the_sms_gateway | Text messages (the SIM through the Bridge, ModemManager) and Where a text goes with no recipient |
 | setup.safety | screen | `ui/screens/SosScreens.kt:SafetyScreen` | `pages/safety.py:SafetyScreen` | both | verified | h_sos::safety_page_contacts_and_check_in_timer |  |
 | setup.safety.contacts | card | `ui/screens/SosScreens.kt:contacts` | `pages/safety.py:SafetyScreen` | both | partial | h_sos::safety_page_contacts_and_check_in_timer | typed numbers as Android's; 'Choose from your contacts' (the address book) comes with 0.11.0 |
 | setup.safety.checkin | card | `ui/screens/SettingsScreen.kt:992-1061` | `pages/safety.py:SafetyScreen` | both | verified | h_sos::safety_page_contacts_and_check_in_timer |  |
 | sos | screen | `ui/screens/SosScreens.kt:SosScreen` | `pages/sos.py:SosScreen` | both | verified | h_sos::sos_screen_shows_where_it_went_and_the_cancellation |  |
 | sos.test | dialog | `ui/screens/SosScreens.kt:424-450` | `sosflow.py:Flow.start, model/sosrun.py` | both | verified | h_sos::alarm_test_goes_route_by_route_and_settles | the mesh leg heard by the T-Deck on the bench (l_alarm) |
 | geofence | screen | `ui/screens/GeofenceScreen.kt` | `` | both | missing |  | 0.10.0 |
-| setup.messaging | screen | `ui/screens/SettingsScreen.kt:messaging` | `setup.py:MessagingScreen` | both | partial |  | read only until 0.9.1 |
+| setup.messaging | screen | `ui/screens/SettingsScreen.kt:736-983, 1134-1177` | `pages/messaging.py:MessagingScreen` | both | verified | h_messaging::the_three_cards_in_androids_words | the settings live in the Bridge's link chains (PUT /api/interfaces/{id}/transforms, MESHSAT-1412); the app's preferences keep what the chains cannot (the key while encryption is off) |
 | setup.maps | screen | `ui/screens/SettingsScreen.kt:maps` | `setup.py:MapsScreen` | both | partial |  | 0.10.0 |
 | setup.integrations | screen | `ui/screens/SettingsScreen.kt:integrations` | `setup.py:IntegrationsScreen` | both | partial |  | read only until 0.9.1 |
 | radio-config | screen | `ui/screens/RadioConfigScreen.kt` | `pages/radio.py:RadioConfigScreen` | both | verified | h_radio::name_tab_facts_and_save | seven tabs over the Bridge's named settings (GET /api/config?format=names, MESHSAT-1405); every Apply sends only what changed and the Bridge lays it over the node's own section; a tab is drawn again only when its settings change, so a poll keeps what is typed (remember(loaded)) |
@@ -136,19 +136,24 @@ States: `missing` (not there), `partial` (some of it), `built` (there, untested)
 | radio-config.admin | tab | `ui/screens/RadioConfigScreen.kt:1132-1298` | `pages/radio.py:draw_restart` | both | verified | h_radio::restart_and_reset_ask_first | Set the clock, Restart (with the delay), Switch off (when the node can), Forget heard nodes, Factory reset, each after Android's question (Bridge: set_clock, shutdown, nodedb_reset, MESHSAT-1405); with the back cover the restart question leaves out the satellite modem, which is on the phone's USB |
 | radio-config.not-loaded | banner | `ui/screens/RadioConfigScreen.kt:142-164, 216-225` | `pages/radio.py:not_loaded` | both | verified | h_radio::not_connected_offers_the_node_page | not connected: the card and Connect your node (to the Node page); not loaded: Android's two sentences; against a real Bridge with no node: s_radio::without_a_node_nothing_is_written |
 | radio-config.words | strings | `ui/screens/RadioConfigScreen.kt` | `model/radio.py` | both | verified | RadioTabTest.test_only_what_changed_is_sent | labels, limits, the changes each tab sends, the questions and the toasts; a refusal of the Bridge in Android's words (409, 503) or its own (400) |
+| setup.messaging.encryption | card | `ui/screens/SettingsScreen.kt:736-894` | `pages/messaging.py (Encryption)` | both | verified | h_messaging::a_generated_key_becomes_the_sms_chains | as Android, the SMS link's: encrypt on send, an optional decrypt on receive (Auto-decrypt: a text from an ordinary phone is kept, not dropped); Show, Generate, Save, Copy, Paste; Share saves a file (the approved share-sheet exclusion); a key that is not 64 hex characters is refused before it goes (the Bridge refuses it too, and no longer sends plain text with it, MESHSAT-1411); the QR button comes with the scanner (0.11.0, row setup.messaging.scan) |
+| setup.messaging.scan | behaviour | `ui/screens/SettingsScreen.kt:862-884` | `` | both | missing |  | Scan QR Code (Hub Key Sync): with the scanner in 0.11.0 |
+| setup.messaging.compression | card | `ui/screens/SettingsScreen.kt:896-983` | `pages/messaging.py (Message compression)` | both | verified | h_messaging::compression_where_the_bridge_can_encode | SMS and Iridium SBD, Off or MSVQ-SC, the stages; MSVQ-SC offered only where the Bridge can encode (GET /api/transforms/capabilities; this phone has no encoder: the Linux sentence says so); Android's MQTT (Hub) row is not here: the Bridge's Hub link has no transform chain |
+| setup.messaging.quick | card | `ui/screens/SettingsScreen.kt:1134-1177, codec/CannedCodebook.kt` | `pages/messaging.py (Quick messages), model/messaging.py:CODEBOOK` | both | verified | CannedCodebookTest.test_known_messages_match_expected_text | the 30 brevity codes (CannedCodebookTest ported); the Bridge now reads a received code as its words (MESHSAT-1412), so 'Auto-detected on receive' holds |
+| setup.sms.no-recipient | card | `ui/screens/SettingsScreen.kt:1945-1981` | `setup.py:SmsScreen.save_number` | both | verified | h_messaging::no_recipient_number_goes_over_the_sms_gateway | the SMS gateway's default number (destination_numbers), written with the gateway's switch and masked secrets kept (MESHSAT-1412); empty = a text with no recipient is not sent, as Android; against a real Bridge: s_messaging::the_sms_gateway_without_a_default_number |
 
 ## Words, per Android file
 
 | file | carried | excluded | missing |
 |---|---|---|---|
-| `ui/screens/SettingsScreen.kt` | 38/251 | 0 | 213 |
+| `ui/screens/SettingsScreen.kt` | 44/251 | 0 | 207 |
 | `ui/screens/GeofenceScreen.kt` | 13/46 | 0 | 33 |
 | `ui/screens/ContactCards.kt` | 12/34 | 0 | 22 |
-| `ui/screens/MessagesScreen.kt` | 55/73 | 0 | 18 |
 | `ui/screens/AboutScreen.kt` | 16/32 | 0 | 16 |
 | `ui/screens/MapScreen.kt` | 15/30 | 0 | 15 |
 | `ui/screens/Onboarding.kt` | 12/27 | 0 | 15 |
 | `ui/components/CheckMailboxButton.kt` | 3/18 | 0 | 15 |
+| `ui/screens/MessagesScreen.kt` | 59/73 | 0 | 14 |
 | `ui/components/ProvisionClaimHost.kt` | 3/17 | 0 | 14 |
 | `ui/screens/DashboardScreen.kt` | 19/31 | 0 | 12 |
 | `sos/SosController.kt` | 17/26 | 0 | 9 |
