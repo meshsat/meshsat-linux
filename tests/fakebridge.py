@@ -71,6 +71,11 @@ class FakeBridge:
         self.positions = None  # the position log, newest first (`_positions`)
         self.tiles_down = False  # the map's tile server (MESHSAT_APP_OSM_URL={bridge}/tiles/...) unreachable
         self.tile_requests = 0
+        self.card = None  # this phone's contact card (`_card`); None: 503, no routing identity
+        self.key_imports = []  # POST /api/keys/import bodies
+        self.hub = None  # the Hub settings PUT /api/routing/hub wrote
+        self.claim = None  # a scripted Hub's provisioning claim (`_claim`): {bid, nonce, busy, bundle}
+        self.claims = 0
         self.apply(scenario or {})
         fake = self
 
@@ -124,6 +129,9 @@ class FakeBridge:
                 if self.path.startswith("/tiles/") and method == "GET":
                     fake.tile(self)
                     return
+                if self.path.startswith("/api/bridges/") and "/provision/" in self.path and method == "GET":
+                    fake.provision_claim(self)
+                    return
                 try:
                     status, answer = fake.answer(method, self.path, body)
                 except ConnectionError:
@@ -170,6 +178,12 @@ class FakeBridge:
         self.inside = {z["id"]: {} for z in self.zones or []}
         positions = routes.pop("_positions", None)
         self.positions = [dict(p) for p in positions] if positions is not None else None
+        card = routes.pop("_card", None)
+        self.card = dict(card) if card else None
+        claim = routes.pop("_claim", None)
+        self.claim = json.loads(json.dumps(claim)) if claim else None
+        self.claims = 0
+        self.key_imports, self.hub = [], None
         self.routes = routes
 
     # Life
@@ -404,6 +418,37 @@ class FakeBridge:
                         break
                 self.inside.pop(zone_id, None)
                 return 204, None
+        # This phone's contact card, as the Bridge signs it (MESHSAT-1416).
+        if path == "/api/contacts/card" and method == "GET":
+            return (200, dict(self.card)) if self.card else (503, {"error": "routing not initialized"})
+        # Key bundles, as the Bridge's keyexchange.go: v1 needs signing_pub; the count of entries.
+        if path == "/api/keys/import" and method == "POST":
+            self.key_imports.append(body or {})
+            url = (body or {}).get("url", "")
+            try:
+                import base64 as b64  # noqa: PLC0415
+
+                raw = url[len("meshsat://key/"):]
+                data = b64.urlsafe_b64decode(raw + "=" * (-len(raw) % 4))
+            except ValueError:
+                return 400, {"error": "invalid bundle URL"}
+            if data[:1] == b"\x01" and not (body or {}).get("signing_pub"):
+                return 400, {"error": "v1 bundles require signing_pub (hex)"}
+            count = data[21] if len(data) > 21 else 0
+            return 200, {"imported_count": count, "skipped_count": 0, "bundle_version": data[0]}
+        # The Hub settings, as routing_handlers.go: an empty password or certificate keeps the
+        # stored one; the CA is always written.
+        if path == "/api/routing/hub" and method == "PUT":
+            new = dict(body or {})
+            prev = dict(self.hub or {})
+            for key in ("url", "bridge_id", "username"):
+                prev[key] = new.get(key, "")
+            for key in ("password", "tls_cert_pem", "tls_key_pem"):
+                if new.get(key):
+                    prev[key] = new[key]
+            prev["tls_ca_pem"] = new.get("tls_ca_pem", "")
+            self.hub = prev
+            return 200, {"url": prev.get("url"), "bridge_id": prev.get("bridge_id"), "warning": "Hub connection config saved. Restart the bridge for changes to take effect."}
         if self.positions is not None and path == "/api/positions" and method == "GET":
             query = urllib.parse.parse_qs(urllib.parse.urlparse(full_path).query)
             since = query.get("since", [""])[0]
@@ -592,6 +637,7 @@ class FakeBridge:
                              "credentials": self.credentials, "audit_count": len(self.audit) if self.audit is not None else None, "settings": self.settings,
                              "follows": self.follows, "gateways": self.gateways, "zones": self.zones, "zone_events": self.zone_events,
                              "tiles_down": self.tiles_down, "tile_requests": self.tile_requests,
+                             "key_imports": self.key_imports, "hub": self.hub, "claims": self.claims,
                              "interfaces": self.routes.get("GET /api/interfaces")}
         if order == "event":
             self.push(body)
@@ -613,6 +659,34 @@ class FakeBridge:
             handler.send_header("Content-Length", str(len(TILE)))
             handler.end_headers()
             handler.wfile.write(TILE)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
+    def provision_claim(self, handler) -> None:
+        """The Hub's claim (bridge_provision.go): 404 for a wrong bridge or nonce; 503 with
+        Retry-After while "busy"; the settings once; then 404, the stash spent."""
+        with self.lock:
+            self.claims += 1
+            claim = self.claim
+            parts = handler.path.split("?", 1)[0].split("/")
+            status, body, headers = 404, {"error": "invalid or expired provisioning token"}, {}
+            if claim and len(parts) == 6 and parts[3] == claim.get("bid") and parts[5] == claim.get("nonce"):
+                if claim.get("status"):
+                    status, body = claim["status"], {"error": "scripted"}
+                elif claim.get("busy", 0) > 0:
+                    claim["busy"] -= 1
+                    status, body, headers = 503, {"error": "not ready"}, {"Retry-After": str(claim.get("retry_after", 1))}
+                elif claim.get("bundle") is not None:
+                    status, body = 200, claim.pop("bundle")
+        data = json.dumps(body).encode()
+        try:
+            handler.send_response(status)
+            handler.send_header("Content-Type", "application/json")
+            for key, value in headers.items():
+                handler.send_header(key, value)
+            handler.send_header("Content-Length", str(len(data)))
+            handler.end_headers()
+            handler.wfile.write(data)
         except (BrokenPipeError, ConnectionResetError):
             pass
 

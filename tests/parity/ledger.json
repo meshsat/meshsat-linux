@@ -417,7 +417,7 @@
    "state": "partial",
    "test": "h_names::a_name_heard_once_survives_a_bridge_restart",
    "capture": "people",
-   "note": "'(you)' and the cards come later"
+   "note": "'(you)' and the second empty text come with 0.12.0; the cards are their own rows (people.cards)"
   },
   {
    "id": "people.names",
@@ -444,13 +444,13 @@
   {
    "id": "people.cards",
    "kind": "card",
-   "android": "ui/screens/ContactCards.kt",
-   "linux": "",
+   "android": "ui/screens/ContactCards.kt:83-150",
+   "linux": "pages/cards.py:CardsSection, model/cards.py",
    "modes": "both",
-   "state": "missing",
-   "test": "",
-   "capture": "",
-   "note": "0.11.0"
+   "state": "verified",
+   "test": "h_cards::d_a_pasted_card_is_added_as_imported",
+   "capture": "people-cards",
+   "note": "People you carry: My card, Scan a card, Paste a card instead, the list sorted as SQLite's NOCASE with 'Scanned in person' / 'Imported as text' and the node and bridge ids, Forget at once; the cards kept in cards.json on this phone, as Android's Room table; the card format and its checks ported case for case (ContactQRTest), with the fixed vector the Bridge's Go test holds too"
   },
   {
    "id": "people.sheet",
@@ -576,24 +576,24 @@
   {
    "id": "setup.hub.provision",
    "kind": "dialog",
-   "android": "ui/components/ProvisionLinkDialog.kt",
-   "linux": "",
+   "android": "ui/components/ProvisionLinkDialog.kt, ProvisionClaimHost.kt, crypto/ProvisionImporter.kt",
+   "linux": "flows.py:Provisioning, model/provision.py",
    "modes": "both",
-   "state": "missing",
-   "test": "",
-   "capture": "",
-   "note": "0.11.0"
+   "state": "verified",
+   "test": "h_provision::a_a_scanned_code_is_claimed_then_asked_about",
+   "capture": "provision",
+   "note": "the Hub's code scanned (claimed through the Hub's 503s, then 'Use these Hub settings?') or its meshsat://provision/ link opened (the desktop entry's scheme handler; asked first, then claimed and applied); the settings to the Bridge (PUT /api/routing/hub, the CA always sent), the client certificate to its store, the Bridge restarted; 'No settings from the Hub' with Android's messages. ProvisionLinkTest and ProvisionClaimRetryTest ported. Not applied yet: the bundle's Reticulum peer (it needs the Bridge's Reticulum TCP client, 0.11.2)"
   },
   {
    "id": "setup.hub.key-changed",
    "kind": "dialog",
-   "android": "ui/screens/SettingsScreen.kt:222-256",
-   "linux": "",
+   "android": "ui/screens/SettingsScreen.kt:222-259, 295-333, crypto/KeyBundleImporter.kt",
+   "linux": "flows.py:KeyImports, model/keybundle.py",
    "modes": "both",
-   "state": "missing",
-   "test": "",
-   "capture": "",
-   "note": "0.9.1"
+   "state": "verified",
+   "test": "h_keys::c_a_changed_key_asks_first",
+   "capture": "key-changed",
+   "note": "key bundles checked as Android checks them (KeyBundleImporterTest ported) with the kits' keys pinned on first use in bridge_trust.json; the keys stored by the Bridge (POST /api/keys/import), whose count the toasts give; 'This kit's key has changed' with Trust the new key / Keep the old key. Differences: a v1 bundle is refused by the Bridge without the kit's key; the audit event bridge_key_repinned has no write endpoint in the Bridge and is not written"
   },
   {
    "id": "setup.sms",
@@ -620,13 +620,13 @@
   {
    "id": "setup.safety.contacts",
    "kind": "card",
-   "android": "ui/screens/SosScreens.kt:contacts",
-   "linux": "pages/safety.py:SafetyScreen",
+   "android": "ui/screens/SosScreens.kt:445-659, data/EmergencyContact.kt",
+   "linux": "pages/safety.py:SafetyScreen, addressbook.py, model/contacts.py",
    "modes": "both",
-   "state": "partial",
-   "test": "h_sos::safety_page_contacts_and_check_in_timer",
+   "state": "verified",
+   "test": "h_contacts::a_a_contact_picked_from_the_address_book",
    "capture": "setup-safety",
-   "note": "typed numbers as Android's; 'Choose from your contacts' (the address book) comes with 0.11.0"
+   "note": "Choose from your contacts (the address book: Evolution Data Server, one row per number, nothing kept but the row picked; the picker is the app's own, Android shows the system's), Or type a number, Android's rules and words (EmergencyContactAddingTest ported) and where each error shows"
   },
   {
    "id": "setup.safety.checkin",
@@ -1401,13 +1401,13 @@
   {
    "id": "setup.messaging.scan",
    "kind": "behaviour",
-   "android": "ui/screens/SettingsScreen.kt:862-884",
-   "linux": "",
+   "android": "ui/screens/SettingsScreen.kt:283-344, 862-892",
+   "linux": "pages/messaging.py:scan_key, flows.py:route_setup_code",
    "modes": "both",
-   "state": "missing",
-   "test": "",
-   "capture": "",
-   "note": "Scan QR Code (Hub Key Sync): with the scanner in 0.11.0"
+   "state": "verified",
+   "test": "h_keys::d_a_hex_key_becomes_the_sms_key",
+   "capture": "setup-messaging",
+   "note": "Scan QR Code (Hub Key Sync) and the Setup router in Android's order: a provisioning code, a key bundle, a 64-hex key ('Key imported via QR'), else 'QR code doesn't contain a valid key or bundle'"
   },
   {
    "id": "setup.messaging.compression",
@@ -1495,6 +1495,50 @@
    "test": "h_maps::h_delete_asks_first",
    "capture": "setup-maps",
    "note": "Delete this map?, Delete (red), Keep it; 'Map deleted: <name>'",
+   "state": "verified"
+  },
+  {
+   "id": "people.cards.mine",
+   "kind": "dialog",
+   "android": "ui/screens/ContactCards.kt:240-319",
+   "linux": "pages/cards.py:MyCardDialog",
+   "modes": "both",
+   "test": "s_cards::my_card_is_signed_by_the_bridges_routing_key",
+   "capture": "people-my-card",
+   "note": "the card the Bridge signs with its routing identity (GET /api/contacts/card, MESHSAT-1416: the same key its Reticulum announces and key bundles carry, as Android's routing identity), as a QR code at level L with a four-module quiet zone (zxing's defaults), the fingerprint at 18 sp, Copy with 'Card copied'; with no key yet, Android's sentence and no Copy",
+   "state": "verified"
+  },
+  {
+   "id": "people.cards.add",
+   "kind": "dialog",
+   "android": "ui/screens/ContactCards.kt:189-237",
+   "linux": "pages/cards.py:AddDialog",
+   "modes": "both",
+   "test": "h_cards::f_a_card_read_by_the_camera_is_added_as_scanned",
+   "capture": "people-cards",
+   "note": "Add {name}?, the fingerprint to compare, the mesh node and Hub lines, how it came (scanned or imported); the three errors as toasts",
+   "state": "verified"
+  },
+  {
+   "id": "people.cards.paste",
+   "kind": "dialog",
+   "android": "ui/screens/ContactCards.kt:157-187",
+   "linux": "pages/cards.py:PasteDialog",
+   "modes": "both",
+   "test": "h_cards::e_the_three_errors",
+   "capture": "people-cards",
+   "note": "Paste a card, its text empty each time, Read it",
+   "state": "verified"
+  },
+  {
+   "id": "scanner",
+   "kind": "behaviour",
+   "android": "ui/screens/ContactCards.kt:100-116, ui/screens/SettingsScreen.kt:283-344 (zxing CaptureActivity)",
+   "linux": "scan.py:Scanner",
+   "modes": "both",
+   "test": "h_cards::f_a_card_read_by_the_camera_is_added_as_scanned",
+   "capture": "scanner",
+   "note": "the camera through libcamera and GStreamer (the PinePhone Pro's rear camera), decoded by GStreamer's zbar element, the caller's prompt as the heading, closed on the first QR code; Linux adds 'Open an image' for a device with no camera (a code from a file counts as imported); the tests show the scanner a PNG through the same pipeline",
    "state": "verified"
   }
  ]

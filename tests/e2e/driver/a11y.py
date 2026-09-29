@@ -222,11 +222,12 @@ class Tree:
                 raise AssertionError(f"no dialog on view; on view: {self.summary()[:800]}")
             time.sleep(0.3)
 
-    def click_in_dialog(self, name: str, timeout: float = 5.0) -> None:
+    def click_in_dialog(self, name: str, timeout: float = 5.0, contains: bool = False) -> None:
+        """A button of the dialog in front by its name (or a part of it, with `contains`)."""
         deadline = time.time() + timeout
         while True:
             for n in self.dialog(timeout):
-                if n.role == "button" and n.name == name:
+                if n.role == "button" and (name in n.name if contains else n.name == name):
                     n.do("click")
                     return
             if time.time() >= deadline:

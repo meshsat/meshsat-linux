@@ -36,6 +36,11 @@
   </recommends>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.11.0" date="2026-09-29">
+      <description>
+        <p>Cards, the QR scanner and the address book, as MeshSat Android's. People you carry: My card, signed by the Bridge, as a QR code with the fingerprint to read aloud; a card scanned with the camera or pasted, checked before it is added; the cards kept on this phone. The scanner uses the phone's camera, or an image. Setup > Messaging scans a kit's key bundle (its key saved the first time, and a changed key asked about), a key, or the Hub's code, which fetches the Hub's settings and applies them; a meshsat://provision link does the same. Emergency contacts can be chosen from the address book.</p>
+      </description>
+    </release>
     <release version="0.10.0" date="2026-09-29">
       <description>
         <p>Zones, offline maps and tracks, as MeshSat Android's. Zones: a long press on the map places a zone, saved in the Bridge, which checks every position a mesh node sends against it and lists who entered or left; the alerts go nowhere else. Offline maps: the built-in world overview, and detailed maps added from MBTiles files, used first and kept when the network is gone; the map says which map it shows. The Map tab draws where each node went in the last 24 hours, lists the nodes with their layers, and People's "Show on map" goes there.</p>

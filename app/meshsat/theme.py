@@ -265,6 +265,11 @@ button label.body-large, button label.body-medium, button label.body-small {{ fo
 .map-row > button.flat {{ padding: {px(10)} 0; }}
 .map-row > button.flat:hover {{ background: none; }}
 .node-sheet {{ padding: {px(8)} {px(24)} {px(24)} {px(24)}; }}
+.card.card-pad.cards-section {{ padding: {px(16)}; }}
+.card-row {{ padding-top: {px(12)}; }}
+.card-fingerprint {{ margin: {px(8)} 0; }}
+.my-card-fingerprint {{ font-size: {px(18)}; font-weight: 500; margin-top: {px(12)}; }}
+.scanner-view {{ background-color: black; border-radius: {px(8)}; }}
 .subheader {{ min-height: {px(56)}; border-bottom: 1px solid {BORDER}; padding: 0 {px(4)}; }}
 .subheader.plain {{ min-height: {px(48)}; border-bottom: none; padding: 0; }}
 .compose {{ padding: {px(8)}; }}

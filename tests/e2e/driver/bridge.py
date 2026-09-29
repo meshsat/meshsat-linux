@@ -70,6 +70,13 @@ class Scripted:
         """A node reports a position: logged, the node moved, the zones checked; the crossings."""
         return self.fake.control("POST", "/__fake__/position", {"node_id": node_id, "lat": lat, "lon": lon})[1]["crossings"]
 
+    def claim(self, bid: str, nonce: str, bundle: dict | None = None, busy: int = 0, status: int | None = None, retry_after: int = 1) -> None:
+        """The scripted Hub's provisioning claim for this bridge and nonce: `busy` answers of 503
+        with Retry-After first, then the settings once (or `status` every time)."""
+        with self.fake.lock:
+            self.fake.claim = {"bid": bid, "nonce": nonce, "bundle": bundle, "busy": busy, "status": status, "retry_after": retry_after}
+            self.fake.claims = 0
+
     def tiles(self, down: bool) -> int:
         """The map's tile server reachable or not; the tiles asked for so far."""
         return self.fake.control("POST", "/__fake__/tiles", {"down": down})[1]["requests"]

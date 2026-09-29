@@ -1,40 +1,18 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Setup > Safety, as SosScreens.kt's SosSettingsCard and SettingsScreen.kt's check-in timer:
 who an SOS goes to, the name it gives, the test of the alarm, and the dead man's switch."""
-from gi.repository import Gtk
+import threading
 
-from .. import api, sos, theme
+from gi.repository import GLib, Gtk
+
+from .. import addressbook, api, sos, theme
+from ..model import contacts as book
 from ..model import home as words_of_home
 from ..model import sosrun
 from ..screen import SubScreen
-from ..widgets import Field, NavRow, SwitchRow, clear, confirm, icon_button, outlined_button, text, text_button
+from ..widgets import Field, NavRow, Sheet, SwitchRow, clear, confirm, filled_button, icon_button, name_widget, outlined_button, paint, text, text_button
 
-MAX_CONTACTS = 10  # as Android's EmergencyContact.MAX
 TIMEOUTS = (("30", "30 min"), ("60", "1 hour"), ("120", "2 hours"), ("240", "4 hours"), ("480", "8 hours"))
-
-
-def normalise_phone(raw: str) -> str | None:
-    """EmergencyContact.normalisePhone: digits with an optional leading +, 3 to 15 digits."""
-    cleaned = "".join(ch for ch in (raw or "") if ch.isdigit() or ch == "+")
-    if cleaned.count("+") > 1 or ("+" in cleaned and not cleaned.startswith("+")):
-        return None
-    digits = cleaned.lstrip("+")
-    if not digits.isdigit() or not 3 <= len(digits) <= 15:
-        return None
-    return cleaned
-
-
-def adding(contacts: list, name: str, phone: str):
-    """EmergencyContact.adding: (the new list, None) or (None, why not)."""
-    number = normalise_phone(phone)
-    if number is None:
-        return None, "That is not a phone number. Use the country code, like +31 6 1234 5678."
-    if any(c.get("phone") == number for c in contacts):
-        return None, "That number is already in the list."
-    if len(contacts) >= MAX_CONTACTS:
-        return None, f"Up to {MAX_CONTACTS} contacts."
-    clean = " ".join((name or "").replace("\t", " ").replace("\n", " ").split())[:40]
-    return contacts + [{"name": clean, "phone": number}], None
 
 
 class SafetyScreen(SubScreen):
@@ -51,9 +29,9 @@ class SafetyScreen(SubScreen):
         self.name = Field("Your name in an SOS", "A MeshSat user", max_length=sos.MAX_NAME, on_change=self.name_changed)
         self.name.set_text(app.state.sos_name)
         card.append(self.name)
-        self.contacts_title = text("Emergency contacts", "title-small")
+        self.contacts_title = text(book.TITLE, "title-small")
         card.append(self.contacts_title)
-        self.contacts_note = text("Each one gets an SMS with your position and a map link from this phone's SIM, whenever it has a signal.", "body-small", theme.TEXT_MUTED, wrap=True)
+        self.contacts_note = text(book.NOTE, "body-small", theme.TEXT_MUTED, wrap=True)
         card.append(self.contacts_note)
         self.sms_note = text("", "body-small", theme.AMBER, wrap=True)
         card.append(self.sms_note)
@@ -61,13 +39,30 @@ class SafetyScreen(SubScreen):
         card.append(self.contact_rows)
         self.no_sms = text("", "body-small", theme.TEXT_MUTED, wrap=True)
         card.append(self.no_sms)
-        # The phone's address book comes with 0.11.0; until then the number is typed.
-        self.new_name = Field("Name", max_length=40)
-        card.append(self.new_name)
-        self.new_phone = Field("Phone number, with country code", "+31 6 1234 5678", purpose=Gtk.InputPurpose.PHONE, max_length=24)
-        card.append(self.new_phone)
-        self.add_button = outlined_button("Add this number", self.add_a_contact)
-        card.append(self.add_button)
+        # SosScreens.kt:531-581: the address book first; typing the number is the other way. An
+        # error shows above "Or type a number", or under the number field while typing.
+        self.typing = False
+        self.adding_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(8))
+        self.choose = filled_button(book.CHOOSE, self.choose_contact, expand=True)
+        self.adding_box.append(self.choose)
+        self.pick_error = text("", "body-small", theme.AMBER, wrap=True)
+        self.pick_error.set_visible(False)
+        self.adding_box.append(self.pick_error)
+        self.type_button = text_button(book.TYPE, self.start_typing)
+        paint(self.type_button.get_child(), theme.TEXT_SECONDARY)
+        self.type_button.set_halign(Gtk.Align.START)
+        self.adding_box.append(self.type_button)
+        self.new_name = Field(book.NAME)
+        self.new_name.on_change = self.name_typed
+        self.adding_box.append(self.new_name)
+        self.new_phone = Field(book.NUMBER, book.NUMBER_HINT, purpose=Gtk.InputPurpose.PHONE)
+        self.new_phone.on_change = self.number_typed
+        self.adding_box.append(self.new_phone)
+        self.add_button = outlined_button(book.ADD, self.add_a_contact)
+        self.add_button.set_sensitive(False)
+        self.adding_box.append(self.add_button)
+        card.append(self.adding_box)
+        self.show_typing()
         card.append(text("Test the alarm", "title-small"))
         card.append(text("Sends a test on every route an SOS would take, and shows what got through. It says it is a test, and raises nothing at the Hub.", "body-small", theme.TEXT_MUTED, wrap=True))
         self.test_button = outlined_button("Test the alarm", self.test_asked)
@@ -100,8 +95,6 @@ class SafetyScreen(SubScreen):
         timer.append(self.timeout_rows)
         self.triggered = text_button("TRIGGERED — SOS was sent. Tap to reset.", self.reset_timer)
         self.triggered.get_child().add_css_class("body-small")
-        from ..widgets import paint  # noqa: PLC0415
-
         paint(self.triggered.get_child(), theme.RED)
         timer.append(self.triggered)
         timer.append(text("Automatically sends SOS if no user activity (message send, button press) within the timeout period.", "body-small", theme.TEXT_MUTED, wrap=True))
@@ -114,15 +107,85 @@ class SafetyScreen(SubScreen):
             self.app.set_sos_name(value)
 
     # Contacts
-    def add_a_contact(self) -> None:
-        new, why = adding(self.app.state.contacts, self.new_name.text, self.new_phone.text)
-        if why:
+    def show_typing(self) -> None:
+        self.type_button.set_visible(not self.typing)
+        for widget in (self.new_name, self.new_phone, self.add_button):
+            widget.set_visible(self.typing)
+
+    def show_error(self, why) -> None:
+        """Above "Or type a number" while not typing, under the number field while typing."""
+        if self.typing:
+            self.pick_error.set_visible(False)
             self.new_phone.set_error(why)
+        else:
+            self.new_phone.set_error(None)
+            self.pick_error.set_text(why or "")
+            self.pick_error.set_visible(bool(why))
+
+    def start_typing(self) -> None:
+        self.typing = True
+        self.show_typing()
+        self.show_error(None)
+
+    def name_typed(self, value: str) -> None:
+        kept = book.typed_name(value)
+        if kept != value:
+            self.new_name.set_text(kept)
+
+    def number_typed(self, value: str) -> None:
+        if len(value) > book.NUMBER_MAX:
+            self.new_phone.set_text(value[:book.NUMBER_MAX])
             return
+        self.add_button.set_sensitive(bool(value.strip()))
         self.new_phone.set_error(None)
+
+    def add_a_contact(self) -> None:
+        new, why = book.adding(self.app.state.contacts, self.new_name.text, self.new_phone.text)
+        if why:
+            self.show_error(why)
+            return
         self.app.set_contacts(new)
         self.new_name.set_text("")
         self.new_phone.set_text("")
+        self.typing = False
+        self.show_typing()
+        self.show_error(None)
+        self.update(self.app.state)
+
+    def choose_contact(self) -> None:
+        """The phone's address book, read off the main loop; no address book: typing, with
+        Android's words."""
+        self.show_error(None)
+
+        def work() -> None:
+            try:
+                found = addressbook.rows()
+            except Exception:  # noqa: BLE001 - an address book that fails to answer is none
+                found = None
+            GLib.idle_add(lambda: self.got_contacts(found) or False)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def got_contacts(self, found) -> None:
+        if found is None:
+            self.typing = True
+            self.show_typing()
+            self.show_error(book.NO_APP)
+            return
+        ContactPicker(self.app, found, self.picked).present()
+
+    def picked(self, name: str, number: str) -> None:
+        if not (number or "").strip() and not (name or "").strip():
+            self.typing = True
+            self.show_typing()
+            self.show_error(book.UNREADABLE)
+            return
+        new, why = book.adding(self.app.state.contacts, name, number)
+        if why:
+            self.show_error(why)
+            return
+        self.show_error(None)
+        self.app.set_contacts(new)
         self.update(self.app.state)
 
     def remove_contact(self, phone: str) -> None:
@@ -157,7 +220,7 @@ class SafetyScreen(SubScreen):
         self.reach.set_text(words_of_home.reach_sentence(s))
         can_sms = bool((s.cellular or {}).get("connected")) and bool(s.bridge)
         reason = s.sms_reason()
-        for w in (self.contacts_title, self.contacts_note, self.contact_rows, self.new_name, self.new_phone, self.add_button):
+        for w in (self.contacts_title, self.contacts_note, self.contact_rows):
             w.set_visible(can_sms)
         self.sms_note.set_text(f"SMS is not ready yet: {reason[0].lower() + reason[1:]}" if can_sms and reason else "")
         self.sms_note.set_visible(bool(can_sms and reason))
@@ -177,12 +240,9 @@ class SafetyScreen(SubScreen):
                 if c.get("name"):
                     texts.append(text(c["phone"], "body-small", theme.TEXT_SECONDARY, mono=True))
                 row.append(texts)
-                row.append(icon_button("outlined-close", lambda phone=c["phone"]: self.remove_contact(phone), 20, theme.TEXT_SECONDARY, f"Remove {c.get('name') or c['phone']}"))
+                row.append(icon_button("outlined-close", lambda phone=c["phone"]: self.remove_contact(phone), 20, theme.TEXT_SECONDARY, book.remove_name(c)))
                 self.contact_rows.append(row)
-        room = len(s.contacts) < MAX_CONTACTS
-        self.new_name.set_visible(can_sms and room)
-        self.new_phone.set_visible(can_sms and room)
-        self.add_button.set_visible(can_sms and room)
+        self.adding_box.set_visible(can_sms and len(s.contacts) < book.MAX)
         run = self.app.sos.active()
         can_test = sosrun.anywhere(s) and run is None
         self.test_button.set_sensitive(can_test)
@@ -197,3 +257,40 @@ class SafetyScreen(SubScreen):
             mark.set_visible(selected)
             (row.add_css_class if selected else row.remove_css_class)("selected")
         self.triggered.set_visible(on and bool(d.get("triggered")))
+
+
+class ContactPicker(Sheet):
+    """The address book's phone numbers, one row per number, with a search: Android opens the
+    phone's own picker here; this is that picker, and nothing of what it shows is kept."""
+
+    def __init__(self, app, found: list, on_pick):
+        super().__init__(app, book.CHOOSE, width=360)
+        self.on_pick = on_pick
+        self.search = Gtk.SearchEntry()
+        name_widget(self.search, "Search")
+        self.search.connect("search-changed", lambda *_: self.fill())
+        self.body.append(self.search)
+        self.rows = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(2))
+        scroll = Gtk.ScrolledWindow(propagate_natural_height=True, max_content_height=theme.dp(420), hscrollbar_policy=Gtk.PolicyType.NEVER)
+        scroll.set_child(self.rows)
+        self.body.append(scroll)
+        self.found = found
+        self.button("Cancel", self.close)
+        self.fill()
+
+    def fill(self) -> None:
+        clear(self.rows)
+        needle = self.search.get_text().strip().casefold()
+        for name, number in self.found:
+            if needle and needle not in name.casefold() and needle not in number:
+                continue
+            row = Gtk.Button()
+            row.add_css_class("flat")
+            row.add_css_class("pick-row")
+            inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(2))
+            inner.append(text(name or number, "body-large", ellipsize=True))
+            if name:
+                inner.append(text(number, "body-medium", theme.TEXT_SECONDARY, mono=True))
+            row.set_child(inner)
+            row.connect("clicked", lambda _b, n=name, p=number: (self.close(), self.on_pick(n, p)))
+            self.rows.append(row)

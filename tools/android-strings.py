@@ -42,6 +42,37 @@ def fragments(literal: str) -> list:
     return [p.strip() for p in parts if readable(p)]
 
 
+def strip_comments(source: str) -> str:
+    """Kotlin without its comments, its string and character literals kept whole. A regex took
+    the "//" in "meshsat://key/" for a comment, and every word after it in SettingsScreen.kt
+    (lines 295 to 1766) was lost."""
+    out, i, n = [], 0, len(source)
+    while i < n:
+        if source.startswith('"""', i):
+            j = source.find('"""', i + 3)
+            j = n if j < 0 else j + 3
+            out.append(source[i:j])
+            i = j
+        elif source[i] in "\"'":
+            quote, j = source[i], i + 1
+            while j < n and source[j] != quote and source[j] != "\n":
+                j += 2 if source[j] == "\\" else 1
+            j = min(j + 1, n)
+            out.append(source[i:j])
+            i = j
+        elif source.startswith("//", i):
+            j = source.find("\n", i)
+            i = n if j < 0 else j
+        elif source.startswith("/*", i):
+            j = source.find("*/", i + 2)
+            i = n if j < 0 else j + 2
+            out.append(" ")
+        else:
+            out.append(source[i])
+            i += 1
+    return "".join(out)
+
+
 def extract(root: str) -> dict:
     out = {}
     for folder in FOLDERS:
@@ -55,8 +86,7 @@ def extract(root: str) -> dict:
                 with open(path, encoding="utf-8") as handle:
                     source = handle.read()
                 # comments go: a literal in a comment is not shown
-                source = re.sub(r"/\*.*?\*/", "", source, flags=re.S)
-                source = re.sub(r"//[^\n]*", "", source)
+                source = strip_comments(source)
                 found = []
                 for match in STRING.finditer(source):
                     for fragment in fragments(match.group(1)):
@@ -69,11 +99,12 @@ def extract(root: str) -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("android", help="the meshsat-android checkout")
+    parser.add_argument("android", help="the meshsat-android checkout, or an export of the pinned tag (git archive)")
+    parser.add_argument("--ref", help="the tag the sources are, when they are an export and not a checkout")
     parser.add_argument("--out", default=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tests", "parity", "android-strings.json"))
     args = parser.parse_args()
     try:
-        commit = subprocess.run(["git", "-C", args.android, "describe", "--tags", "--always"], capture_output=True, text=True, timeout=10).stdout.strip()
+        commit = args.ref or subprocess.run(["git", "-C", args.android, "describe", "--tags", "--always"], capture_output=True, text=True, timeout=10).stdout.strip()
     except (OSError, subprocess.SubprocessError):
         commit = "unknown"
     strings = extract(args.android)
