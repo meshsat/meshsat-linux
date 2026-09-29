@@ -3,7 +3,7 @@
 way out with its state and its words, the sentence above them, and the SOS card's reach
 sentence (SosScreens.kt). Pure functions of the polled state, so the tests can hold every
 state up against Android's words."""
-from . import words
+from . import hub, words
 
 
 def queued(s) -> int:
@@ -81,19 +81,9 @@ def sms_lane(s) -> tuple:
 
 
 def hub_lane(s) -> tuple:
-    """The Bridge tells the app its Hub settings, not yet whether the link is up (Bridge change
-    B12): with settings and no word on the link it is "trying", never "working" on a guess."""
-    hub = s.hub or {}
-    if not s.bridge or not hub.get("url"):
-        return "off", "Scan the Hub's QR code to connect this phone.", ""
-    link = hub.get("link") or hub.get("state") or ""
-    if link == "connected":
-        return "working", f"Connected as {hub.get('bridge_id') or ''}.", ""
-    if link == "error":
-        return "failed", "Cannot reach the Hub. It keeps trying by itself.", ""
-    if link == "disconnected":
-        return "trying", "Not connected. It keeps trying by itself.", ""
-    return "trying", "Connecting to the Hub.", ""
+    """HomeLanes.kt:217-223 from the Bridge's word on the link (model/hub.py, MESHSAT-1417)."""
+    state, sentence = hub.lane(s.hub, bool(s.bridge))
+    return state, sentence, ""
 
 
 def lanes(s) -> dict:

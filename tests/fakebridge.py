@@ -436,19 +436,36 @@ class FakeBridge:
                 return 400, {"error": "v1 bundles require signing_pub (hex)"}
             count = data[21] if len(data) > 21 else 0
             return 200, {"imported_count": count, "skipped_count": 0, "bundle_version": data[0]}
-        # The Hub settings, as routing_handlers.go: an empty password or certificate keeps the
-        # stored one; the CA is always written.
+        # The Hub settings, as routing_handlers.go (MESHSAT-1417): a URL, bridge id, username,
+        # password or certificate sent empty keeps the stored one; the CA and the insecure flag
+        # are kept when left out; the switch, callsign, interval and API URL are written when
+        # sent. The GET shows the settings at once and the link as it was (a restart changes it).
         if path == "/api/routing/hub" and method == "PUT":
             new = dict(body or {})
+            if not isinstance(new.get("health_interval", 0), int) or not 0 <= new.get("health_interval", 0) <= 9999:
+                return 400, {"error": "health_interval must be 0 to 9999 seconds"}
             prev = dict(self.hub or {})
-            for key in ("url", "bridge_id", "username"):
-                prev[key] = new.get(key, "")
-            for key in ("password", "tls_cert_pem", "tls_key_pem"):
+            for key in ("url", "bridge_id", "username", "password", "tls_cert_pem", "tls_key_pem"):
                 if new.get(key):
                     prev[key] = new[key]
-            prev["tls_ca_pem"] = new.get("tls_ca_pem", "")
+            for key in ("tls_ca_pem", "tls_insecure", "enabled", "callsign", "health_interval", "api_url"):
+                if key in new:
+                    prev[key] = new[key]
             self.hub = prev
+            shown = self.routes.get("GET /api/routing/hub")
+            if isinstance(shown, dict):
+                for key in ("url", "bridge_id", "username", "enabled", "callsign", "health_interval", "api_url"):
+                    if key in prev:
+                        shown[key] = prev[key]
+                shown["has_password"] = bool(shown.get("has_password") or prev.get("password"))
+                shown["has_cert"] = bool(shown.get("has_cert") or (prev.get("tls_cert_pem") and prev.get("tls_key_pem")))
             return 200, {"url": prev.get("url"), "bridge_id": prev.get("bridge_id"), "warning": "Hub connection config saved. Restart the bridge for changes to take effect."}
+        # The connection test (MESHSAT-1417): the broker's acknowledgement, timed; 409 with no link.
+        if path == "/api/routing/hub/ping" and method == "POST":
+            shown = self.routes.get("GET /api/routing/hub") or {}
+            if (shown.get("state") if "state" in shown else shown.get("link")) == "connected":
+                return 200, {"elapsed_ms": 42}
+            return 409, {"error": "not connected"}
         if self.positions is not None and path == "/api/positions" and method == "GET":
             query = urllib.parse.parse_qs(urllib.parse.urlparse(full_path).query)
             since = query.get("since", [""])[0]

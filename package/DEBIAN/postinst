@@ -95,14 +95,27 @@ case "$1" in
         # Bluetooth (then they stay off); the Bridge follows what it found.
         if [ -d /run/systemd/system ]; then
             systemctl daemon-reload
+            # Enabled at the first install only ($2, the version configured before, is empty): an
+            # upgrade keeps what the person chose (Diagnostics > "Start after a phone restart"
+            # switches the Bridge's start at boot, and Android's setting survives its updates).
+            if [ -z "${2:-}" ]; then
+                if [ "$NODE" = 1 ]; then
+                    systemctl enable meshsat-hardware.service meshtasticd.service meshsat-radio-watch.timer meshsat-bridge.service >/dev/null 2>&1 || true
+                else
+                    systemctl enable meshsat-hardware.service meshsat-bridge.service >/dev/null 2>&1 || true
+                fi
+            fi
             if [ "$NODE" = 1 ]; then
-                systemctl enable meshsat-hardware.service meshtasticd.service meshsat-radio-watch.timer meshsat-bridge.service >/dev/null 2>&1 || true
                 systemctl stop meshsat-radio-watch.timer meshtasticd.service 2>/dev/null || true
-            else
-                systemctl enable meshsat-hardware.service meshsat-bridge.service >/dev/null 2>&1 || true
             fi
             systemctl start meshsat-hardware.service || true
-            systemctl restart meshsat-bridge.service || true
+            # The new Bridge runs where the old one ran (the old prerm noted it before stopping
+            # it), or would have run at boot.
+            ran=0
+            if [ -e /run/meshsat/bridge-was-running ]; then ran=1; rm -f /run/meshsat/bridge-was-running; fi
+            if [ -z "${2:-}" ] || [ "$ran" = 1 ] || systemctl is-enabled --quiet meshsat-bridge.service; then
+                systemctl restart meshsat-bridge.service || true
+            fi
             # MeshSat outside its window (notifications, the satellite signal): a user service
             # of every graphical session from now on, and of the sessions that are running.
             systemctl --global enable meshsat-notify.service >/dev/null 2>&1 || true

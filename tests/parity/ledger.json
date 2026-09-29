@@ -125,13 +125,13 @@
   {
    "id": "home.lane.hub",
    "kind": "card",
-   "android": "ui/screens/HomeLanes.kt:215-222",
-   "linux": "model/home.py:hub_lane",
+   "android": "ui/screens/HomeLanes.kt:215-223",
+   "linux": "model/hub.py:lane, model/home.py:hub_lane",
    "modes": "both",
-   "state": "partial",
-   "test": "h_home::sentence_and_lanes_follow_the_bridge",
+   "state": "verified",
+   "test": "h_hub::c_the_setup_row_and_the_home_lane",
    "capture": "home",
-   "note": "Connected/Error/Disconnected wait for Bridge change B12"
+   "note": "Off, Working, Trying, Failed with Android's sentences, from the Bridge's state of the link (MESHSAT-1417)"
   },
   {
    "id": "home.lane.taps",
@@ -538,7 +538,7 @@
    "state": "partial",
    "test": "",
    "capture": "",
-   "note": "the confirmation comes with 0.12.0"
+   "note": "the confirmation in Android's words and Check offered only with a modem (0.11.1, h_mailbox::the_mailbox_check_asks_first); the result words wait for the Bridge's mailbox outcome (B22, 0.12.0)"
   },
   {
    "id": "passes",
@@ -566,12 +566,12 @@
    "id": "setup.hub",
    "kind": "screen",
    "android": "ui/screens/SettingsScreen.kt:1625-1900",
-   "linux": "setup.py:HubScreen",
+   "linux": "pages/hub.py:HubScreen, model/hub.py",
    "modes": "both",
-   "state": "partial",
-   "test": "",
+   "state": "verified",
+   "test": "h_hub::a_the_card_in_androids_words",
    "capture": "setup-hub",
-   "note": "the six states, the form and 'Reach a kit' come with 0.9.1"
+   "note": "Hub connection: the six states with the dot in Android's order (the Bridge reports the link's state and reason since MESHSAT-1417), Use the Hub (the setting only, as Android's: it takes effect when the link next starts), the claim still waiting, Why: …, Scan the Hub's QR code through the Setup router, Test the connection (the broker's acknowledgement timed by the Bridge; 'Not connected' without a link, 'failed: ' and 30 units of the reason), Connection details with Android's fields and rows and the password's eye, Save, the closing paragraph. Differences: the Bridge ID placeholder says 'auto (host name)' (Android: 'auto (Android ID)'), Save restarts the Bridge and says so ('Saved. Restarting the Bridge to use them.'; Android: 'Saved. Restart the app to use them.'), the stored password shows as dots in the placeholder (the Bridge never gives it back)"
   },
   {
    "id": "setup.hub.provision",
@@ -1539,6 +1539,26 @@
    "test": "h_cards::f_a_card_read_by_the_camera_is_added_as_scanned",
    "capture": "scanner",
    "note": "the camera through libcamera and GStreamer (the PinePhone Pro's rear camera), decoded by GStreamer's zbar element, the caller's prompt as the heading, closed on the first QR code; Linux adds 'Open an image' for a device with no camera (a code from a file counts as imported); the tests show the scanner a PNG through the same pipeline",
+   "state": "verified"
+  },
+  {
+   "id": "setup.hub.relay",
+   "kind": "card",
+   "android": "ui/screens/SettingsScreen.kt:1834-1872, service/GatewayService.kt:1778-1860, hub/relay/RelayBridgeTransport.kt",
+   "linux": "",
+   "modes": "both",
+   "state": "excluded",
+   "note": "'Reach a kit through the Hub', 'Kit's bridge ID' and 'Hub API URL (optional)': Android's relay carries Reticulum packets to one kit through the Hub. The Bridge has no relay client to a kit, and a Bridge kit's relay serves its HTTP API through the Hub (TLS tunnels), not Reticulum frames; the Hub API URL is kept by the Bridge (api_url) for its own relay"
+  },
+  {
+   "id": "setup.row.hub",
+   "kind": "card",
+   "android": "ui/screens/SetupScreen.kt:115-133",
+   "linux": "setup.py:SetupScreen.update, model/hub.py:setup_row",
+   "modes": "both",
+   "test": "h_hub::c_the_setup_row_and_the_home_lane",
+   "capture": "setup",
+   "note": "Not set up. Scan the Hub's QR code. / Connected / Connecting / Cannot reach the Hub / Not connected, in Android's colours; not the switch",
    "state": "verified"
   }
  ]

@@ -2,9 +2,9 @@
 
 MeshSat Android is the reference, pinned at `v2.19.4`. One row per screen, tab, card, dialog, banner and notification of the Android app; a row is done when the Linux app has it, in Android's words, and a test proves it. Kept by `tools/parity-check.py` from `tests/parity/ledger.json`; the words by `tools/android-strings.py`.
 
-**Rows:** 140: 6 missing, 10 partial, 19 built, 94 verified, 9 excluded, 2 blocked.
+**Rows:** 142: 6 missing, 8 partial, 19 built, 97 verified, 10 excluded, 2 blocked.
 
-**Words:** 1194 of 1407 readable strings of Android's `ui/` and `sos/` are in the Linux sources, 2 excluded with a reason, 211 still to port.
+**Words:** 1211 of 1407 readable strings of Android's `ui/` and `sos/` are in the Linux sources, 2 excluded with a reason, 194 still to port.
 
 States: `missing` (not there), `partial` (some of it), `built` (there, untested), `verified` (there, in Android's words, with a test that ran green on the phone), `excluded` (not ported, with the reason), `blocked` (built and tested against the scripted Bridge, waiting for hardware the bench lacks).
 
@@ -21,7 +21,7 @@ States: `missing` (not there), `partial` (some of it), `built` (there, untested)
 | home.lane.satellite | card | `ui/screens/HomeLanes.kt:150-180` | `model/home.py:satellite_lane` | both | partial | h_home::sentence_and_lanes_follow_the_bridge | the pass line and the node's modem states wait for B9 (0.12.0) |
 | home.lane.mesh | card | `ui/screens/HomeLanes.kt:183-198` | `model/home.py:mesh_lane` | both | verified | h_home::sentence_and_lanes_follow_the_bridge |  |
 | home.lane.sms | card | `ui/screens/HomeLanes.kt:200-208` | `model/home.py:sms_lane` | both | verified | h_home::sentence_and_lanes_follow_the_bridge |  |
-| home.lane.hub | card | `ui/screens/HomeLanes.kt:215-222` | `model/home.py:hub_lane` | both | partial | h_home::sentence_and_lanes_follow_the_bridge | Connected/Error/Disconnected wait for Bridge change B12 |
+| home.lane.hub | card | `ui/screens/HomeLanes.kt:215-223` | `model/hub.py:lane, model/home.py:hub_lane` | both | verified | h_hub::c_the_setup_row_and_the_home_lane | Off, Working, Trying, Failed with Android's sentences, from the Bridge's state of the link (MESHSAT-1417) |
 | home.lane.taps | behaviour | `ui/screens/HomeLanes.kt:261,272` | `__main__.py:open_lane` | both | built |  |  |
 | home.checklist | card | `ui/screens/Onboarding.kt:133-195` | `model/home.py:checklist` | both | partial |  | 'Hide' is still to come |
 | home.sos-card | card | `ui/screens/SosScreens.kt:SosCard` | `home.py:HomeScreen.update_sos_card` | both | verified | h_sos::alarm_test_goes_route_by_route_and_settles |  |
@@ -58,10 +58,10 @@ States: `missing` (not there), `partial` (some of it), `built` (there, untested)
 | setup.node.pin | linux-only | `-` | `setup.py:NodeScreen.ask_pin` | bluetooth | built |  | Android's system shows the PIN dialog; here the app does |
 | setup.node.device | linux-only | `-` | `setup.py:NodeScreen` | both | built |  | which node this device has, and the look-again button |
 | setup.satellite | screen | `ui/screens/SettingsScreen.kt:529-735` | `setup.py:SatelliteScreen` | both | partial |  | the node's modem section and the 9704 card come with 0.12.0 |
-| setup.satellite.mailbox | dialog | `ui/components/CheckMailboxButton.kt` | `setup.py:SatelliteScreen.check_mailbox` | both | partial |  | the confirmation comes with 0.12.0 |
+| setup.satellite.mailbox | dialog | `ui/components/CheckMailboxButton.kt` | `setup.py:SatelliteScreen.check_mailbox` | both | partial |  | the confirmation in Android's words and Check offered only with a modem (0.11.1, h_mailbox::the_mailbox_check_asks_first); the result words wait for the Bridge's mailbox outcome (B22, 0.12.0) |
 | passes | screen | `ui/screens/PassPredictorScreen.kt` | `passes.py:PassesScreen` | both | built |  |  |
 | passes.position | linux-only | `-` | `passes.py:PositionDialog` | both | built |  | a position typed in, for a phone without a fix |
-| setup.hub | screen | `ui/screens/SettingsScreen.kt:1625-1900` | `setup.py:HubScreen` | both | partial |  | the six states, the form and 'Reach a kit' come with 0.9.1 |
+| setup.hub | screen | `ui/screens/SettingsScreen.kt:1625-1900` | `pages/hub.py:HubScreen, model/hub.py` | both | verified | h_hub::a_the_card_in_androids_words | Hub connection: the six states with the dot in Android's order (the Bridge reports the link's state and reason since MESHSAT-1417), Use the Hub (the setting only, as Android's: it takes effect when the link next starts), the claim still waiting, Why: …, Scan the Hub's QR code through the Setup router, Test the connection (the broker's acknowledgement timed by the Bridge; 'Not connected' without a link, 'failed: ' and 30 units of the reason), Connection details with Android's fields and rows and the password's eye, Save, the closing paragraph. Differences: the Bridge ID placeholder says 'auto (host name)' (Android: 'auto (Android ID)'), Save restarts the Bridge and says so ('Saved. Restarting the Bridge to use them.'; Android: 'Saved. Restart the app to use them.'), the stored password shows as dots in the placeholder (the Bridge never gives it back) |
 | setup.hub.provision | dialog | `ui/components/ProvisionLinkDialog.kt, ProvisionClaimHost.kt, crypto/ProvisionImporter.kt` | `flows.py:Provisioning, model/provision.py` | both | verified | h_provision::a_a_scanned_code_is_claimed_then_asked_about | the Hub's code scanned (claimed through the Hub's 503s, then 'Use these Hub settings?') or its meshsat://provision/ link opened (the desktop entry's scheme handler; asked first, then claimed and applied); the settings to the Bridge (PUT /api/routing/hub, the CA always sent), the client certificate to its store, the Bridge restarted; 'No settings from the Hub' with Android's messages. ProvisionLinkTest and ProvisionClaimRetryTest ported. Not applied yet: the bundle's Reticulum peer (it needs the Bridge's Reticulum TCP client, 0.11.2) |
 | setup.hub.key-changed | dialog | `ui/screens/SettingsScreen.kt:222-259, 295-333, crypto/KeyBundleImporter.kt` | `flows.py:KeyImports, model/keybundle.py` | both | verified | h_keys::c_a_changed_key_asks_first | key bundles checked as Android checks them (KeyBundleImporterTest ported) with the kits' keys pinned on first use in bridge_trust.json; the keys stored by the Bridge (POST /api/keys/import), whose count the toasts give; 'This kit's key has changed' with Trust the new key / Keep the old key. Differences: a v1 bundle is refused by the Bridge without the kit's key; the audit event bridge_key_repinned has no write endpoint in the Bridge and is not written |
 | setup.sms | screen | `ui/screens/SettingsScreen.kt:1903-1981` | `setup.py:SmsScreen` | both | verified | h_messaging::no_recipient_number_goes_over_the_sms_gateway | Text messages (the SIM through the Bridge, ModemManager) and Where a text goes with no recipient |
@@ -150,17 +150,19 @@ States: `missing` (not there), `partial` (some of it), `built` (there, untested)
 | people.cards.add | dialog | `ui/screens/ContactCards.kt:189-237` | `pages/cards.py:AddDialog` | both | verified | h_cards::f_a_card_read_by_the_camera_is_added_as_scanned | Add {name}?, the fingerprint to compare, the mesh node and Hub lines, how it came (scanned or imported); the three errors as toasts |
 | people.cards.paste | dialog | `ui/screens/ContactCards.kt:157-187` | `pages/cards.py:PasteDialog` | both | verified | h_cards::e_the_three_errors | Paste a card, its text empty each time, Read it |
 | scanner | behaviour | `ui/screens/ContactCards.kt:100-116, ui/screens/SettingsScreen.kt:283-344 (zxing CaptureActivity)` | `scan.py:Scanner` | both | verified | h_cards::f_a_card_read_by_the_camera_is_added_as_scanned | the camera through libcamera and GStreamer (the PinePhone Pro's rear camera), decoded by GStreamer's zbar element, the caller's prompt as the heading, closed on the first QR code; Linux adds 'Open an image' for a device with no camera (a code from a file counts as imported); the tests show the scanner a PNG through the same pipeline |
+| setup.hub.relay | card | `ui/screens/SettingsScreen.kt:1834-1872, service/GatewayService.kt:1778-1860, hub/relay/RelayBridgeTransport.kt` | `` | both | excluded |  | 'Reach a kit through the Hub', 'Kit's bridge ID' and 'Hub API URL (optional)': Android's relay carries Reticulum packets to one kit through the Hub. The Bridge has no relay client to a kit, and a Bridge kit's relay serves its HTTP API through the Hub (TLS tunnels), not Reticulum frames; the Hub API URL is kept by the Bridge (api_url) for its own relay |
+| setup.row.hub | card | `ui/screens/SetupScreen.kt:115-133` | `setup.py:SetupScreen.update, model/hub.py:setup_row` | both | verified | h_hub::c_the_setup_row_and_the_home_lane | Not set up. Scan the Hub's QR code. / Connected / Connecting / Cannot reach the Hub / Not connected, in Android's colours; not the switch |
 
 ## Words, per Android file
 
 | file | carried | excluded | missing |
 |---|---|---|---|
-| `ui/screens/SettingsScreen.kt` | 161/244 | 0 | 83 |
+| `ui/screens/SettingsScreen.kt` | 173/244 | 0 | 71 |
 | `ui/screens/AboutScreen.kt` | 16/32 | 0 | 16 |
-| `ui/components/CheckMailboxButton.kt` | 3/18 | 0 | 15 |
 | `ui/screens/MessagesScreen.kt` | 59/73 | 0 | 14 |
 | `ui/screens/Onboarding.kt` | 13/27 | 0 | 14 |
 | `ui/screens/DashboardScreen.kt` | 19/31 | 0 | 12 |
+| `ui/components/CheckMailboxButton.kt` | 7/18 | 0 | 11 |
 | `sos/SosController.kt` | 17/26 | 0 | 9 |
 | `ui/screens/PassPredictorScreen.kt` | 32/39 | 0 | 7 |
 | `ui/screens/TopologyScreen.kt` | 25/29 | 0 | 4 |
@@ -172,12 +174,12 @@ States: `missing` (not there), `partial` (some of it), `built` (there, untested)
 | `ui/screens/AuditScreen.kt` | 41/43 | 0 | 2 |
 | `ui/screens/InterfacesScreen.kt` | 57/59 | 0 | 2 |
 | `ui/screens/MapScreen.kt` | 28/30 | 0 | 2 |
-| `ui/screens/SetupScreen.kt` | 53/55 | 0 | 2 |
 | `sos/SosMessages.kt` | 13/15 | 0 | 2 |
 | `ui/Peers.kt` | 5/6 | 0 | 1 |
 | `ui/screens/CredentialsScreen.kt` | 14/15 | 0 | 1 |
 | `ui/screens/DecryptScreen.kt` | 13/14 | 0 | 1 |
 | `ui/screens/GeofenceScreen.kt` | 45/46 | 0 | 1 |
+| `ui/screens/SetupScreen.kt` | 54/55 | 0 | 1 |
 | `ui/components/HoldToSend.kt` | 0/1 | 0 | 1 |
 | `ui/components/Lane.kt` | 2/3 | 0 | 1 |
 | `ui/components/NodeLinkBanner.kt` | 6/7 | 0 | 1 |

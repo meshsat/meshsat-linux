@@ -30,6 +30,28 @@ def small_button(label: str, on_click, style: str) -> Gtk.Button:
     return button
 
 
+def use_scanned_key(app, key: str) -> None:
+    """A 64-hex key scanned outside this page (the Hub page's scanner) becomes the key, as the
+    Setup router makes it on Android: kept, and applied to the SMS link as this page applies it."""
+    app.prefs.set(messaging_key=key)
+
+    def got(answer: api.Answer) -> None:
+        links = {i.get("id"): i for i in answer.body if isinstance(i, dict)} if answer.ok and isinstance(answer.body, list) else {}
+        record = links.get(model.SMS)
+        if record is None:
+            app.toast(model.KEY_FROM_QR)
+            return
+        egress, ingress = model.steps(record.get("egress_transforms")), model.steps(record.get("ingress_transforms"))
+        prefs = app.prefs
+        out, back = model.sms_chains(egress, ingress, prefs.get("messaging_enabled", False), prefs.get("messaging_auto_decrypt", True), key,
+                                     model.compression(egress), prefs.get("messaging_stages", "3"))
+        body = {"egress_transforms": model.chain_text(out), "ingress_transforms": model.chain_text(back)}
+        api.fetch(f"/api/interfaces/{model.SMS}/transforms", lambda a: app.toast(model.KEY_FROM_QR if a.ok else (a.error or "The Bridge did not take the change.")),
+                  method="PUT", body=body)
+
+    api.fetch("/api/interfaces", got)
+
+
 class MessagingScreen(SubScreen):
     def __init__(self, app):
         super().__init__(app, "Messaging")

@@ -158,6 +158,7 @@ button label.body-large, button label.body-medium, button label.body-small {{ fo
 .outlined.danger label {{ color: {RED}; font-size: {px(18)}; font-weight: 600; }}
 .textbutton {{ background: none; border: none; box-shadow: none; padding: {px(8)} {px(12)}; }}
 .textbutton label {{ color: {SIGNAL_ORANGE}; font-size: {px(14)}; font-weight: 500; }}
+.textbutton.off-white label {{ color: {OFF_WHITE}; }}
 .field {{ background-color: {SPACE_BLACK}; border: 1px solid {OUTLINE}; border-radius: {px(4)}; padding: 0 {px(14)}; min-height: {px(56)}; color: {TEXT_PRIMARY}; font-size: {px(16)}; caret-color: {SIGNAL_ORANGE}; }}
 .field:focus-within {{ border: 2px solid {SIGNAL_ORANGE}; }}
 .bubble {{ background-color: {SURFACE}; border: 1px solid {BORDER}; border-radius: {px(12)} {px(12)} {px(12)} {px(4)}; padding: {px(10)}; }}

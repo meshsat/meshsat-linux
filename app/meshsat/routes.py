@@ -21,7 +21,7 @@ ROUTES = {
     "setup/diagnostics": ("setup", "pages.diagnostics", "DiagnosticsScreen"),
     "setup/node": ("setup", "setup", "NodeScreen"),
     "setup/satellite": ("setup", "setup", "SatelliteScreen"),
-    "setup/hub": ("setup", "setup", "HubScreen"),
+    "setup/hub": ("setup", "pages.hub", "HubScreen"),
     "setup/sms": ("setup", "setup", "SmsScreen"),
     "setup/safety": ("setup", "pages.safety", "SafetyScreen"),
     "setup/messaging": ("setup", "pages.messaging", "MessagingScreen"),
