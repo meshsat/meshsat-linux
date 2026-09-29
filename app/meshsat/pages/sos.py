@@ -21,7 +21,7 @@ def ask_test(app, on_test) -> None:
     orange, "Not now" in OffWhite."""
     s = app.state
     parts = sosrun.test_parts(s, app.prefs.get(MODEM_SEEN, ""))
-    confirm(app, "Test the alarm?", sosrun.test_dialog_text(sos.test_text(s.sos_name), parts), "Send the test", on_test, cancel="Not now",
+    confirm(app, "Test the alarm?", sosrun.test_dialog_text(sos.test_text(s.sos_display_name()), parts), "Send the test", on_test, cancel="Not now",
             filled=True, cancel_colour=theme.OFF_WHITE)
 
 

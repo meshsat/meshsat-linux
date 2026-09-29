@@ -60,6 +60,55 @@ class SosRunTest(unittest.TestCase):
         self.assertEqual([r.label for r in routes], ["Mesh, everyone in range", "SMS to Anna", "Hub, over the internet"])
         self.assertEqual(skipped, ["Satellite: no satellite modem has been connected to this phone yet."])
 
+    def test_the_plan_takes_every_route_set_up(self):
+        """MESHSAT-1446, the owner's decision: an SOS takes every route set up, as Android's
+        SosController (the reach rule of the SOS card), not only the routes up this minute: a
+        modem this phone has had, a paired node that is reconnecting."""
+        imei = "300434065000000"
+        s = state(bridge=CONNECTED | {"connected": False}, hardware={"node": "bluetooth"}, ble={"mode": "lost", "address": "E0:72"},
+                  modem={"connected": False, "port": "", "imei": ""}, hub={"url": "mqtts://hub"})
+        routes, skipped = sosrun.plan(s, test=False, contacts_reach=False, modem_seen=imei)
+        self.assertEqual([r.key for r in routes], ["sat", "mesh", "hub"])
+        self.assertTrue(all(r.state == sosrun.WAITING for r in routes))
+        routes, skipped = sosrun.plan(s, test=False, contacts_reach=False)
+        self.assertEqual([r.key for r in routes], ["mesh", "hub"])
+        self.assertEqual(skipped[0], "Satellite: no satellite modem has been connected to this phone yet.")
+        s.ble = {"mode": "idle"}
+        routes, skipped = sosrun.plan(s, test=False, contacts_reach=False)
+        self.assertEqual([r.key for r in routes], ["hub"])
+        self.assertIn("Mesh: no mesh radio is paired with this phone.", skipped)
+
+    def test_the_bridge_legs_in_the_apps_words(self):
+        """GET /api/sos/status legs: waiting for a link, not queued, the Hub told, or the
+        delivery's own state (SosProgress)."""
+        self.assertEqual(sosrun.state_of_leg({"route": "satellite", "status": "waiting"}), (sosrun.WAITING, "Waiting to send"))
+        self.assertEqual(sosrun.state_of_leg({"route": "hub", "status": "waiting"}), (sosrun.WAITING, "Waiting for the Hub connection"))
+        self.assertEqual(sosrun.state_of_leg({"route": "hub", "status": "sent", "sent_at": "2026-09-30T00:10:00Z"}), (sosrun.SENT, "Sent"))
+        self.assertEqual(sosrun.state_of_leg({"route": "mesh", "status": "failed", "error": "Could not be queued: disk full"}),
+                         (sosrun.FAILED, "Could not be queued: disk full"))
+        self.assertEqual(sosrun.state_of_leg({"route": "mesh", "status": "queued", "msg_ref": "sos-1-mesh"}), (sosrun.WAITING, "Waiting to send"))
+        self.assertEqual(sosrun.state_of_leg({"route": "mesh", "status": "retry", "last_error": "not connected"}), (sosrun.WAITING, "Trying again: not connected"))
+        self.assertEqual(sosrun.state_of_leg({"route": "satellite", "status": "sent", "ack_status": "acked", "interface": "iridium_imt_0"}),
+                         (sosrun.SENT, "Sent, and the Hub has it"))
+        self.assertEqual(sosrun.state_of_leg({"route": "mesh", "status": "dead", "last_error": "cancelled"}), (sosrun.STOPPED, "Stopped"))
+        self.assertEqual(sosrun.skipped_reason(["Mesh: the mesh link is switched off in Links.", "Hub: not set up on this Bridge."], "hub"),
+                         "Not set up on this Bridge.")
+        self.assertIsNone(sosrun.skipped_reason(["Hub: not set up on this Bridge."], "sat"))
+
+    def test_a_blank_name_takes_the_hub_callsign(self):
+        """SosController.start: sosName.ifBlank { hubCallsign }; Safety's placeholder is the
+        callsign, else "A MeshSat user" (SosScreens.kt:502)."""
+        self.assertEqual(sos.name_for_sos("", "PA3XYZ"), "PA3XYZ")
+        self.assertEqual(sos.name_for_sos("   ", "PA3XYZ"), "PA3XYZ")
+        self.assertEqual(sos.name_for_sos("Kyriakos", "PA3XYZ"), "Kyriakos")
+        self.assertEqual(sos.mesh_text(sos.name_for_sos("", ""), None), "SOS: A MeshSat user needs help. Position unknown.")
+        self.assertEqual(sos.test_text(sos.name_for_sos("", "PA3XYZ")), "Test from PA3XYZ: checking the MeshSat alarm routes. No help needed.")
+        self.assertEqual(sos.name_placeholder("PA3XYZ"), "PA3XYZ")
+        self.assertEqual(sos.name_placeholder("  "), "A MeshSat user")
+        s = state(sos_name="", hub={"url": "", "callsign": "PA3XYZ"})
+        self.assertEqual(s.sos_display_name(), "PA3XYZ")
+        self.assertEqual(state(sos_name="").sos_display_name(), "")
+
     def test_without_the_bridge_nothing_can_be_queued(self):
         routes, skipped = sosrun.plan(state(bridge=None), False, False)
         self.assertEqual(routes, [])

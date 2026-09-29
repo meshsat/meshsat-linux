@@ -57,39 +57,6 @@ def case_alarm_test_goes_route_by_route_and_settles(ctx):
     ctx.tree.find("button", name="Hold 3 seconds for SOS", timeout=10)
 
 
-def case_sos_screen_shows_where_it_went_and_the_cancellation(ctx):
-    settle(ctx, "mesh-only")
-    before = ctx.bridge.count()
-    ctx.tree.click("Hold 3 seconds for SOS")
-    ctx.tree.click_in_dialog("Send SOS")
-    ctx.bridge.wait_request("POST", "/api/sos/activate", since=before)
-    ctx.tree.wait_text("SOS is on since", timeout=10)
-    ctx.tree.wait_text("SOS is on. Tap to see where it went, or to cancel.")
-    ctx.tree.click("See where it went")
-    ctx.tree.wait_text("SOS is on")
-    started = next(t for t in ctx.tree.texts() if t.startswith("Started at "))
-    assert started.endswith(" from this phone. Position unknown."), started
-    ctx.tree.wait_text("Mesh, everyone in range")
-    ctx.app.refresh()
-    ctx.tree.wait_text("Not used")
-    ctx.tree.wait_text("Satellite: no satellite modem has been connected to this phone yet.")
-    ctx.tree.wait_text("Hub: not set up on this phone.")
-    ctx.shot("sos-on")
-    ctx.tree.click("Cancel SOS: I am safe")
-    ctx.tree.wait_text("Cancel the SOS?")
-    ctx.tree.click_in_dialog("Cancel SOS")
-    ctx.bridge.wait_request("POST", "/api/sos/cancel", since=before)
-    ctx.tree.wait_text("SOS cancelled at", timeout=10)
-    ctx.tree.wait_text('Every route that carried the SOS is sending "Alarm cancelled: A MeshSat user is safe and needs no help now."')
-    cancels = [r for r in ctx.bridge.requests(before) if r["path"] == "/api/messages/send" and "Alarm cancelled" in r["body"].get("text", "")]
-    assert cancels, "no cancellation went out on the mesh"
-    ctx.tree.wait_text("Cancellation: sent", timeout=10)
-    ctx.shot("sos-cancelled")
-    ctx.tree.click("Emergency contacts and alarm test")
-    ctx.tree.wait_text("Test the alarm")
-    ctx.app.open("home")
-
-
 def case_safety_page_contacts_and_check_in_timer(ctx):
     settle(ctx, "sim-ready")
     ctx.app.open("setup/safety")

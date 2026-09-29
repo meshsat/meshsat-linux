@@ -1,11 +1,13 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The SOS and the alarm test against the scripted Bridge: what goes out on which route, and
 what the record says afterwards."""
+import json
 import os
 import sys
 import tempfile
 import time
 import unittest
+import urllib.request
 
 sys.path.insert(0, os.path.dirname(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "app"))
@@ -33,6 +35,15 @@ def wait(predicate, seconds: float = 5.0) -> bool:
             return True
         time.sleep(0.05)
     return predicate()
+
+
+def poll_sos(fake, flow, s) -> dict:
+    """The app's poll of GET /api/sos/status, then the flow follows it."""
+    with urllib.request.urlopen(fake.url + "/api/sos/status", timeout=5) as answer:
+        s.sos = json.loads(answer.read())
+    flow._followed = 0.0
+    flow.follow(s)
+    return s.sos
 
 
 def deliver(fake, flow, s, key: str, status: str = "sent", cancel: bool = False, **more) -> None:
@@ -68,7 +79,7 @@ class FlowTest(unittest.TestCase):
     def tearDown(self):
         self.dir.cleanup()
 
-    def test_an_sos_starts_the_bridge_burst_with_the_words_and_texts_the_contacts(self):
+    def test_an_sos_starts_the_bridge_legs_with_the_words_and_texts_the_contacts(self):
         s = state(bridge=CONNECTED, cellular=SIM, contacts=[{"name": "Anna", "phone": "+31600000000"}], sos_name="Kyriakos")
         run = self.flow.start(s, test=False, trigger="hold")
         self.assertFalse(run.test)
@@ -76,6 +87,8 @@ class FlowTest(unittest.TestCase):
         self.assertTrue(wait(lambda: any(r["path"] == "/api/sos/activate" for r in self.fake.requests)))
         activate = next(r for r in self.fake.requests if r["path"] == "/api/sos/activate")
         self.assertEqual(activate["body"]["trigger"], "hold")
+        self.assertEqual(activate["body"]["routes"], ["mesh"], "the Bridge is asked for the routes this run planned")
+        self.assertNotIn("latitude", activate["body"], "no position to give")
         self.assertTrue(activate["body"]["message"].startswith("SOS: Kyriakos needs help. Position unknown."))
         self.assertTrue(wait(lambda: any(s_.get("gateway") == "cellular" for s_ in self.fake.sent)))
         sms = next(s_ for s_ in self.fake.sent if s_.get("gateway") == "cellular")
@@ -87,9 +100,12 @@ class FlowTest(unittest.TestCase):
         self.assertTrue(wait(lambda: self.flow.run.route("sms:+31600000000").state == sosrun.SENT))
         deliver(self.fake, self.flow, s, "sms:+31600000000", "sent", ack_status="acked")
         self.assertTrue(wait(lambda: self.flow.run.route("sms:+31600000000").detail == "Delivered to their phone"))
-        # The Bridge's burst counts the sends: the mesh route is sent once the status says so.
-        s.sos = {"active": True, "sends": 1}
-        self.flow.follow(s)
+        # The mesh leg waits in the Bridge's queue, then goes: the app reads it from the Bridge's legs.
+        poll_sos(self.fake, self.flow, s)
+        self.assertEqual((self.flow.run.route("mesh").state, self.flow.run.route("mesh").detail), (sosrun.WAITING, "Waiting to send"))
+        self.assertTrue(self.flow.run.route("mesh").ref.endswith("-mesh"))
+        deliver(self.fake, self.flow, s, "mesh", "sent")
+        poll_sos(self.fake, self.flow, s)
         self.assertEqual(self.flow.run.route("mesh").state, sosrun.SENT)
         self.assertIn("Sent by mesh and SMS to Anna.", sosrun.summary(self.flow.run.routes))
         # Kept on disk for the banner and the result screen after a restart.
@@ -105,17 +121,88 @@ class FlowTest(unittest.TestCase):
         wait(lambda: self.flow.run.route("sms:+31600000000").state == sosrun.WAITING)
         deliver(self.fake, self.flow, s, "sms:+31600000000", "sent")
         self.assertTrue(wait(lambda: self.flow.run.route("sms:+31600000000").state == sosrun.SENT))
-        s.sos = {"active": True, "sends": 1}
-        self.flow.follow(s)
+        poll_sos(self.fake, self.flow, s)
+        deliver(self.fake, self.flow, s, "mesh", "sent")
+        poll_sos(self.fake, self.flow, s)
+        self.assertEqual(self.flow.run.route("mesh").state, sosrun.SENT)
         self.flow.cancel(s)
         self.assertIsNotNone(self.flow.run.cancelled_at)
         self.assertFalse(self.flow.run.active)
         self.assertTrue(wait(lambda: any(r["path"] == "/api/sos/cancel" for r in self.fake.requests)))
+        cancel = next(r for r in self.fake.requests if r["path"] == "/api/sos/cancel")
+        self.assertEqual(cancel["body"], {"message": "Alarm cancelled: Kyriakos is safe and needs no help now."})
         self.assertTrue(wait(lambda: any("Alarm cancelled: Kyriakos is safe" in s_.get("text", "") and s_.get("gateway") == "cellular" and s_.get("plain") is True for s_ in self.fake.sent)))
-        self.assertTrue(wait(lambda: any("Alarm cancelled" in s_.get("text", "") and "gateway" not in s_ for s_ in self.fake.sent)), "no cancellation on the mesh")
+        # The Bridge tells the mesh (its mesh leg went out): a leg of its own, which the app follows.
+        self.assertTrue(wait(lambda: self.flow.run.route("mesh").cancel == sosrun.WAITING))
+        self.assertTrue(self.flow.run.route("mesh").cancel_ref.endswith("-cancel:mesh"))
+        self.assertFalse(any("Alarm cancelled" in s_.get("text", "") and "gateway" not in s_ for s_ in self.fake.sent), "the app told the mesh as well")
+        deliver(self.fake, self.flow, s, "mesh", "sent", cancel=True)
+        self.assertTrue(wait(lambda: self.flow.run.route("mesh").cancel == sosrun.SENT))
         self.assertTrue(wait(lambda: self.flow.run.route("sms:+31600000000").cancel == sosrun.WAITING))
         deliver(self.fake, self.flow, s, "sms:+31600000000", "sent", cancel=True)
         self.assertTrue(wait(lambda: self.flow.run.route("sms:+31600000000").cancel == sosrun.SENT))
+
+    def test_an_sos_takes_every_route_set_up_and_a_leg_waits_for_its_link(self):
+        # MESHSAT-1446: a modem this phone has had (not connected now) and the Hub (its link down)
+        # are routes too; their legs wait at the Bridge and go when the link is back.
+        self.prefs.set(last_modem_imei="300434065000000")
+        self.fake.control("POST", "/__fake__/set", {"key": "GET /api/iridium/modem", "body": {"connected": False}})
+        now = time.time()
+        s = state(bridge=CONNECTED, modem={"connected": False, "port": "", "imei": ""}, hub={"url": "mqtts://hub", "link": "down"}, sos_name="Kyriakos",
+                  phone=(52.1601, 4.497, 8.0, now))
+        run = self.flow.start(s, test=False, trigger="hold")
+        self.assertEqual([r.key for r in run.routes], ["sat", "mesh", "hub"])
+        self.assertEqual(run.skipped, ["SMS: this device cannot send SMS."])
+        self.assertTrue(wait(lambda: any(r["path"] == "/api/sos/activate" for r in self.fake.requests)))
+        activate = next(r for r in self.fake.requests if r["path"] == "/api/sos/activate")["body"]
+        self.assertEqual(activate["routes"], ["satellite", "mesh", "hub"])
+        self.assertEqual((activate["latitude"], activate["longitude"]), (52.1601, 4.497))
+        poll_sos(self.fake, self.flow, s)
+        self.assertEqual([(r.key, r.state, r.detail) for r in self.flow.run.routes],
+                         [("sat", sosrun.WAITING, "Waiting to send"), ("mesh", sosrun.WAITING, "Waiting to send"),
+                          ("hub", sosrun.WAITING, "Waiting for the Hub connection")])
+        self.assertIsNone(self.flow.run.route("sat").ref, "no delivery before the modem is there")
+        # The modem comes back and its frame goes, the Hub confirms it; the Hub link comes back
+        self.fake.control("POST", "/__fake__/sos", {"route": "satellite", "status": "sent", "ack_status": "acked", "interface": "iridium_0", "msg_ref": "sos-1-satellite"})
+        self.fake.control("POST", "/__fake__/sos", {"route": "hub", "status": "sent", "sent_at": "2026-09-30T00:10:00Z"})
+        poll_sos(self.fake, self.flow, s)
+        self.assertEqual((self.flow.run.route("sat").state, self.flow.run.route("sat").detail), (sosrun.SENT, "Sent, and the Hub has it"))
+        self.assertEqual(self.flow.run.route("sat").ref, "sos-1-satellite")
+        self.assertEqual((self.flow.run.route("hub").state, self.flow.run.route("hub").detail), (sosrun.SENT, "Sent"))
+        self.assertIn("Sent by satellite and the Hub online. Still trying mesh.", sosrun.summary(self.flow.run.routes))
+
+    def test_a_route_the_bridge_does_not_carry_says_why(self):
+        s = state(bridge=CONNECTED, hub={"url": "mqtts://hub"}, sos_name="Kyriakos")
+        self.flow.start(s, test=False, trigger="hold")
+        self.assertTrue(wait(lambda: any(r["path"] == "/api/sos/activate" for r in self.fake.requests)))
+        self.fake.control("POST", "/__fake__/sos", {"drop": "hub", "skipped": ["Hub: not set up on this Bridge."]})
+        poll_sos(self.fake, self.flow, s)
+        self.assertEqual((self.flow.run.route("hub").state, self.flow.run.route("hub").detail), (sosrun.FAILED, "Not set up on this Bridge."))
+        self.assertEqual(self.flow.run.route("mesh").state, sosrun.WAITING)
+
+    def test_a_blank_name_takes_the_hub_callsign(self):
+        s = state(bridge=CONNECTED, hub={"url": "", "callsign": "PA3XYZ"}, sos_name="")
+        run = self.flow.start(s, test=False, trigger="hold")
+        self.assertEqual(run.name, "PA3XYZ")
+        self.assertTrue(wait(lambda: any(r["path"] == "/api/sos/activate" for r in self.fake.requests)))
+        activate = next(r for r in self.fake.requests if r["path"] == "/api/sos/activate")["body"]
+        self.assertTrue(activate["message"].startswith("SOS: PA3XYZ needs help."), activate["message"])
+
+    def test_an_older_bridge_without_legs_is_still_followed(self):
+        # A Bridge before MESHSAT-1447 counts its burst's sends and cancels only the burst: the
+        # app marks the routes from the count and tells the mesh itself.
+        s = state(bridge=CONNECTED, sos_name="Kyriakos")
+        self.fake.control("POST", "/__fake__/set", {"key": "POST /api/sos/cancel", "status": 200, "body": {"status": "cancelled"}})
+        # the next cases get the Bridge's own cancel again (a set answer outlives the reset)
+        self.addCleanup(self.fake.control, "POST", "/__fake__/set", {"key": "POST /api/sos/cancel", "body": {}})
+        self.flow.start(s, test=False, trigger="hold")
+        self.assertTrue(wait(lambda: any(r["path"] == "/api/sos/activate" for r in self.fake.requests)))
+        s.sos = {"active": True, "sends": 1}
+        self.flow.follow(s)
+        self.assertEqual(self.flow.run.route("mesh").state, sosrun.SENT)
+        self.flow.cancel(s)
+        self.assertTrue(wait(lambda: any("Alarm cancelled" in s_.get("text", "") and "gateway" not in s_ for s_ in self.fake.sent)), "no cancellation on the mesh")
+        self.assertTrue(wait(lambda: self.flow.run.route("mesh").cancel == sosrun.SENT))
 
     def test_a_test_goes_route_by_route_and_tells_the_hub(self):
         s = state(bridge=CONNECTED, cellular=SIM, contacts=[{"name": "Anna", "phone": "+31600000000"}], hub={"url": "mqtts://hub", "link": "connected"}, sos_name="Kyriakos")

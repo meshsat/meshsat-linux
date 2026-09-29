@@ -9,6 +9,7 @@ import time
 
 HUB_ALARM_WORDS = ("SOS", "MAYDAY", "EMERGENCY")
 MAX_NAME = 24  # longest name used in a message, so an SMS stays in one part
+NO_NAME = "A MeshSat user"
 STALE_FIX = 2 * 60  # a fix older than this is called the last known position
 
 
@@ -21,7 +22,20 @@ def clean_name(name: str) -> str:
     """The user's name as it goes into a message: printable, trimmed, short."""
     printable = "".join(ch for ch in (name or "") if ch.isprintable() and ch not in "\t\n\r").strip()
     printable = " ".join(printable.split())
-    return printable[:MAX_NAME].strip() or "A MeshSat user"
+    return printable[:MAX_NAME].strip() or NO_NAME
+
+
+def name_for_sos(sos_name: str, callsign: str) -> str:
+    """The name an SOS, its test and its cancellation carry: the SOS name, or the Hub callsign
+    when the name is blank (SosController.start: sosName.ifBlank { hubCallsign }); clean_name
+    makes a blank one "A MeshSat user"."""
+    return sos_name if (sos_name or "").strip() else (callsign or "")
+
+
+def name_placeholder(callsign: str) -> str:
+    """Safety's name field when it is empty (SosScreens.kt:502: callsign.ifBlank { "A MeshSat
+    user" }): the name the SOS would carry."""
+    return callsign if (callsign or "").strip() else NO_NAME
 
 
 def quiet_name(name: str) -> str:
@@ -60,7 +74,7 @@ def mesh_text(name: str, position, now=None) -> str:
 def sms_text(name: str, position, now=None) -> str:
     """To each emergency contact, from the phone's own SIM: plain ASCII with a map link, at
     most 160 characters so it goes as one SMS whatever the name and the position."""
-    ascii_name = "".join(ch for ch in clean_name(name) if 32 <= ord(ch) <= 126).strip() or "A MeshSat user"
+    ascii_name = "".join(ch for ch in clean_name(name) if 32 <= ord(ch) <= 126).strip() or NO_NAME
     base = f"SOS: {ascii_name} needs help. {where_text(position, now)}"
     if not position:
         return f"{base} Sent by MeshSat."

@@ -483,6 +483,16 @@ class State:
     def hub_configured(self) -> bool:
         return bool(self.bridge and self.hub and self.hub.get("url"))
 
+    def hub_callsign(self) -> str:
+        """The callsign set on the Hub page (GET /api/routing/hub), "" without one."""
+        return str((self.hub or {}).get("callsign") or "")
+
+    def sos_display_name(self) -> str:
+        """The name an SOS carries: the SOS name, else the Hub callsign (sos.name_for_sos)."""
+        from . import sos  # noqa: PLC0415
+
+        return sos.name_for_sos(self.sos_name, self.hub_callsign())
+
     def sms_ready(self) -> bool:
         """The SIM can send: the Bridge answering, a modem, a SIM in it, and a network."""
         c = self.cellular or {}

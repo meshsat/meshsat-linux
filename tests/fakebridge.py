@@ -255,15 +255,52 @@ class FakeBridge:
             self.unexpected.append({"method": method, "path": path})
         return 404, {"error": f"the scenario has no answer for {method} {bare}"}
 
+    def sos_status(self) -> dict:
+        """GET /api/sos/status: the SOS with its legs, each queued one with its delivery's state."""
+        if not self.sos.get("active") or "legs" not in self.sos:
+            return {k: v for k, v in self.sos.items() if k not in ("cancel_legs", "cancel_text", "routes")}
+        legs = []
+        for leg in self.sos.get("legs") or []:
+            shown = dict(leg)
+            row = self.queued.get(leg.get("msg_ref") or "")
+            if row is not None:
+                shown.update(status=row["status"], last_error=row.get("last_error") or "", ack_status=row.get("ack_status"))
+            else:
+                shown.setdefault("status", "waiting")
+            legs.append(shown)
+        sends = sum(1 for leg in legs if leg["status"] in ("sent", "delivered"))
+        return {"active": True, "id": self.sos.get("id"), "started_at": self.sos.get("started_at"), "sends": sends, "message": self.sos.get("message", ""),
+                "trigger": self.sos.get("trigger", ""), "legs": legs, "skipped": list(self.sos.get("skipped") or [])}
+
     def reduce(self, method: str, path: str, body, full_path: str = ""):
         """The few calls whose answer depends on what the app did before."""
         if path == "/api/sos/status" and method == "GET":
-            return 200, dict(self.sos)
+            return 200, self.sos_status()
         if path == "/api/sos/activate" and method == "POST":
+            # As the Bridge since MESHSAT-1447: every route named (else the mesh), each a leg that
+            # waits in the queue for its link; the satellite leg waits for a modem, the Hub's for
+            # its link. /__fake__/delivery moves a queued leg on; /__fake__/sos changes the rest.
             if self.sos["active"]:
                 return 409, {"status": "already_active"}
-            self.sos.update(active=True, started_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), sends=1, trigger=(body or {}).get("trigger", "manual"), message=(body or {}).get("message", ""))
-            return 200, {"status": "activated", "started_at": self.sos["started_at"]}
+            body = body or {}
+            sos_id = int(time.time() * 1000)
+            legs, skipped = [], []
+            for route in body.get("routes") if isinstance(body.get("routes"), list) else ["mesh"]:
+                if route not in ("mesh", "satellite", "hub"):
+                    return 400, {"error": f"unknown route {route!r}: mesh, satellite or hub"}
+                leg = {"route": route}
+                modem = self.routes.get("GET /api/iridium/modem")
+                if route == "mesh" or (route == "satellite" and isinstance(modem, dict) and modem.get("connected")):
+                    ref = f"sos-{sos_id}-{route}"
+                    channel = "mesh_0" if route == "mesh" else "iridium_0"
+                    self.queued[ref] = {"id": 1000 + len(self.queued), "msg_ref": ref, "channel": channel, "status": "queued", "retries": 0, "last_error": "",
+                                        "ack_status": None, "text_preview": body.get("message", "")}
+                    leg.update(interface=channel, msg_ref=ref, delivery_id=self.queued[ref]["id"])
+                legs.append(leg)
+            self.sos.update(active=True, id=sos_id, started_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), sends=0,
+                            trigger=body.get("trigger", "manual"), message=body.get("message", ""), legs=legs, skipped=skipped,
+                            routes=body.get("routes"), latitude=body.get("latitude"), longitude=body.get("longitude"))
+            return 200, {"status": "activated", "id": sos_id, "started_at": self.sos["started_at"], "trigger": self.sos["trigger"]}
         if path == "/api/sos/test" and method == "POST" and (body or {}).get("satellite"):
             # As the Bridge since MESHSAT-1430: Android's position frame queued on the satellite
             # modem; 503 without one, 400 without a position, 409 while an SOS is on.
@@ -287,8 +324,25 @@ class FakeBridge:
             return 200, {"status": "queued", "delivery_id": len(self.sent), "msg_ref": ref, "message": preview, "interface": "iridium_0", "bridge_id": "e2e-bridge",
                          "existing": False}
         if path == "/api/sos/cancel" and method == "POST":
-            self.sos.update(active=False, sends=0)
-            return 200, {"status": "cancelled"}
+            # As the Bridge since MESHSAT-1447: the waiting legs stop; a mesh leg that went out gets
+            # the cancellation, a leg of its own.
+            if not self.sos.get("active"):
+                return 200, {"status": "not_active"}
+            text = str((body or {}).get("message") or "Alarm cancelled: A MeshSat user is safe and needs no help now.")
+            cancel_legs = []
+            for leg in self.sos.get("legs") or []:
+                row = self.queued.get(leg.get("msg_ref") or "")
+                if row is None:
+                    continue
+                if row["status"] in ("queued", "retry", "held"):
+                    row.update(status="dead", last_error="cancelled")
+                elif leg["route"] == "mesh" and row["status"] in ("sent", "delivered", "sending"):
+                    ref = f"sos-{self.sos.get('id')}-cancel:mesh"
+                    self.queued[ref] = {"id": 1000 + len(self.queued), "msg_ref": ref, "channel": "mesh_0", "status": "queued", "retries": 0, "last_error": "",
+                                        "ack_status": None, "text_preview": text}
+                    cancel_legs.append({"route": "mesh", "interface": "mesh_0", "msg_ref": ref, "delivery_id": self.queued[ref]["id"]})
+            self.sos.update(active=False, sends=0, cancel_text=text, cancel_legs=cancel_legs)
+            return 200, {"status": "cancelled", "id": self.sos.get("id"), "cancel_legs": cancel_legs}
         if path == "/api/deadman":
             if method == "POST":
                 # As the Bridge's handler: the settings, and a touch that resets the timer and its trigger.
@@ -835,6 +889,17 @@ class FakeBridge:
             if order == "tiles":
                 self.tiles_down = bool(body.get("down", False))
                 return 200, {"down": self.tiles_down, "requests": self.tile_requests}
+            if order == "sos":
+                # The Bridge's side of an SOS moves on: {"route", "status", ...} for a leg (a
+                # satellite leg queued once a modem runs, the Hub told), or {"skipped": [...]}.
+                if "skipped" in body:
+                    self.sos["skipped"] = list(body["skipped"])
+                for leg in self.sos.get("legs") or []:
+                    if leg.get("route") == body.get("route"):
+                        leg.update({k: v for k, v in body.items() if k not in ("route", "skipped")})
+                if body.get("drop"):
+                    self.sos["legs"] = [leg for leg in self.sos.get("legs") or [] if leg.get("route") != body["drop"]]
+                return 200, self.sos_status()
             if order == "delivery":
                 # A queued send moves on: {"ref", "status", "ack_status", "last_error", "retries"}
                 row = self.queued.get(body.get("ref", ""))
