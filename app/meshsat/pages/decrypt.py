@@ -4,6 +4,7 @@ Bridge's links encrypt with, for checking what a kit, the Hub or another phone s
 from gi.repository import Gtk
 
 from .. import api, theme
+from ..layout import body_text, restyle
 from ..model import crypto
 from ..screen import SubScreen
 from ..widgets import Card, filled_button, name_widget, text
@@ -23,16 +24,20 @@ class DecryptScreen(SubScreen):
         self.input.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
         self.input.add_css_class("field")
         self.input.add_css_class("multiline")
-        self.input.add_css_class("mono")
+        # DecryptScreen.kt:75-87: what is typed in labelMedium (Plex Sans, 12 sp Medium: theme.py's
+        # .field.label-medium); the outline MeshSatBorder until it has the focus, then Signal Orange.
+        self.input.add_css_class("label-medium")
+        restyle(self.input, f"& {{ border-color: {theme.BORDER}; }} &:focus-within {{ border-color: {theme.SIGNAL_ORANGE}; }}")
         name_widget(self.input, "Input text")
         self.input.get_buffer().connect("changed", lambda *_: self.show_error(""))
         field.append(self.input)
         self.column.append(field)
+        # Their Text in bodyMedium: 14 sp Regular.
         buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8), homogeneous=True)
-        self.encrypt_button = filled_button("Encrypt", self.encrypt)
-        self.decrypt_button = filled_button("Decrypt", self.decrypt)
+        self.encrypt_button = body_text(filled_button("Encrypt", self.encrypt), "body-medium")
+        self.decrypt_button = body_text(filled_button("Decrypt", self.decrypt), "body-medium")
         self.decrypt_button.add_css_class("amber-fill")
-        paste = filled_button("Paste", self.paste)
+        paste = body_text(filled_button("Paste", self.paste), "body-medium")
         paste.add_css_class("tonal-surface")
         for button in (self.encrypt_button, self.decrypt_button, paste):
             buttons.append(button)
@@ -44,7 +49,7 @@ class DecryptScreen(SubScreen):
         self.output_title = text("", "title-medium")
         self.output_text = text("", "label-medium", wrap=True)
         self.output_text.set_selectable(True)
-        copy = filled_button("Copy", self.copy, expand=False)
+        copy = body_text(filled_button("Copy", self.copy, expand=False))
         copy.set_halign(Gtk.Align.START)
         self.output.append(self.output_title)
         self.output.append(self.output_text)

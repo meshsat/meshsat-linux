@@ -6,6 +6,7 @@ import threading
 from gi.repository import GLib, Gtk
 
 from .. import addressbook, api, sos, theme
+from ..layout import restyle
 from ..model import contacts as book
 from ..model import home as words_of_home
 from ..model import sosrun
@@ -19,9 +20,11 @@ class SafetyScreen(SubScreen):
     def __init__(self, app):
         super().__init__(app, "Safety")
         self.route = "setup/safety"
+        # SetupPageLinks (MeshSatUI.kt:250): the row full width under the '<- Safety' row, and fixed
+        # there while the cards scroll under it.
         zones = NavRow("outlined-fence", "Zones", lambda: app.open_route("geofence"))
         zones.set_detail("Alerts when someone enters or leaves an area")
-        self.column.append(zones)
+        self.insert_child_after(zones, self.header)
 
         card = self.card("SOS")
         self.reach = text("", "body-small", theme.TEXT_SECONDARY, wrap=True)
@@ -35,15 +38,18 @@ class SafetyScreen(SubScreen):
         card.append(self.contacts_note)
         self.sms_note = text("", "body-small", theme.AMBER, wrap=True)
         card.append(self.sms_note)
-        self.contact_rows = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(4))
+        # SosScreens.kt:517-530: each contact a row of the card's Column, 8 dp apart.
+        self.contact_rows = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(8))
         card.append(self.contact_rows)
         self.no_sms = text("", "body-small", theme.TEXT_MUTED, wrap=True)
         card.append(self.no_sms)
         # SosScreens.kt:531-581: the address book first; typing the number is the other way. An
-        # error shows above "Or type a number", or under the number field while typing.
+        # error shows above "Or type a number", or under the number field while typing. Android's
+        # Button and OutlinedButton here wrap their words, from the left.
         self.typing = False
         self.adding_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(8))
-        self.choose = filled_button(book.CHOOSE, self.choose_contact, expand=True)
+        self.choose = filled_button(book.CHOOSE, self.choose_contact, expand=False)
+        self.choose.set_halign(Gtk.Align.START)
         self.adding_box.append(self.choose)
         self.pick_error = text("", "body-small", theme.AMBER, wrap=True)
         self.pick_error.set_visible(False)
@@ -58,14 +64,19 @@ class SafetyScreen(SubScreen):
         self.new_phone = Field(book.NUMBER, book.NUMBER_HINT, purpose=Gtk.InputPurpose.PHONE)
         self.new_phone.on_change = self.number_typed
         self.adding_box.append(self.new_phone)
+        # Text("Add this number", color = OffWhite): OffWhite, disabled or not.
         self.add_button = outlined_button(book.ADD, self.add_a_contact)
+        self.add_button.set_halign(Gtk.Align.START)
+        restyle(self.add_button.get_child(), f"color: {theme.OFF_WHITE}; filter: none;")
         self.add_button.set_sensitive(False)
         self.adding_box.append(self.add_button)
         card.append(self.adding_box)
         self.show_typing()
         card.append(text("Test the alarm", "title-small"))
         card.append(text("Sends a test on every route an SOS would take, and shows what got through. It says it is a test, and raises nothing at the Hub.", "body-small", theme.TEXT_MUTED, wrap=True))
+        # SosScreens.kt:600-602: its words in OffWhite, in TextMuted while it cannot test.
         self.test_button = outlined_button("Test the alarm", self.test_asked)
+        self.test_button.set_halign(Gtk.Align.START)
         card.append(self.test_button)
         self.no_way = text("A test needs somewhere to go first.", "body-small", theme.TEXT_MUTED, wrap=True)
         card.append(self.no_way)
@@ -75,7 +86,10 @@ class SafetyScreen(SubScreen):
         timer.append(self.enabled)
         self.timeout_title = text("Timeout (triggers SOS if no activity)", "body-small", theme.TEXT_MUTED)
         timer.append(self.timeout_title)
-        self.timeout_rows = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(4))
+        # SettingsScreen.kt:1015-1045: each timeout a row of the card's Column (8 dp apart), the
+        # chosen one on Signal Orange at 15 % (theme.py's .timeout-row.selected) with "selected" in
+        # Signal Orange.
+        self.timeout_rows = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(8))
         self.timeouts = {}
         for value, label in TIMEOUTS:
             row = Gtk.Button()
@@ -84,7 +98,7 @@ class SafetyScreen(SubScreen):
             row.update_property([Gtk.AccessibleProperty.LABEL], [label])
             inner = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
             inner.append(text(label, "body-small"))
-            mark = text("selected", "body-small", theme.GREEN, xalign=1.0)
+            mark = text("selected", "body-small", theme.SIGNAL_ORANGE, xalign=1.0)
             mark.set_hexpand(True)
             mark.set_visible(False)
             inner.append(mark)
@@ -238,7 +252,7 @@ class SafetyScreen(SubScreen):
                 texts.set_valign(Gtk.Align.CENTER)
                 texts.append(text(c.get("name") or c["phone"], "body-medium"))
                 if c.get("name"):
-                    texts.append(text(c["phone"], "body-small", theme.TEXT_SECONDARY, mono=True))
+                    texts.append(text(c["phone"], "body-small", theme.TEXT_SECONDARY))
                 row.append(texts)
                 row.append(icon_button("outlined-close", lambda phone=c["phone"]: self.remove_contact(phone), 20, theme.TEXT_SECONDARY, book.remove_name(c)))
                 self.contact_rows.append(row)
@@ -246,6 +260,7 @@ class SafetyScreen(SubScreen):
         run = self.app.sos.active()
         can_test = sosrun.anywhere(s) and run is None
         self.test_button.set_sensitive(can_test)
+        restyle(self.test_button.get_child(), f"color: {theme.OFF_WHITE if can_test else theme.TEXT_MUTED}; filter: none;")
         self.no_way.set_visible(not sosrun.anywhere(s))
         d = s.deadman or {}
         self.enabled.set_active(bool(d.get("enabled")))

@@ -23,7 +23,8 @@ def case_six_tabs_in_androids_words(ctx):
     assert ctx.tree.switch("Use Mesh").checked and not ctx.tree.switch("Use Ham radio").checked
     for words in ("last message 5 min ago", "Off", "Not working", "modem not registered", "Switched off"):
         ctx.tree.wait_text(words)
-    assert len(ctx.tree.find_all("button", name="Try to connect now")) == 1, "only the satellite has a device to reconnect"
+    # On every link that is off or not working (InterfacesScreen.kt:405): the satellite, SMS, the Hub
+    assert len(ctx.tree.find_all("button", name="Try to connect now")) == 3, "not one per link that is off or not working"
     ctx.shot("links")
     ctx.tree.click("Capabilities")
     for words in ("What each link can carry, and how it retries.", "Largest message", "237 bytes", "340 bytes", "160 bytes", "No limit",
@@ -85,6 +86,11 @@ def case_switch_off_asks_first(ctx):
     bind = ctx.bridge.wait_request("POST", "/api/interfaces/iridium_0/bind", since=count)
     assert bind["body"] == {"device_id": "/dev/ttyUSB4"}, bind
     ctx.app.wait_toast("Trying to connect Satellite now")
+    # A link with no device of the Bridge's to bind (SMS through ModemManager) opens its Setup page.
+    count = ctx.bridge.count()
+    ctx.tree.click_after("modem not registered", "Try to connect now")
+    ctx.tree.wait_text("Text messages", timeout=10)
+    assert not [r for r in ctx.bridge.requests(count) if r["path"].endswith("/bind")], "a bind for a link with no device"
 
 
 def case_empty_texts(ctx):

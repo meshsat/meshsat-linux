@@ -118,21 +118,55 @@ def sentence(lane_states: dict, s, stats: list | None = None) -> tuple:
     return first, second
 
 
-def reach_sentence(s, lane_states: dict | None = None) -> str:
-    """SosReach.sentence(): where an SOS would go from here."""
-    lane_states = lane_states or lanes(s)
-    parts = []
-    if lane_states["satellite"][0] == "working":
-        parts.append("satellite")
-    if lane_states["mesh"][0] == "working":
-        parts.append("the mesh")
+# The preference that remembers the last satellite modem's IMEI (Android's last_modem_imei):
+# written by the app on every poll that reports one, read by reach().
+MODEM_SEEN = "last_modem_imei"
+
+
+def reach(s, modem_seen: str = "") -> dict:
+    """SosReach (SosScreens.kt:95-149): where an SOS would go from this phone, by what is set up
+    rather than by what is up this minute, as Android decides it: the satellite once the phone has
+    had a modem, connected now or not (`modem_seen`: the IMEI the app remembers, Android's
+    lastModemImei), the mesh once a node is paired (Bluetooth) or started (the cover), SMS while
+    the phone can text and has emergency contacts, the Hub once it is set up. On this edition the
+    Bridge queues every route, so without it an SOS has nowhere to go.
+
+    {"satellite", "mesh", "sms", "hub": each route; "can_sms": the phone can text at all;
+    "anywhere": at least one route}."""
+    if not s.bridge:
+        return {"satellite": False, "mesh": False, "sms": False, "hub": False, "can_sms": False, "anywhere": False}
+    seen = modem_seen.strip() if isinstance(modem_seen, str) else ""
+    imei = str((s.modem or {}).get("imei") or "").strip()
+    satellite = bool(seen or imei or s.modem_connected())
+    if s.node_mode() == "bluetooth":
+        mesh = bool((s.ble or {}).get("address")) or s.mesh_connected()
+    else:
+        mesh = bool(s.node_service) or s.mesh_connected()
     can_sms = s.sms_ready()
-    if can_sms and s.contacts:
-        parts.append("SMS to " + ((s.contacts[0].get("name") or "1 person") if len(s.contacts) == 1 else f"{len(s.contacts)} people"))
-    if lane_states["hub"][0] == "working":
+    sms = can_sms and bool(s.contacts)
+    hub = s.hub_configured()
+    return {"satellite": satellite, "mesh": mesh, "sms": sms, "hub": hub, "can_sms": can_sms, "anywhere": satellite or mesh or sms or hub}
+
+
+def reach_sentence(s, modem_seen: str = "") -> str:
+    """SosReach.sentence(): "Sends your position by satellite, the mesh, SMS to 2 people and the
+    Hub, and keeps trying until you cancel." (see reach())."""
+    routes = reach(s, modem_seen)
+    parts = []
+    if routes["satellite"]:
+        parts.append("satellite")
+    if routes["mesh"]:
+        parts.append("the mesh")
+    if routes["sms"]:
+        if len(s.contacts) == 1:
+            name = s.contacts[0].get("name") or ""
+            parts.append("SMS to " + (name if name.strip() else "1 person"))  # name.ifBlank { "1 person" }
+        else:
+            parts.append(f"SMS to {len(s.contacts)} people")
+    if routes["hub"]:
         parts.append("the Hub")
     if not parts:
-        if can_sms:
+        if routes["can_sms"]:
             return "An SOS has nowhere to go yet. Add emergency contacts, or connect your node."
         return "An SOS has nowhere to go yet. Connect your MeshSat node, or set up the Hub."
     return f"Sends your position by {words.join_and(parts)}, and keeps trying until you cancel."

@@ -124,6 +124,39 @@ class SosWordsTest(unittest.TestCase):
         s = state(bridge=CONNECTED | {"connected": False}, cellular={"connected": True, "sim_state": "READY", "registration": "registered"})
         self.assertEqual(home.reach_sentence(s), "An SOS has nowhere to go yet. Add emergency contacts, or connect your node.")
 
+    def test_reach_is_every_route_set_up_not_only_the_ones_up(self):
+        """SosReach: the satellite once the phone has had a modem, the mesh once the node is paired,
+        the Hub once it is set up. Android's sentence in its capture's state: the node
+        reconnecting, SMS ready with one contact, the Hub connecting."""
+        imei = "300434065000000"
+        s = state(bridge=CONNECTED | {"connected": False}, hardware={"node": "bluetooth"}, ble={"mode": "lost", "address": "E0:72"},
+                  modem={"connected": False, "port": "", "imei": ""}, hub={"url": "mqtts://hub.meshsat.net:8883", "state": "connecting"},
+                  cellular={"connected": True, "sim_state": "READY", "registration": "registered"}, contacts=[{"name": "Elli Zafeiridou", "phone": "+30"}])
+        self.assertEqual(home.reach_sentence(s, imei), "Sends your position by satellite, the mesh, SMS to Elli Zafeiridou and the Hub, and keeps trying until you cancel.")
+        self.assertEqual(home.reach(s, imei), {"satellite": True, "mesh": True, "sms": True, "hub": True, "can_sms": True, "anywhere": True})
+        # No modem ever seen: no satellite; the Bridge's own word on a modem it knows counts too
+        self.assertEqual(home.reach_sentence(s), "Sends your position by the mesh, SMS to Elli Zafeiridou and the Hub, and keeps trying until you cancel.")
+        s.modem = {"connected": False, "port": "/dev/ttyUSB4", "imei": imei, "silent": True}
+        self.assertTrue(home.reach(s)["satellite"])
+        # Android's preference, by its name
+        self.assertEqual(home.MODEM_SEEN, "last_modem_imei")
+
+    def test_reach_in_cover_mode_and_without_the_bridge(self):
+        s = state(bridge=CONNECTED | {"connected": False}, node_service=True)
+        self.assertEqual(home.reach_sentence(s), "Sends your position by the mesh, and keeps trying until you cancel.")
+        s.node_service = False
+        self.assertFalse(home.reach(s)["anywhere"])
+        # The Bridge queues every route: without it nothing goes, whatever was set up
+        s = state(bridge=None, node_service=True, hub={"url": "mqtts://hub"}, contacts=[{"name": "Anna", "phone": "+31"}])
+        self.assertFalse(home.reach(s, "300434065000000")["anywhere"])
+        self.assertEqual(home.reach_sentence(s, "300434065000000"), "An SOS has nowhere to go yet. Connect your MeshSat node, or set up the Hub.")
+
+    def test_reach_names_one_contact_or_counts_them(self):
+        s = state(bridge=CONNECTED, nodes=[NODE], cellular={"connected": True, "sim_state": "READY", "registration": "registered"}, contacts=[{"name": "  ", "phone": "+31"}])
+        self.assertEqual(home.reach_sentence(s), "Sends your position by the mesh and SMS to 1 person, and keeps trying until you cancel.")
+        # An old caller's lanes in the second place never pass for a modem's IMEI
+        self.assertFalse(home.reach(s, home.lanes(s))["satellite"])
+
     def test_contacts_button(self):
         s = state(bridge=None)
         self.assertEqual(home.contacts_button(s), "Connect your node")

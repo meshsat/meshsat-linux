@@ -147,8 +147,10 @@ class CredentialsTest(unittest.TestCase):
                 "cert_fingerprint": "0a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f9", "version": 2, "source": "local"}
         self.assertEqual(credentials.fingerprint_text(cred["cert_fingerprint"]), "0A:1B:2C:3D:4E:5F:60:71")
         self.assertEqual(credentials.badges(cred), ["local", "x509_cert", "local"])
-        self.assertEqual(credentials.lines(cred), [("SHA-256: 0A:1B:2C:3D:4E:5F:60:71", "mono"), ("Subject: CN=hub.meshsat.net", "plain"), ("Expires: 2027-03-01", "expiry"),
-                                                   ("v2", "plain")])
+        # "Expires: ${cred.certNotAfter}": the value as it is stored, not cut to the day
+        self.assertEqual(credentials.lines(cred), [("SHA-256: 0A:1B:2C:3D:4E:5F:60:71", "mono"), ("Subject: CN=hub.meshsat.net", "plain"),
+                                                   ("Expires: 2027-03-01T12:00:00Z", "expiry"), ("v2", "plain")])
+        self.assertEqual(credentials.lines(dict(cred, cert_not_after="2027-03-01"))[2], ("Expires: 2027-03-01", "expiry"))
         self.assertEqual(credentials.delete_dialog(cred)["body"], "Remove 'hub.pem' (local)? This cannot be undone.")
 
     def test_the_expiry_colours(self):
@@ -156,8 +158,13 @@ class CredentialsTest(unittest.TestCase):
         self.assertEqual(credentials.expiry_tone("2027-01-10", now), "red")
         self.assertEqual(credentials.expiry_tone("2027-02-01", now), "amber")
         self.assertEqual(credentials.expiry_tone("2027-06-01", now), "green")
+        self.assertEqual(credentials.expiry_tone("2027-06-01T12:56:31Z", now), "green")  # the day of a stored time
         self.assertEqual(credentials.expiry_tone("", now), "muted")
         self.assertEqual(credentials.expiry_tone("sometime", now), "muted")
+        # CredentialsScreen.kt:158-162: Material's colours on this card, not the app's state colours
+        self.assertEqual([credentials.expiry_colour(t) for t in ("red", "amber", "green", "muted")], ["#E57373", "#FFC107", "#4CAF50", None])
+        self.assertEqual([credentials.expiry_warns(t) for t in ("red", "amber", "green", "muted")], [True, True, False, False])
+        self.assertEqual(credentials.DELETE_TINT, "#E57373")
 
     def test_the_upload_body(self):
         body = credentials.multipart({"provider": "local", "name": "hub.pem"}, "file", "hub.pem", b"-----BEGIN CERTIFICATE-----\n", "B")

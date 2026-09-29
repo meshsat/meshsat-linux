@@ -7,6 +7,10 @@ IMPORT = "Import PEM"
 EMPTY = ("No credentials stored", "Import PEM files or receive via Hub sync")
 IMPORTED = "Certificate imported"
 PROVIDER = "local"  # what Android stores an imported PEM under
+# CredentialsScreen.kt:151-165 and 188: Material's own colours on this card, not the app's state
+# colours: expired, under 30 days, valid. The delete icon is tinted as an expired date is.
+EXPIRED, EXPIRING, VALID = "#E57373", "#FFC107", "#4CAF50"
+DELETE_TINT = "#E57373"
 
 
 def import_failed(why) -> str:
@@ -43,19 +47,32 @@ def expiry_tone(not_after: str, now: float | None = None) -> str:
     return "green"
 
 
+def expiry_colour(tone: str) -> str | None:
+    """The expiry line's colour, and its warning icon's, for expiry_tone's answer: Android's
+    Color(0xFFE57373), Color(0xFFFFC107), Color(0xFF4CAF50); None for an expiry that could not
+    be read (TextMuted)."""
+    return {"red": EXPIRED, "amber": EXPIRING, "green": VALID}.get(tone)
+
+
+def expiry_warns(tone: str) -> bool:
+    """The Warning icon before the date: expired, or under 30 days."""
+    return tone in ("red", "amber")
+
+
 def badges(cred: dict) -> list:
     return [b for b in (cred.get("provider"), cred.get("cred_type"), cred.get("source")) if b]
 
 
 def lines(cred: dict) -> list:
-    """(text, kind): the card's lines under its name and badges."""
+    """(text, kind): the card's lines under its name and badges. The expiry as it is stored
+    ("Expires: ${cred.certNotAfter}"): only its colour is worked out from the day."""
     out = []
     if cred.get("cert_fingerprint"):
         out.append((f"SHA-256: {fingerprint_text(cred['cert_fingerprint'])}", "mono"))
     if cred.get("cert_subject"):
         out.append((f"Subject: {cred['cert_subject']}", "plain"))
     if cred.get("cert_not_after"):
-        out.append((f"Expires: {expiry_date(cred['cert_not_after'])}", "expiry"))
+        out.append((f"Expires: {cred['cert_not_after']}", "expiry"))
     out.append((f"v{cred.get('version', 1)}", "plain"))
     return out
 

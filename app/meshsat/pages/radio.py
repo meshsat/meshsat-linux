@@ -74,10 +74,15 @@ class RadioConfigScreen(SubScreen):
         self.offline = Card(spacing=8)
         self.offline.append(text(model.NOT_CONNECTED, "body-medium", theme.TEXT_SECONDARY, wrap=True))
         connect = filled_button(model.CONNECT, lambda: self.app.open_route("setup/node"), expand=False)
+        connect.add_css_class("tall")  # Button(Modifier.heightIn(min = 48.dp))
         connect.set_halign(Gtk.Align.START)
         self.offline.append(connect)
         self.column.append(self.offline)
         self.tabs = Tabs(list(model.TABS), self.select_tab, plain=True)
+        # RadioConfigScreen's own tabs: labelLarge Medium whether chosen or not, 14 dp either side
+        # (theme.py's .tab-chip.even), not the Routing rules' and Links' SemiBold/Normal at 12 dp.
+        for chip in self.tabs.chips.values():
+            chip.add_css_class("even")
         self.column.append(hscroll(self.tabs))
         self.column.append(divider())
         self.content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(12))
@@ -148,8 +153,15 @@ class RadioConfigScreen(SubScreen):
         clear(self.content)
         getattr(self, "draw_" + self.tab.split()[0].lower())()
 
+    def not_loaded_line(self) -> Gtk.Label:
+        """NotLoaded: bodyMedium TextSecondary, 8 dp above and below."""
+        line = text(model.READING if self.connected else model.CONNECT_TO_READ, "body-medium", theme.TEXT_SECONDARY, wrap=True)
+        line.set_margin_top(theme.dp(8))
+        line.set_margin_bottom(theme.dp(8))
+        return line
+
     def not_loaded(self) -> None:
-        self.content.append(text(model.READING if self.connected else model.CONNECT_TO_READ, "body-medium", theme.TEXT_SECONDARY, wrap=True))
+        self.content.append(self.not_loaded_line())
 
     def send(self, path: str, body: dict | None, sent: str, section: str | None = None, back: bool = True) -> None:
         def done(answer: api.Answer) -> None:
@@ -180,7 +192,7 @@ class RadioConfigScreen(SubScreen):
         self.content.append(card)
         owner = named.get("owner") or {}
         if not owner.get("long_name"):
-            card.append(text(model.READING if self.connected else model.CONNECT_TO_READ, "body-medium", theme.TEXT_SECONDARY, wrap=True))
+            card.append(self.not_loaded_line())
             return
         save = full(filled_button("Save name", None))
         long_name = bound_field("Long name", owner.get("long_name", ""), None, model.LONG_MAX)
@@ -189,9 +201,9 @@ class RadioConfigScreen(SubScreen):
         def check(*_) -> None:
             save.set_sensitive(self.can_send and model.can_save_name(long_name.text, short_name.text, owner))
 
+        # IdentityTabContent: the two fields stay enabled while the node cannot be reached; only
+        # "Save name" waits for it.
         long_name.on_change = short_name.on_change = check
-        for field in (long_name, short_name):
-            field.entry.set_sensitive(self.can_send)
         save.connect("clicked", lambda *_: self.send("/api/config/owner", model.owner_body(long_name.text, short_name.text), model.RESTARTS, "device"))
         for widget in (long_name, short_name, save):
             card.append(widget)

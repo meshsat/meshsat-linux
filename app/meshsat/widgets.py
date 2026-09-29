@@ -67,29 +67,33 @@ def spacer() -> Gtk.Box:
     return box
 
 
-def filled_button(label_text: str, on_click=None, expand: bool = True) -> Gtk.Button:
+def _button(label_text: str, style: str, on_click, halign: Gtk.Align | None, tall: bool) -> Gtk.Button:
+    """A Material button: `halign` START (or CENTER, END) keeps it as wide as its label where
+    Android does not stretch it (a Button in a Column wraps its content unless the code asks for
+    fillMaxWidth); a vertical box stretches it otherwise. `tall`: Android's heightIn(min = 48.dp)."""
     button = Gtk.Button(label=label_text)
-    button.add_css_class("filled")
+    button.add_css_class(style)
+    if tall:
+        button.add_css_class("tall")
+    if halign is not None:
+        button.set_halign(halign)
+    if on_click:
+        button.connect("clicked", lambda *_: on_click())
+    return button
+
+
+def filled_button(label_text: str, on_click=None, expand: bool = True, *, halign: Gtk.Align | None = None, tall: bool = False) -> Gtk.Button:
+    button = _button(label_text, "filled", on_click, halign, tall)
     button.set_hexpand(expand)
-    if on_click:
-        button.connect("clicked", lambda *_: on_click())
     return button
 
 
-def outlined_button(label_text: str, on_click=None) -> Gtk.Button:
-    button = Gtk.Button(label=label_text)
-    button.add_css_class("outlined")
-    if on_click:
-        button.connect("clicked", lambda *_: on_click())
-    return button
+def outlined_button(label_text: str, on_click=None, *, halign: Gtk.Align | None = None, tall: bool = False) -> Gtk.Button:
+    return _button(label_text, "outlined", on_click, halign, tall)
 
 
-def text_button(label_text: str, on_click=None) -> Gtk.Button:
-    button = Gtk.Button(label=label_text)
-    button.add_css_class("textbutton")
-    if on_click:
-        button.connect("clicked", lambda *_: on_click())
-    return button
+def text_button(label_text: str, on_click=None, *, halign: Gtk.Align | None = None, tall: bool = False) -> Gtk.Button:
+    return _button(label_text, "textbutton", on_click, halign, tall)
 
 
 def icon_button(name: str, on_click, size: int = 24, colour: str | None = None, tooltip: str | None = None, small: bool = False) -> Gtk.Button:
@@ -117,20 +121,25 @@ def name_widget(widget: Gtk.Widget, name: str, description: str | None = None) -
 
 
 class Card(Gtk.Box):
-    """Surface, a 1 px border, radius 8, no shadow; 12 px inside."""
+    """Surface, a 1 px border, radius 8, no shadow; 12 px inside. `borderless`: a plain Material
+    Card (Card(colors = cardColors(containerColor = MeshSatSurface))), which has no outline; the
+    app's SectionCards and bordered rows keep theirs."""
 
-    def __init__(self, padded: bool = True, spacing: int = 8):
+    def __init__(self, padded: bool = True, spacing: int = 8, *, borderless: bool = False):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(spacing))
         self.add_css_class("card")
         if padded:
             self.add_css_class("card-pad")
+        if borderless:
+            self.add_css_class("borderless")
 
 
 class StatusStrip(Gtk.Box):
-    """36 px on Surface: 16 px icons 14 px apart, satellite with its bars and mesh with its
-    node count only while connected, the cloud for the Hub, my_location for GPS, and the UTC
-    clock in Mono on the right. Each icon in its lane's colour when working, amber while
-    trying, muted when off, red when failed."""
+    """36 px on Surface, 12 dp in from either edge (MeshSatUI.kt:StatusStrip): 16 px icons 14 px
+    apart, satellite with its bars and mesh with its node count only while connected, the cloud
+    for the Hub, my_location for GPS, and the UTC clock on the right, the figures and the clock
+    in Plex Mono Regular 12 sp. Each icon in its lane's colour when working, amber while trying,
+    muted when off, red when failed."""
 
     def __init__(self):
         super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(14))
@@ -140,13 +149,13 @@ class StatusStrip(Gtk.Box):
             box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(4))
             box.set_valign(Gtk.Align.CENTER)
             image = icon(name, 16, theme.TEXT_MUTED)
-            figure = text("", "label-medium", mono=True)
+            figure = text("", "body-small", mono=True)
             box.append(image)
             box.append(figure)
             self.parts[lane] = (image, figure)
             self.append(box)
         self.append(spacer())
-        self.clock = text("", "label-medium", xalign=1.0, mono=True)
+        self.clock = text("", "body-small", xalign=1.0, mono=True)
         self.clock.set_valign(Gtk.Align.CENTER)
         self.append(self.clock)
         self.tick()
@@ -236,15 +245,19 @@ class Wordmark(Gtk.Widget):
     Onboarding.kt:80-86). The apps' lockup bitmap is
     600x122 and looked soft on a 2x screen, so this draws it itself: the mark cut from the
     1024 px app icon, scaled once to the screen's exact pixels (the icon's black is the
-    page's black), and the name set live in IBM Plex Sans Bold, "Mesh" in off-white and
-    "Sat" in orange, at the lockup's proportions (cap height 0.55 of the mark's height)."""
+    page's black), and the name set live in IBM Plex Sans SemiBold, the weight of the lockup's
+    lettering (its stems are SemiBold's, brand/brand_lockup.png), "Mesh" in off-white and "Sat"
+    in orange, at the lockup's proportions (cap height 0.55 of the mark's height)."""
 
     __gtype_name__ = "MeshSatWordmark"
     HEIGHT = theme.dp(26)
     MARK_BOX = (179, 319, 665, 385)  # x, y, w, h of the mark inside app-icon-1024.png
     GAP = 0.18  # of the height, between the mark and the name
     FONT_SIZE = 0.79  # of the height: IBM Plex Sans' cap height is 0.698 em
-    TRACKING = -0.03  # of the height, between letters
+    # Of the height, between letters: SemiBold's "MeshSat" is 0.05 em narrower than Bold's, so the
+    # letters stand a little further apart and the lockup keeps Android's width (126 dp, the mark
+    # included).
+    TRACKING = -0.023
     BASELINE = 0.91  # of the height
 
     def __init__(self, icon_path: str | None = None, height: float = 26):
@@ -264,7 +277,11 @@ class Wordmark(Gtk.Widget):
         if not self.layouts:
             size = self.HEIGHT * self.FONT_SIZE
             layout = self.create_pango_layout("MeshSat")
-            layout.set_font_description(Pango.FontDescription.from_string(f"IBM Plex Sans Bold {size:.1f}px"))
+            font = Pango.FontDescription.new()
+            font.set_family(theme.FONT)
+            font.set_weight(Pango.Weight.SEMIBOLD)
+            font.set_absolute_size(size * Pango.SCALE)
+            layout.set_font_description(font)
             attrs = Pango.AttrList()
             attrs.insert(Pango.attr_letter_spacing_new(int(self.TRACKING * self.HEIGHT * Pango.SCALE)))
             orange = Gdk.RGBA()
@@ -305,10 +322,14 @@ class Wordmark(Gtk.Widget):
 
 
 class LaneRow(Gtk.Button):
-    """A Home lane: the transport's icon, its name, a detail line, a Mono figure at the
-    right, a chevron, and the line underneath: solid when working, dashed 10/7 while trying,
-    dotted grey when off, dotted red when failed. A message on its way is an orange dot
-    travelling along the line every 2.4 s."""
+    """A Home lane, as Lane.kt's TransportLane: the transport's icon, then a column of its name
+    with a Mono figure at the right, a detail (two lines at most) and the line under them, then a
+    chevron; 16 dp in at the left, 8 at the right, 12 above and below, at least 76 dp tall, and
+    otherwise as tall as its words (the icon and the chevron centred on the whole column). The line
+    is solid when working, dashed 10/7 while trying, dotted grey when off, dotted red when failed;
+    a message on its way is an orange dot travelling along it every 2.4 s. The icon takes the
+    lane's colour while it works and while it tries (at 75 % then), the figure only while it
+    works."""
 
     ICONS = {"satellite": "transport-satellite", "mesh": "transport-mesh", "hub": "outlined-cloud", "sms": "outlined-sms"}
 
@@ -317,34 +338,37 @@ class LaneRow(Gtk.Button):
         self.lane = lane
         self.add_css_class("flat")
         self.connect("clicked", lambda *_: on_tap())
-        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(0))
-        outer.add_css_class("lane-row")
-        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(12))
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(16))
+        row.add_css_class("lane-row")
         self.icon = icon(self.ICONS[lane], 24, theme.TEXT_MUTED)
         self.icon.set_valign(Gtk.Align.CENTER)
         row.append(self.icon)
         texts = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(2))
         texts.set_hexpand(True)
+        texts.set_valign(Gtk.Align.CENTER)
         top = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
-        top.append(text(title, "title-medium"))
-        top.append(spacer())
-        self.figure = text("", "label-large", theme.lane_colour(lane), xalign=1.0, mono=True)
+        name = text(title, "title-medium")
+        name.set_hexpand(True)
+        top.append(name)
+        self.figure = text("", "body-medium", theme.TEXT_SECONDARY, xalign=1.0, mono=True)
+        self.figure.set_valign(Gtk.Align.CENTER)
         top.append(self.figure)
         texts.append(top)
-        self.detail = text("", "body-medium", theme.TEXT_SECONDARY, wrap=True)
+        self.detail = text("", "body-medium", theme.TEXT_SECONDARY, wrap=True, ellipsize=True)
+        self.detail.set_lines(2)
         texts.append(self.detail)
+        # LaneLine: 10 dp tall, 8 dp under the detail (the column's 2 and a Spacer of 6), as wide as
+        # the words, so it stops before the chevron.
+        self.line = Gtk.DrawingArea()
+        self.line.set_content_height(theme.dp(10))
+        self.line.set_margin_top(theme.dp(6))
+        self.line.set_draw_func(self.draw_line)
+        texts.append(self.line)
         row.append(texts)
         chevron = icon("outlined-chevron-right", 24, theme.TEXT_MUTED)
         chevron.set_valign(Gtk.Align.CENTER)
         row.append(chevron)
-        outer.append(row)
-        self.line = Gtk.DrawingArea()
-        self.line.set_content_height(theme.dp(6))
-        self.line.set_margin_start(theme.dp(36))
-        self.line.set_margin_top(theme.dp(8))
-        self.line.set_draw_func(self.draw_line)
-        outer.append(self.line)
-        self.set_child(outer)
+        self.set_child(row)
         self.state = "off"
         self.in_flight = False
         self._phase = 0.0
@@ -357,7 +381,11 @@ class LaneRow(Gtk.Button):
         described = {"working": "working", "trying": "trying", "off": "not available", "failed": "not working"}.get(state, state)
         self.update_property([Gtk.AccessibleProperty.DESCRIPTION], [described + (", a message is on its way" if in_flight else "")])
         self.figure.set_text(figure)
-        paint(self.icon, {"working": theme.lane_colour(self.lane), "trying": theme.AMBER, "failed": theme.RED}.get(state, theme.TEXT_MUTED))
+        colour = theme.lane_colour(self.lane)
+        paint(self.figure, colour if state == "working" else theme.TEXT_SECONDARY)
+        # color.copy(alpha = 0.75f) while trying: the same colour, the icon at 75 %
+        paint(self.icon, {"working": colour, "trying": colour, "failed": theme.RED}.get(state, theme.TEXT_MUTED))
+        (self.icon.add_css_class if state == "trying" else self.icon.remove_css_class)("lane-trying")
         self.in_flight = in_flight
         if in_flight and self._timer is None:
             self._timer = GLib.timeout_add(40, self._advance)
@@ -372,28 +400,45 @@ class LaneRow(Gtk.Button):
         return True
 
     def draw_line(self, area, cr, width, height):
+        """LaneLine (Lane.kt): a 2 dp line with round ends, the lane's colour at 90 % when working
+        and at 80 % dashed 10/7 dp while trying; when off or failed, dots of 1.6 dp radius every
+        9 dp, grey or red; the travelling dot 4.5 dp in radius."""
+        dp = theme.SCALE
+        stroke, y = 2 * dp, height / 2
         rgba = Gdk.RGBA()
-        rgba.parse({"working": theme.lane_colour(self.lane), "trying": theme.lane_colour(self.lane), "failed": theme.RED}.get(self.state, theme.TEXT_MUTED))
-        cr.set_source_rgba(rgba.red, rgba.green, rgba.blue, 1.0)
-        cr.set_line_width(2)
-        y = height / 2
-        if self.state == "trying":
-            cr.set_dash([10, 7])
-        elif self.state in ("off", "failed"):
-            cr.set_dash([2, 4])
-        cr.move_to(0, y)
-        cr.line_to(width, y)
-        cr.stroke()
+        if self.state in ("working", "trying"):
+            rgba.parse(theme.lane_colour(self.lane))
+            cr.set_source_rgba(rgba.red, rgba.green, rgba.blue, 0.9 if self.state == "working" else 0.8)
+            cr.set_line_width(stroke)
+            cr.set_line_cap(1)  # round
+            if self.state == "trying":
+                cr.set_dash([10 * dp, 7 * dp])
+            cr.move_to(0, y)
+            cr.line_to(width, y)
+            cr.stroke()
+        else:
+            rgba.parse(theme.RED if self.state == "failed" else theme.TEXT_MUTED)
+            cr.set_source_rgba(rgba.red, rgba.green, rgba.blue, 1.0)
+            x = stroke
+            while x < width:
+                cr.new_sub_path()
+                cr.arc(x, y, 1.6 * dp, 0, 2 * math.pi)
+                x += 9 * dp
+            cr.fill()
         if self.in_flight:
             dot = Gdk.RGBA()
             dot.parse(theme.SIGNAL_ORANGE)
             cr.set_source_rgba(dot.red, dot.green, dot.blue, 1.0)
-            cr.arc(self._phase * width, y, 3, 0, 6.2832)
+            radius = 4.5 * dp
+            cr.new_sub_path()
+            cr.arc(radius + (width - 2 * radius) * self._phase, y, radius, 0, 2 * math.pi)
             cr.fill()
 
 
 class NavRow(Gtk.Button):
-    """A Setup row: a 24 px tinted icon, titleMedium, an 8 px dot with a detail line, a muted chevron; at least 64 px."""
+    """A Setup row, as Chrome.kt's NavRow: a 24 dp icon (TextSecondary unless it has a lane's
+    tint), titleMedium, then an 8 dp dot 6 dp before a detail of two lines at most, 2 dp under the
+    title, and a muted chevron; 16 dp in, 10 dp above and below, at least 64 dp tall."""
 
     def __init__(self, icon_name: str, title: str, on_tap, tint: str | None = None):
         super().__init__()
@@ -401,20 +446,25 @@ class NavRow(Gtk.Button):
         self.connect("clicked", lambda *_: on_tap())
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(16))
         row.add_css_class("nav-row")
-        self.icon = icon(icon_name, 24, tint or theme.TEXT_PRIMARY)
+        self.icon = icon(icon_name, 24, tint or theme.TEXT_SECONDARY)
         self.icon.set_valign(Gtk.Align.CENTER)
         row.append(self.icon)
-        texts = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(4))
+        texts = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(2))
         texts.set_hexpand(True)
         texts.set_valign(Gtk.Align.CENTER)
         texts.append(text(title, "title-medium"))
-        detail = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
+        detail = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(6))
         self.dot = Gtk.Box()
         self.dot.add_css_class("dot")
         self.dot.set_valign(Gtk.Align.CENTER)
         self.dot.set_visible(False)
         detail.append(self.dot)
-        self.detail = text("", "body-medium", theme.TEXT_SECONDARY, wrap=True)
+        self.detail = text("", "body-medium", theme.TEXT_SECONDARY, wrap=True, ellipsize=True)
+        self.detail.set_lines(2)
+        # The whole width of the row: a wrapping label a horizontal box gives only its natural
+        # width breaks into lines of equal length ("Alerts when someone / enters or leaves an area")
+        # where one line would do.
+        self.detail.set_hexpand(True)
         detail.append(self.detail)
         texts.append(detail)
         row.append(texts)
@@ -435,6 +485,9 @@ class NavRow(Gtk.Button):
 
 
 class Chip(Gtk.Button):
+    """Material 3's FilterChip: 32 dp, 4 dp corners, see-through with an Outline border and a grey
+    bodySmall label; selected, SurfaceLight with an OffWhite label (theme.py .chip)."""
+
     def __init__(self, label_text: str, on_tap=None, selected: bool = False):
         super().__init__(label=label_text)
         self.add_css_class("chip")
@@ -693,18 +746,25 @@ class Field(Gtk.Box):
     """A text field as Android's OutlinedTextField (see _Outline): the box see-through with a
     1 dp outline, the label inside it while the field is empty and unfocused and on its top edge
     once it is focused or filled, the placeholder only while it is focused and empty; then, 16 dp
-    in, a helper or an error line and a counter when there is a limit (supportingText). The
-    entry's accessible name is the label; `label` is the label's Gtk.Label, `entry` the
-    Gtk.Entry (the pages set its visibility, sensitivity, limit and placeholder directly, and the
-    box follows)."""
+    in, a helper or an error line (supportingText). The entry's accessible name is the label;
+    `label` is the label's Gtk.Label, `entry` the Gtk.Entry (the pages set its visibility,
+    sensitivity, limit and placeholder directly, and the box follows).
 
-    def __init__(self, label: str, placeholder: str = "", helper: str = "", max_length: int = 0, purpose=None, mono: bool = False, on_change=None):
+    `max_length` only limits the text: Android shows no count of it. `counter` adds one ("3/24")
+    at the right under the box. `size` is the typed text's size in sp: 16, OutlinedTextField's own
+    bodyLarge, or 14 for the fields Android sets in bodyMedium (SettingsScreen.kt's: the SMS
+    number, APRS, TAK, Reticulum, the Hub's details)."""
+
+    def __init__(self, label: str, placeholder: str = "", helper: str = "", max_length: int = 0, purpose=None, mono: bool = False, on_change=None, *,
+                 counter: bool = False, size: int = 16):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(4))
         self.label_text = label
         self.max_length = max_length
         self.entry = Gtk.Entry(placeholder_text=placeholder)
         self.entry.add_css_class("field")
         self.entry.add_css_class("field-input")
+        if size != 16:
+            self.entry.add_css_class(f"text-{size}")
         if mono:
             self.entry.add_css_class("mono")
         if purpose is not None:
@@ -724,7 +784,7 @@ class Field(Gtk.Box):
         self.helper.set_visible(bool(helper))
         self.under.append(self.helper)
         self.counter = text("", "body-small", theme.TEXT_SECONDARY, xalign=1.0, mono=True)
-        self.counter.set_visible(bool(max_length))
+        self.counter.set_visible(bool(counter and max_length))
         self.under.append(self.counter)
         self.append(self.under)
         # With neither line showing, nothing sits under the box (not even the 4 dp between).
@@ -779,16 +839,19 @@ class Field(Gtk.Box):
 
 
 class SwitchRow(Gtk.Box):
-    """A row with a title, an optional detail line and a switch at the right. `set_active`
-    moves the switch without telling the handler (a poll never counts as the user's hand)."""
+    """A row with a title, an optional detail line and a switch at the right, at least 48 dp tall
+    (the switch's touch height). The title is in bodyMedium, as every switch row of the Android app
+    (SettingsScreen.kt's SettingRow, RadioConfigScreen.kt's ToggleRow, the APRS, TAK, node log and
+    maps rows); `style` sets another. `set_active` moves the switch without telling the handler
+    (a poll never counts as the user's hand)."""
 
-    def __init__(self, title: str, on_change, detail: str = "", active: bool = False):
+    def __init__(self, title: str, on_change, detail: str = "", active: bool = False, *, style: str = "body-medium"):
         super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(12))
         self.add_css_class("switch-row")
         texts = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(2))
         texts.set_hexpand(True)
         texts.set_valign(Gtk.Align.CENTER)
-        texts.append(text(title, "body-large"))
+        texts.append(text(title, style))
         self.detail = text(detail, "body-medium", theme.TEXT_SECONDARY, wrap=True)
         self.detail.set_visible(bool(detail))
         texts.append(self.detail)
@@ -1199,11 +1262,14 @@ class HoldButton(Gtk.Button):
 
 class Tabs(Gtk.Box):
     """A row of tabs as Android's ScrollableTabRow: chips that slide sideways, one selected,
-    each with a count badge when it has one."""
+    each with a count badge when it has one: a small pill centred on the label, labelSmall in
+    Plex Sans, TextSecondary on Border (or a tone of set_badge's)."""
 
-    def __init__(self, names: list, on_select, selected: str | None = None, plain: bool = False):
+    def __init__(self, names: list, on_select, selected: str | None = None, plain: bool = False, *, even: bool = False):
         """`plain`: Android's own tab row (InterfacesScreen, RulesScreen): text on nothing,
-        the selected one on SurfaceLight, 48 dp tall, 4 dp apart."""
+        the selected one on SurfaceLight, 48 dp tall, 4 dp apart, 12 dp either side of the words,
+        the selected one's in SemiBold. `even` (with `plain`): RadioConfigScreen's row, every
+        label in labelLarge's Medium, selected or not, 14 dp either side."""
         super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(4 if plain else 8))
         self.chips = {}
         self.badges = {}
@@ -1212,10 +1278,13 @@ class Tabs(Gtk.Box):
         for name in names:
             chip = Gtk.Button()
             chip.add_css_class("tab-chip" if plain else "chip")
+            if even:
+                chip.add_css_class("even")
             name_widget(chip, name)
             inner = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(6))
             inner.append(text(name, "label-large"))
             badge = text("", "count")
+            badge.set_valign(Gtk.Align.CENTER)
             badge.set_visible(False)
             inner.append(badge)
             chip.set_child(inner)
@@ -1236,10 +1305,17 @@ class Tabs(Gtk.Box):
         self._paint()
         self.on_select(name)
 
-    def set_badge(self, name: str, count: int) -> None:
+    def set_badge(self, name: str, count: int, tone: str | None = None) -> None:
+        """`tone`: "green" or "amber", the badge in that colour on a 12 % tint of it (the Links
+        tab's count of working links and the Health tab's of weak ones, InterfacesScreen.kt), ""
+        back to TextSecondary on Border; None leaves the tone as it is (theme.py's
+        .count.tone-green and .count.tone-amber, which a page may also set itself)."""
         badge = self.badges[name]
         badge.set_text(str(count))
         badge.set_visible(count > 0)
+        if tone is not None:
+            for t in ("green", "amber"):
+                (badge.add_css_class if t == tone else badge.remove_css_class)(f"tone-{t}")
 
 
 def dot(lane: str, size: int = 10) -> Gtk.Box:

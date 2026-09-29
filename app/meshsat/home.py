@@ -6,7 +6,7 @@ keeps: SOS, Message queue, Your position, the signals (the satellite sky, the mo
 Satellite mailbox, Recent messages."""
 import time
 
-from gi.repository import Adw, Gdk, Gtk
+from gi.repository import Gdk, Gtk
 
 from . import api, sos, theme
 from .mailbox import MailboxButton
@@ -16,8 +16,8 @@ from .model import home as words_of_home
 from .model import sosrun, words
 from .passes import SkyChart, sky_legend
 from .screen import Screen
-from .widgets import (Card, HoldButton, LaneRow, Wordmark, clear, confirm, filled_button, icon, icon_button, name_widget, outlined_button, page, paint, scroller,
-                      spacer, text, text_button, when)
+from .widgets import (Card, HoldButton, LaneRow, Sheet, Wordmark, clear, confirm, filled_button, icon, icon_button, name_widget, outlined_button, page, paint,
+                      scroller, spacer, text, text_button, when)
 
 SKY_TITLE = "Satellite signal and passes"
 SKY_WINDOW = "3 h back, 3 h ahead"
@@ -35,7 +35,6 @@ class HomeScreen(Screen):
         self.passes = []  # GET /api/iridium/passes, now-3 h to now+6 h, every 5 min
         self.sky_signals, self.sky_sessions = [], []  # the last 3 h of readings and sessions, every 10 min
         self.mobile = []  # GET /api/cellular/signal/history, the last 6 h
-        self._lanes = None
 
         # HomeHeader: the lockup, night mode, Arrange
         head = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
@@ -92,12 +91,12 @@ class HomeScreen(Screen):
         self.step_rows = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         self.started.append(self.step_rows)
         self._steps_key = None
-        self.started.set_visible(False)
         column.append(self.started)
 
         # The cards, in the order Arrange Home keeps
         self.cards = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(12))
         column.append(self.cards)
+        self.show_checklist(False)
         self.build_sos_card()
         self.build_queue_card()
         self.build_position_card()
@@ -130,13 +129,17 @@ class HomeScreen(Screen):
         self.sos_card.append(self.sos_title)
         self.sos_text = text("", "body-medium", theme.TEXT_SECONDARY, wrap=True)
         self.sos_card.append(self.sos_text)
+        # 8 dp under the text: the card's own spacedBy(8), nothing more
         self.hold = HoldButton("Hold 3 seconds for SOS", self.sos_fire, self.sos_activate)
-        self.hold.set_margin_top(theme.dp(4))
         self.sos_card.append(self.hold)
+        # TextButton { Text(..., color = OffWhite) }: both words in OffWhite, not the orange of a
+        # plain TextButton
         self.idle_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
         self.contacts_button = text_button("Emergency contacts", self.open_contacts)
+        self.contacts_button.add_css_class("off-white")
         self.idle_row.append(self.contacts_button)
         self.test_button = text_button("Test the alarm", self.test_asked)
+        self.test_button.add_css_class("off-white")
         self.idle_row.append(self.test_button)
         self.sos_card.append(self.idle_row)
         self.active_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8), homogeneous=True)
@@ -144,7 +147,10 @@ class HomeScreen(Screen):
         self.see.remove_css_class("filled")
         self.see.add_css_class("tonal")
         self.active_row.append(self.see)
+        # OutlinedButton { Text("Cancel SOS" / "Stop test", color = OffWhite) }; the label is kept
+        # when set_label() changes its words, and its colour with it
         self.cancel = outlined_button("Cancel SOS", self.sos_cancel_asked)
+        paint(self.cancel.get_child(), theme.OFF_WHITE)
         self.active_row.append(self.cancel)
         self.sos_card.append(self.active_row)
 
@@ -291,7 +297,15 @@ class HomeScreen(Screen):
 
     def hide_checklist(self) -> None:
         self.app.prefs.set(checklist_dismissed=True)
-        self.started.set_visible(False)
+        self.show_checklist(False)
+
+    def show_checklist(self, shown: bool) -> None:
+        """Getting started, or its empty place: Android's hidden checklist is still an item of
+        Home's LazyColumn, an empty one, so the 12 dp between items comes twice and the first card
+        stands 24 dp under the lanes. GTK leaves a hidden child out of the spacing altogether: the
+        cards take the second 12 dp as their own margin."""
+        self.started.set_visible(shown)
+        self.cards.set_margin_top(0 if shown else theme.dp(12))
 
     def arrange(self) -> None:
         ArrangeDialog(self.app, self.order, self.arranged)
@@ -301,20 +315,23 @@ class HomeScreen(Screen):
         self.app.prefs.set(dashboard_card_order=",".join(self.order))
         self.place_cards()
 
-    # SOS: hold three seconds, as on Android; a screen reader or a test asks in a dialog.
+    # SOS: hold three seconds, as on Android; a screen reader or a test asks in a dialog. The three
+    # dialogs answer as SosScreens.kt's do: a filled button (MeshSatRed with ink words for "Send
+    # SOS", the orange Button for the other two) and the way out in OffWhite.
     def sos_activate(self, how: str) -> None:
         if how == "tap":
             self.app.toast("Hold 3 seconds for SOS")
             return
         confirm(self.app, "Send an SOS?", "Your position goes out on every route this phone has, and the phone keeps trying until you cancel.",
-                "Send SOS", self.sos_fire, cancel="Don't send", danger=True)
+                "Send SOS", self.sos_fire, cancel="Don't send", danger=True, filled=True, cancel_colour=theme.OFF_WHITE)
 
     def sos_cancel_asked(self) -> None:
         run = self.app.sos.active()
         if run is not None and run.test:
             self.app.sos.cancel(self.app.state)  # a test stops without a question
             return
-        confirm(self.app, "Cancel the SOS?", "Nothing more goes out, and everyone who got the SOS is told you are safe.", "Cancel SOS", self.sos_cancel, cancel="Keep it on")
+        confirm(self.app, "Cancel the SOS?", "Nothing more goes out, and everyone who got the SOS is told you are safe.", "Cancel SOS", self.sos_cancel, cancel="Keep it on",
+                filled=True, cancel_colour=theme.OFF_WHITE)
 
     def sos_fire(self) -> None:
         """The hold ran its course, or the dialog said Send: a real SOS, which replaces a test."""
@@ -334,7 +351,8 @@ class HomeScreen(Screen):
         s = self.app.state
         text_of_test = sos.test_text(s.sos_name)
         parts = sosrun.test_parts(s, s.sos_name)
-        confirm(self.app, "Test the alarm?", sosrun.test_dialog_text(text_of_test, parts), "Send the test", self.test_fire, cancel="Not now")
+        confirm(self.app, "Test the alarm?", sosrun.test_dialog_text(text_of_test, parts), "Send the test", self.test_fire, cancel="Not now",
+                filled=True, cancel_colour=theme.OFF_WHITE)
 
     def test_fire(self) -> None:
         self.app.sos.start(self.app.state, test=True, trigger="hold")
@@ -344,7 +362,7 @@ class HomeScreen(Screen):
     def update(self, s: api.State) -> None:
         self.render_lanes(s)
         self.render_checklist(s)
-        self.update_sos_card(s, self._lanes)
+        self.update_sos_card(s)
         self.render_position()
         connected = s.modem_connected()
         if connected and not self.mailbox_card.get_visible() and self.alive:
@@ -356,7 +374,6 @@ class HomeScreen(Screen):
     def render_lanes(self, s: api.State) -> None:
         pass_line = dashboard.pass_line(self.passes, time.time())
         lanes = words_of_home.lanes(s, self.stats, pass_line)
-        self._lanes = lanes
         depths = words_of_home.depths(self.stats)
         for lane, (state, detail, figure) in lanes.items():
             self.lanes[lane].set_state(state, detail, figure, in_flight=depths.get(lane, 0) > 0)
@@ -368,7 +385,7 @@ class HomeScreen(Screen):
     def render_checklist(self, s: api.State) -> None:
         steps = words_of_home.checklist(s)
         shown = dashboard.checklist_shown(steps, bool(self.app.prefs.get("checklist_dismissed", False)))
-        self.started.set_visible(shown)
+        self.show_checklist(shown)
         if not shown:
             return
         self.started_count.set_text(dashboard.checklist_count(steps))
@@ -424,22 +441,25 @@ class HomeScreen(Screen):
         for m in texts:
             self.recent.append(activity_row(m))
 
-    def update_sos_card(self, s: api.State, lanes: dict) -> None:
-        """SosCard: hold to send, or where the SOS or the test in progress stands."""
+    def update_sos_card(self, s: api.State) -> None:
+        """SosCard: hold to send, or where the SOS or the test in progress stands. Where an SOS
+        would go is SosReach's: every route set up, not only the ones up this minute (a modem this
+        phone has had, the node it paired or started, the contacts, the Hub)."""
         run = self.app.sos.active()
         bridge_sos = (s.sos or {}) if (s.sos or {}).get("active") else None
         for c in ("sos-test", "sos-on"):
             self.sos_card.remove_css_class(c)
-        reach = sosrun.anywhere(s)
+        seen = self.app.prefs.get(words_of_home.MODEM_SEEN, "")
+        anywhere = words_of_home.reach(s, seen)["anywhere"]
         if run is None and bridge_sos is None:
             self.sos_title.set_text("SOS")
             paint(self.sos_title, theme.TEXT_PRIMARY)
-            self.sos_text.set_text(words_of_home.reach_sentence(s, lanes))
-            self.hold.set_visible(reach)
+            self.sos_text.set_text(words_of_home.reach_sentence(s, seen))
+            self.hold.set_visible(anywhere)
             self.idle_row.set_visible(True)
             self.active_row.set_visible(False)
             self.contacts_button.set_label(words_of_home.contacts_button(s))
-            self.test_button.set_visible(reach)
+            self.test_button.set_visible(anywhere)
             return
         test = run is not None and run.test
         self.sos_card.add_css_class("sos-test" if test else "sos-on")
@@ -680,28 +700,31 @@ class SignalChart(Gtk.Box):
 
 
 class ArrangeDialog:
-    """ReorderDialog: "Arrange Home", one row per card with ▲ and ▼ moving it in a draft, and
-    "Apply" saving the draft; "Cancel" or a tap outside keeps the order as it was."""
+    """ReorderDialog (DashboardScreen.kt:722-805), an AlertDialog on the Sheet: "Arrange Home",
+    the line of what to do, then one row per card with ▲ and ▼ moving it in a draft; the answers
+    at the bottom right, "Cancel" (a TextButton in its own orange) and "Apply" (the orange Button
+    with ink words), which saves the draft. Cancel, a tap outside or Escape keeps the order as it
+    was."""
 
     def __init__(self, app, order: list, on_apply):
         self.draft = list(order)
         self.on_apply = on_apply
-        self.dialog = Adw.AlertDialog(heading=dashboard.ARRANGE_TITLE)
+        self.sheet = Sheet(app, dashboard.ARRANGE_TITLE)
+        self.dialog = self.sheet.dialog
+        # Column(spacedBy(4.dp)) { the line; Spacer(8.dp); the rows }: 16 dp from the line to the
+        # first row, 4 dp between rows
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(4))
-        note = text(dashboard.ARRANGE_TEXT, "body-small", theme.TEXT_MUTED, wrap=True)
-        box.append(note)
+        box.append(text(dashboard.ARRANGE_TEXT, "body-small", theme.TEXT_MUTED, wrap=True))
         self.rows = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(4))
-        self.rows.set_margin_top(theme.dp(8))
+        self.rows.set_margin_top(theme.dp(12))
         box.append(self.rows)
-        self.dialog.set_extra_child(box)
-        self.dialog.add_response("cancel", dashboard.CANCEL)
-        self.dialog.add_response("apply", dashboard.APPLY)
-        self.dialog.set_response_appearance("apply", Adw.ResponseAppearance.SUGGESTED)
-        self.dialog.set_default_response("apply")
-        self.dialog.set_close_response("cancel")
-        self.dialog.connect("response", self.answered)
+        self.sheet.body.append(box)
+        cancel_button = self.sheet.button(dashboard.CANCEL, self.sheet.close)
+        apply_button = self.sheet.button(dashboard.APPLY, self.apply, kind="filled")
+        for button, word in ((cancel_button, dashboard.CANCEL), (apply_button, dashboard.APPLY)):
+            name_widget(button, word)
         self.fill()
-        self.dialog.present(app.window)
+        self.sheet.present()
 
     def fill(self) -> None:
         clear(self.rows)
@@ -730,9 +753,9 @@ class ArrangeDialog:
         self.draft = dashboard.moved(self.draft, index, up)
         self.fill()
 
-    def answered(self, _dialog, response: str) -> None:
-        if response == "apply":
-            self.on_apply(self.draft)
+    def apply(self) -> None:
+        self.sheet.close()
+        self.on_apply(self.draft)
 
 
 def sos_clock(sos_state: dict | None) -> str:

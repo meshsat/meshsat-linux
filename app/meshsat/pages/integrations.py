@@ -12,12 +12,16 @@ beacon (APRS-IS only) goes out over the internet, never over the radio."""
 from gi.repository import Gtk
 
 from .. import api, theme
+from ..layout import body_text, restyle
 from ..model import integrations as m
 from ..screen import SubScreen
 from ..widgets import Chip, Field, SwitchRow, filled_button, name_widget, outlined_button, paint, text
 
 PREFS = ("integrations_aprs_enabled", "integrations_aprs_mode", "integrations_aprs_beacon", "integrations_aprs_passcode",
          "integrations_rns_enabled", "integrations_rns_tls")
+# The fields Android types in bodyMedium, 14 sp (textStyle = MaterialTheme.typography.bodyMedium,
+# SettingsScreen.kt:1252-1581): every one here but TAK's Callsign Prefix, which keeps bodyLarge.
+BODY_MEDIUM = {"callsign", "ssid", "kiss_host", "kiss_port", "is_host", "is_port", "passcode", "radius", "interval", "host", "rns_port"}
 SLOW = 45.0  # a KISS dial is tried for 30 s inside the Bridge's answer
 NOT_TAKEN = "The Bridge did not take the change."
 
@@ -64,8 +68,7 @@ def _children(widget: Gtk.Widget) -> list:
 
 
 def save_button(on_click, card: str) -> Gtk.Button:
-    button = filled_button(m.SAVE, on_click, expand=False)
-    button.add_css_class("small-text")
+    button = body_text(filled_button(m.SAVE, on_click, expand=False))
     button.set_halign(Gtk.Align.START)
     name_widget(button, m.SAVE, card)  # three buttons named Save: the description tells them apart
     return button
@@ -110,8 +113,11 @@ class IntegrationsScreen(SubScreen):
         passcode = self.field("passcode", m.PASSCODE, m.passcode_input, Gtk.InputPurpose.NUMBER)
         passcode.set_hexpand(True)
         code.append(passcode)
-        auto = outlined_button(m.AUTO, self.auto_passcode)
+        # SettingsScreen.kt:1361-1370: OutlinedButton(border = BorderStroke(1.dp, MeshSatTeal)),
+        # its Text in bodySmall (12 sp Regular) in the button's own orange.
+        auto = body_text(outlined_button(m.AUTO, self.auto_passcode))
         auto.set_valign(Gtk.Align.CENTER)
+        restyle(auto, f"border-color: {theme.SIGNAL_ORANGE};")
         code.append(auto)
         self.is_box.append(code)
         self.is_box.append(self.field("radius", m.RADIUS, m.radius, Gtk.InputPurpose.DIGITS))
@@ -154,6 +160,8 @@ class IntegrationsScreen(SubScreen):
     # Fields: Android's filters, and a field typed into is the person's until Save
     def field(self, key: str, label: str, keep=None, purpose=None, description: str | None = None) -> Field:
         box = Field(label, purpose=purpose)
+        if key in BODY_MEDIUM:
+            box.entry.add_css_class("text-14")  # Field(size=14): theme.py's .field-input.text-14
         if description:
             name_widget(box.entry, label, description)
         self.fields[key] = box

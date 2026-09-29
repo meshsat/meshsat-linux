@@ -8,7 +8,7 @@ import urllib.parse
 from gi.repository import Gtk
 
 from .. import api, files, theme
-from ..layout import empty_text, flow_row
+from ..layout import empty_text, flow_row, pinned_head
 from ..model import audit as model
 from ..model import words
 from ..screen import SubScreen
@@ -27,6 +27,9 @@ class AuditScreen(SubScreen):
         self.checking = self.saving = False
         self.check = None
         self._key = None
+        # AuditScreen.kt:244-414: the count, the chips, the buttons and a check's result stay put;
+        # only the entries scroll (LazyColumn(weight 1f)), from 8 dp under them (Spacer(8.dp)).
+        head = pinned_head(self, spacing=8, gap=8)
         top = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
         self.count = text("", "body-medium", theme.TEXT_SECONDARY)
         self.count.set_hexpand(True)
@@ -42,26 +45,31 @@ class AuditScreen(SubScreen):
         self.key_button.connect("clicked", lambda *_: self.copy_key())
         self.key_button.set_visible(False)
         top.append(self.key_button)
-        self.column.append(top)
+        head.append(top)
         # AuditScreen.kt:290: Spacer(4.dp), FlowRow(spacedBy(6.dp)) of FilterChips, Spacer(8.dp):
         # every link on screen, the chips wrapping onto more lines. Material's 48 dp touch height
         # round a 32 dp chip adds 8 dp above the first line and 8 dp under the last: above, 4 + 8
-        # less the column's own 8 dp spacing; under, those 8.
+        # less the header's own 8 dp spacing; under, those 8.
         self.chip_row = flow_row(6, 16)
         self.chip_row.set_margin_top(theme.dp(4))
         self.chip_row.set_margin_bottom(theme.dp(8))
-        self.column.append(self.chip_row)
+        head.append(self.chip_row)
         actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
+        # OutlinedButton(Modifier.heightIn(min = 48.dp))
         self.check_button = outlined_button(model.CHECK, self.check_log)
+        self.check_button.add_css_class("tall")
         self.check_button.set_visible(False)
         self.save_button = outlined_button(model.SAVE, self.save_copy)
+        self.save_button.add_css_class("tall")
         actions.append(self.check_button)
         actions.append(self.save_button)
-        self.column.append(actions)
+        head.append(actions)
+        # A check's result, 8 dp under the buttons (padding(top = 8.dp)); nothing, not even that
+        # room, until there is one.
         self.check_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(2))
-        self.column.append(self.check_box)
+        self.check_box.set_visible(False)
+        head.append(self.check_box)
         self.list = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(6))
-        self.list.set_margin_top(theme.dp(8))
         self.column.append(self.list)
         self._chips()
 
@@ -170,6 +178,7 @@ class AuditScreen(SubScreen):
         clear(self.check_box)
         for line, style, tone in self.check:
             self.check_box.append(text(line, style, tone_colour(tone), wrap=True))
+        self.check_box.set_visible(bool(self.check))
 
     def save_copy(self) -> None:
         self.saving = True

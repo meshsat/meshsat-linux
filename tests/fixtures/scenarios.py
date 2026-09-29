@@ -483,10 +483,30 @@ def bluetooth_off() -> dict:
     return routes
 
 
+NODE_STATS = {"owner": "phone", "flags": {"session_in_flight": False, "message_waiting": False, "modem_answers": True, "buffer_congested": False},
+              "csq": 3, "csq_age_s": 12, "sessions": 7, "last_mo_status": 32, "last_momsn": 250, "last_mt_status": 2, "last_mt_queued": 0,
+              "last_session_age_s": 240, "uptime_s": 8040, "watchdog_reboots": 0, "client_bytes_dropped": 0, "node_sessions": 0, "node_sent": 0,
+              "node_received": 0, "day_sessions_used": 0, "day_sessions_cap": 10}
+
+
+def bluetooth_node_modem() -> dict:
+    """A MeshSat node adopted over Bluetooth, its RockBLOCK 9603 held by the phone through the
+    node's BLE pipe (Bridge change B9): 4 bars, the node's STATS readable."""
+    routes = bluetooth_connected()
+    routes["GET /api/mesh/ble/status"] = {"mode": "ready", "address": "E0:72:A1:B3:C2:ED", "name": "MSPA_c2ec", "connected": True, "pairing_pending": False,
+                                          "satellite_pipe": True, "satellite_enabled": True, "satellite_owner": "phone", "satellite_link_broken": False,
+                                          "adapter_powered": True}
+    routes["GET /api/iridium/modem"] = {"connected": True, "port": "ble", "model": "RockBLOCK 9603", "imei": "300434065000001", "manufacturer": "Iridium", "type": "sbd"}
+    routes["GET /api/iridium/signal"] = {"bars": 4, "timestamp": "2026-09-29T12:00:00Z"}
+    routes["GET /api/iridium/signal/fast"] = {"bars": 4}
+    routes["_node_stats"] = dict(NODE_STATS)
+    return routes
+
+
 SCENARIOS = {"fresh": fresh, "mesh-only": mesh_only, "one-node": one_node, "nameless-node": nameless_node, "satellite-3-bars": satellite_3_bars, "sim-ready": sim_ready,
              "all-four": all_four, "hub-set-up": hub_set_up, "integrations": integrations, "integrations-empty": integrations_empty, "sos-active": sos_active, "bluetooth-pairing": bluetooth_pairing, "bluetooth-connected": bluetooth_connected,
              "queue-busy": queue_busy, "advanced": advanced, "messaging": messaging, "messaging-encoder": lambda: messaging(True), "zones": zones, "zones-down": zones_down,
-             "home-cards": home_cards, "bluetooth-off": bluetooth_off, "bluetooth-off-sos": lambda: {**bluetooth_off(), "_sos": sos_active()["_sos"]}}
+             "bluetooth-node-modem": bluetooth_node_modem, "home-cards": home_cards, "bluetooth-off": bluetooth_off, "bluetooth-off-sos": lambda: {**bluetooth_off(), "_sos": sos_active()["_sos"]}}
 
 
 def build(name: str) -> dict:

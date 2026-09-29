@@ -7,6 +7,7 @@ before there is a key). Every change is written at once, as Android's settings a
 from gi.repository import GLib, Gtk
 
 from .. import api, files, theme
+from ..layout import body_text
 from ..model import messaging as model
 from ..screen import SubScreen
 from ..widgets import Card, SwitchRow, clear, filled_button, name_widget, text
@@ -23,8 +24,7 @@ def section_card(title: str) -> Card:
 
 def small_button(label: str, on_click, style: str) -> Gtk.Button:
     """Android's Button(... weight(1f)) with bodySmall text, in its colour."""
-    button = filled_button(label, on_click)
-    button.add_css_class("small-text")
+    button = body_text(filled_button(label, on_click))
     if style:
         button.add_css_class(style)
     return button
@@ -92,17 +92,18 @@ class MessagingScreen(SubScreen):
         self.no_sms.set_visible(False)
         enc.append(self.no_sms)
         # SettingsScreen.kt:863-884: the Hub's key by QR code, through the Setup router.
-        scan = filled_button(model.SCAN_KEY, self.scan_key, expand=True)
-        scan.add_css_class("small-text")
+        scan = body_text(filled_button(model.SCAN_KEY, self.scan_key, expand=True))
         enc.append(scan)
         enc.append(text(model.FALLBACK_NOTE, "body-small", theme.TEXT_MUTED, wrap=True))
         self.column.append(enc)
 
-        # Message compression
+        # Message compression: SettingsScreen.kt:898-948, the note, Spacer(8) (8 + 8 + 8 dp in the
+        # card's spacedBy(8) Column), then each link a row of the Column, padded 4 dp above and
+        # below, 8 dp apart (a row every 40 dp).
         comp = section_card("Message compression")
         comp.append(text(model.COMPRESSION_NOTE.strip(), "body-small", theme.TEXT_MUTED, wrap=True))
-        self.rows = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(4))
-        self.rows.set_margin_top(theme.dp(8))
+        self.rows = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(8))
+        self.rows.set_margin_top(theme.dp(16))
         comp.append(self.rows)
         self.no_encoder = text(model.NO_ENCODER, "body-small", theme.TEXT_MUTED, wrap=True)
         comp.append(self.no_encoder)
@@ -111,11 +112,14 @@ class MessagingScreen(SubScreen):
         comp.append(self.stages_box)
         self.column.append(comp)
 
-        # Quick messages
+        # Quick messages: SettingsScreen.kt:1143-1160, each code a row of the card's Column, padded
+        # 2 dp above and below.
         quick = section_card("Quick messages")
         quick.append(text(model.loaded_line(), "body-small", theme.TEXT_MUTED))
         for words, code in model.shown_codes():
             line = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
+            line.set_margin_top(theme.dp(2))
+            line.set_margin_bottom(theme.dp(2))
             label = text(words, "body-small", wrap=True)
             label.set_hexpand(True)
             line.append(label)
@@ -191,6 +195,8 @@ class MessagingScreen(SubScreen):
                 continue
             mode = model.compression(self.chains(link)[0])
             line = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
+            line.set_margin_top(theme.dp(4))
+            line.set_margin_bottom(theme.dp(4))
             name = text(label, "body-medium")
             name.set_hexpand(True)
             line.append(name)

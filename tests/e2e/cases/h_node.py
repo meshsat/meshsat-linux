@@ -123,22 +123,26 @@ def case_c_scan_found_devices_and_connect(ctx):
     sent = ctx.bridge.wait_request("POST", "/api/mesh/ble/connect", since=before, timeout=8)
     assert sent["body"] == {"address": ADDRESS}, sent
     ctx.tree.wait_gone("Found devices:", timeout=5)
-    # The Bridge brings the link up; the card follows its status
+    # The Bridge brings the link up; the card follows its status, which alone says it (no sentence
+    # of this edition's under it), and offers no scan while it connects (Android: only Disconnected)
     ctx.bridge.set("GET /api/mesh/ble/status", dict(IDLE, mode="connecting", address=ADDRESS, name="MSPA_c2ec"))
     ctx.app.refresh()
     ctx.tree.wait_text("Connecting...", timeout=10)
-    ctx.tree.wait_text("Connecting to MSPA_c2ec.", timeout=10)
+    assert not ctx.tree.find_all("button", name="Scan for Meshtastic devices"), "a scan is offered while connecting"
 
 
 def case_d_no_node_in_range(ctx):
+    """Android lists nothing when a scan finds nothing: no "Found devices:", the scan offered again."""
     ctx.bridge.scenario("bluetooth-pairing")
     ctx.bridge.set("GET /api/mesh/ble/status", IDLE)
     ctx.bridge.set("GET /api/mesh/ble/scan", {"devices": [], "count": 0})
     node_page(ctx)
+    before = ctx.bridge.count()
     ctx.tree.click("Scan for Meshtastic devices", timeout=10)
-    ctx.tree.wait_text("No Meshtastic devices found. Is the node on, with Bluetooth enabled?", timeout=15)
+    ctx.bridge.wait_request("GET", "/api/mesh/ble/scan", since=before, timeout=10)
+    ctx.tree.find("button", name="Scan for Meshtastic devices", timeout=15)
     assert not ctx.tree.has_text("Found devices:")
-    ctx.tree.find("button", name="Scan for Meshtastic devices", timeout=5)
+    assert after(ctx.tree.texts(), "Status") == "Disconnected"
 
 
 def case_e_the_pin_dialog_when_a_node_asks_to_pair(ctx):
@@ -203,8 +207,11 @@ def case_f_a_node_out_of_reach_and_forget_this_node(ctx):
     ctx.bridge.set("GET /api/mesh/ble/status", dict(IDLE, mode="lost", address=ADDRESS, name="MSPA_c2ec", paired=True, error="bluetooth link to the node lost"))
     ctx.bridge.set("DELETE /api/mesh/ble?bond=1", {"status": "forgotten"})
     node_page(ctx)
-    ctx.tree.wait_text("MSPA_c2ec cannot be reached. Bluetooth link to the node lost.", timeout=10)
+    ctx.tree.find("button", name="Forget this node", timeout=10)
+    # The Status row says it, as on Android (the node banner says the lost link): no sentence under it
     assert after(ctx.tree.texts(), "Status") == "Disconnected"
+    assert not ctx.tree.has_text("cannot be reached"), "the card repeats the node banner"
+    ctx.tree.find("button", name="Scan for Meshtastic devices", timeout=5)
     before = ctx.bridge.count()
     ctx.app.mark()
     ctx.tree.click("Forget this node")

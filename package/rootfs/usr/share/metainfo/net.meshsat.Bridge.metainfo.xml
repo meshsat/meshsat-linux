@@ -36,6 +36,11 @@
   </recommends>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="1.0.1" date="2026-09-29">
+      <description>
+        <p>Closer still to MeshSat Android: the spacing, sizes, chips, rows and colours a side-by-side comparison of every screen found different. The satellite modem of a MeshSat node over Bluetooth: the Satellite page's "Satellite modem on the node" with "Use the node's modem", and the node's health report.</p>
+      </description>
+    </release>
     <release version="1.0.0" date="2026-09-29">
       <description>
         <p>Every screen of MeshSat Android, in its words, proven on the phone. The SOS and the alarm test follow every route through the Bridge's queue, up to "Sent, and the Hub has it" and "Delivered to their phone"; the alarm test's satellite route is a position report to the Hub; an SOS by satellite is no longer held back by the credit budget. The Bridge, the node's API and Meshtastic's web client answer this device only, unless "Share the Bridge on this network" is switched on in Diagnostics. The node page, the notifications, the tray, the quick-settings tile and the lock-screen widget are tested as the rest.</p>

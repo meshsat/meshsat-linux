@@ -1666,10 +1666,10 @@
    "android": "ui/screens/SettingsScreen.kt:528-592",
    "linux": "",
    "modes": "bluetooth",
-   "state": "blocked",
-   "test": "",
-   "capture": "",
-   "note": "'Satellite modem on the node' and 'Use the node's modem': Bridge change B9 (MESHSAT-1391), a later release; its live proof needs the T-Beam with the RockBLOCK in Bluetooth range"
+   "state": "verified",
+   "test": "h_satellite_node::a_the_node_card_and_its_switch",
+   "capture": "node-modem",
+   "note": "'Satellite modem on the node', its status words and 'Use the node's modem' over the Bridge's pipe to the node (B9, MESHSAT-1391, Bridge ab58709a), against a scripted Bridge; the pipe on the air is not proven: the T-Beam with the RockBLOCK is out of the phone's Bluetooth range (blocked.satellite-live)"
   },
   {
    "id": "setup.satellite.node-health",
@@ -1677,10 +1677,10 @@
    "android": "ui/screens/SettingsScreen.kt:594-629, ble/NodeStatsText.kt",
    "linux": "",
    "modes": "bluetooth",
-   "state": "blocked",
-   "test": "",
-   "capture": "",
-   "note": "the node's STATS: Bridge change B9 (MESHSAT-1391), a later release"
+   "state": "verified",
+   "test": "h_satellite_node::c_node_health",
+   "capture": "node-health",
+   "note": "the node's report about its own modem (GET /api/mesh/ble/satellite/stats, B9), against a scripted Bridge; not seen from a real node (the T-Beam is out of range)"
   },
   {
    "id": "chat.bubble.lock",

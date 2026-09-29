@@ -9,6 +9,7 @@ from gi.repository import Adw, GLib, Gtk
 
 from . import __version__ as VERSION
 from . import api, system, theme
+from .layout import body_text
 from .model import hub as hub_model
 from .model import nodes as nodes_model
 from .model import satellite as satellite_model
@@ -16,7 +17,7 @@ from .pages.safety import SafetyScreen  # noqa: F401  (the Setup row and the rou
 from .passes import PassesScreen
 from .screen import Screen, SubScreen
 from .mailbox import MailboxButton
-from .widgets import KeyValue, NavRow, clear, fact_row, filled_button, group_title, outlined_button, page, paint, scroller, text, text_button, when
+from .widgets import KeyValue, NavRow, SwitchRow, clear, divider, fact_row, filled_button, group_title, name_widget, outlined_button, page, paint, scroller, text, text_button, when
 
 # Meshtastic's LoRa config, as the Bridge relays it: protobuf field numbers of Config.LoRaConfig.
 
@@ -100,20 +101,21 @@ class NodeScreen(Page):
         self.devices = None
         self.scanning = False
         self.pin_asked_for = None
-        # The LoRa back cover, when this phone has one.
+        # The LoRa back cover, when this phone has one: drawn as Android's Bluetooth card is (its
+        # ConnectionStatusRow, InfoRows 8 dp apart, the node rows and a bodySmall button).
         self.cover = self.card("The LoRa back cover")
-        self.status = KeyValue("Status", "Disconnected")
-        self.cover.append(self.status)
-        self.details = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(0))
+        row, self.status = status_row("Status")
+        self.cover.append(row)
+        self.details = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(8))
         self.cover.append(self.details)
-        self.action = filled_button("Start the node", self.start)
+        self.action = body_text(filled_button("Start the node", self.start))
         self.cover.append(self.action)
         self.note = text("The node is meshtasticd on this phone, driving the Pine64 LoRa back cover through its pogo pins. It starts with the phone.", "body-medium", theme.TEXT_SECONDARY, wrap=True)
         self.cover.append(self.note)
         # A node over Bluetooth, as on the other apps.
         self.bt = self.card("Bluetooth connection")
-        self.bt_status = KeyValue("Status", "Disconnected")
-        self.bt.append(self.bt_status)
+        row, self.bt_status = status_row("Status")
+        self.bt.append(row)
         self.bt_body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(8))
         self.bt.append(self.bt_body)
         # Which of the two this device has.
@@ -159,26 +161,36 @@ class NodeScreen(Page):
     def update_cover(self, s: api.State) -> None:
         clear(self.details)
         if s.mesh_connected():
-            self.status.value.set_text("Connected")
+            self.show_status(self.status, "Connected")
             b = s.bridge or {}
             own = s.own_node() or {}
             for k, v in (("Firmware", b.get("firmware_version", "")), ("Node ID", b.get("node_id", "")), ("Name", b.get("node_name") or own.get("long_name", "")),
-                         ("Hardware", b.get("hw_model_name", "")), ("Reboots", str(b.get("reboot_count", 0))), (f"Mesh Nodes ({len(s.others())})", ", ".join((n.get("short_name") or n.get("user_id", "")) for n in s.others()[:6]) or "none yet")):
-                self.details.append(KeyValue(k, v, mono=k in ("Node ID", "Firmware")))
+                         ("Hardware", b.get("hw_model_name", "")), ("Reboots", str(b.get("reboot_count", 0)))):
+                self.details.append(fact_row(k, v))
+            mesh_node_rows(self.details, s.nodes)
             self.action.set_label("Restart the node")
         elif s.node_service:
-            self.status.value.set_text("Connecting...")
+            self.show_status(self.status, "Connecting...")
             self.action.set_label("Restart the node")
         else:
-            self.status.value.set_text("Disconnected")
+            self.show_status(self.status, "Disconnected")
             self.action.set_label("Start the node")
         radio = s.watchdog.get("radio")
         if radio in ("radio-not-answering", "cover-unreachable"):
             self.details.append(text(s.watchdog.get("message", ""), "body-medium", theme.AMBER, wrap=True))
+        self.details.set_visible(self.details.get_first_child() is not None)
 
-    # SettingsScreen.kt:384-525: Status; "Scan for Meshtastic devices"; "Found devices:" with
-    # name, address and Connect; when connected Firmware, Node ID, Battery, Reboots, Mesh Nodes
-    # and Disconnect. The PIN dialog is this app's: Android's system shows it there.
+    @staticmethod
+    def show_status(label: Gtk.Label, value: str) -> None:
+        """ConnectionStatusRow's value: Green when connected, else TextMuted."""
+        label.set_text(value)
+        paint(label, theme.GREEN if value == "Connected" else theme.TEXT_MUTED)
+
+    # SettingsScreen.kt:384-525: Status; while disconnected "Scan for Meshtastic devices" and
+    # "Found devices:" with a row per device (its name, its address, Connect); when connected
+    # Firmware, Node ID, Battery, Reboots, Mesh Nodes and Disconnect. What is not happening says
+    # the Status row alone (the node banner says a lost link). This edition's own: the PIN (Android's
+    # system asks for it there) and "Forget this node" (the system keeps the bonds there).
     def update_bluetooth(self, s: api.State) -> None:
         ble = s.ble or {}
         b = s.bridge or {}
@@ -191,22 +203,23 @@ class NodeScreen(Page):
             status = "Connecting..."
         else:
             status = "Disconnected"
-        self.bt_status.value.set_text(status)
+        self.show_status(self.bt_status, status)
         if ble.get("pairing_pending") and self.pin_asked_for != ble.get("pairing_since"):
             self.pin_asked_for = ble.get("pairing_since")
             self.ask_pin(ble)
         # Rebuilt only when what it shows changes: a poll that brings the same state must not
         # replace the buttons under a person's finger (or a test's click).
         own = s.own_node() or {}
-        key = (s.mesh_connected(), state, b.get("firmware_version"), b.get("node_id"), b.get("reboot_count"),
+        key = (status, b.get("firmware_version"), b.get("node_id"), b.get("reboot_count"),
                nodes_model.describe(own.get("battery_level"), own.get("voltage")),
                tuple(((n.get("long_name") or "").strip() or n.get("user_id", ""), (n.get("short_name") or "").strip()) for n in (s.nodes or [])),
-               ble.get("pairing_pending"), ble.get("name"), ble.get("address"), ble.get("error"), self.scanning,
-               None if self.devices is None else tuple((d.get("name"), d.get("address"), d.get("rssi"), d.get("chosen")) for d in self.devices))
+               state == "pairing" or bool(ble.get("pairing_pending")), ble.get("name"), ble.get("address"),
+               None if self.devices is None else tuple((d.get("name"), d.get("address")) for d in self.devices))
         if key == getattr(self, "_bt_key", None):
             return
         self._bt_key = key
         clear(self.bt_body)
+        self.bt_body.set_visible(True)
         if s.mesh_connected():
             own = s.own_node() or {}
             rows = [("Firmware", b.get("firmware_version", "")), ("Node ID", b.get("node_id", ""))]
@@ -217,55 +230,59 @@ class NodeScreen(Page):
                 rows.append(("Reboots", str(b["reboot_count"])))
             for k, v in rows:
                 if v:
-                    self.bt_body.append(KeyValue(k, v, mono=k in ("Node ID", "Firmware")))
-            if s.nodes:
-                # "Mesh Nodes (N)" over one row per node: the long name (or the id), the short
-                # name in the mesh colour; nothing while the node has sent no list.
-                self.bt_body.append(text(f"Mesh Nodes ({len(s.nodes)})", "body-small", theme.TEXT_MUTED))
-                for n in s.nodes:
-                    self.bt_body.append(KeyValue((n.get("long_name") or "").strip() or n.get("user_id", ""), (n.get("short_name") or "").strip(), theme.MESH))
+                    self.bt_body.append(fact_row(k, v))
+            mesh_node_rows(self.bt_body, s.nodes)
             # Button(containerColor = MeshSatRed, fillMaxWidth) with bodySmall ink text, as the
             # 9704's Disconnect on the Satellite page.
-            disconnect = filled_button("Disconnect", self.disconnect)
-            disconnect.add_css_class("small-text")
+            disconnect = body_text(filled_button("Disconnect", self.disconnect))
             disconnect.add_css_class("red-fill")
             self.bt_body.append(disconnect)
             return
         if state == "pairing" or ble.get("pairing_pending"):
             self.bt_body.append(text(f"Pairing with {ble.get('name') or ble.get('address') or 'the node'}: enter the PIN shown on its screen.", "body-medium", theme.TEXT_SECONDARY, wrap=True))
             self.bt_body.append(outlined_button("Enter the PIN", lambda: self.ask_pin(ble)))
-        elif ble.get("address"):
-            who = ble.get("name") or ble["address"]
-            if state in ("scanning", "connecting"):
-                self.bt_body.append(text(f"Connecting to {who}.", "body-medium", theme.TEXT_SECONDARY, wrap=True))
-            else:
-                self.bt_body.append(text(f"{who} cannot be reached." + (f" {ble['error'].capitalize()}." if ble.get("error") else ""), "body-medium", theme.AMBER, wrap=True))
-        if not self.scanning:
-            self.bt_body.append(filled_button("Scan for Meshtastic devices", self.scan))
-        if self.devices is not None and not self.scanning:
+        if status == "Disconnected":
+            self.bt_body.append(body_text(filled_button("Scan for Meshtastic devices", self.scan)))
             if self.devices:
-                self.bt_body.append(text("Found devices:", "title-medium"))
+                self.bt_body.append(text("Found devices:", "body-small", theme.TEXT_MUTED))
                 for dev in self.devices:
                     self.bt_body.append(self.device_row(dev))
-            else:
-                self.bt_body.append(text("No Meshtastic devices found. Is the node on, with Bluetooth enabled?", "body-medium", theme.TEXT_SECONDARY, wrap=True))
         if ble.get("address"):
             forget = text_button("Forget this node", self.forget)
             self.bt_body.append(forget)
+        self.bt_body.set_visible(self.bt_body.get_first_child() is not None)
 
     def device_row(self, dev: dict) -> Gtk.Widget:
-        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(12))
-        names = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(2))
+        """DeviceRow: the name in bodyMedium over the address in bodySmall TextMuted, "Connect" in
+        bodySmall Signal Orange at the right, 8 dp inside a strip of the card's own colour (so only
+        its inset shows); a tap anywhere on it connects. "Connect" is also a button of its own, so a
+        screen reader and the tests find one per device after the device's name."""
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
+        for side in ("start", "end", "top", "bottom"):
+            getattr(row, f"set_margin_{side}")(theme.dp(8))
+        names = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         names.set_hexpand(True)
-        names.append(text(dev.get("name") or "Unknown", "title-medium", ellipsize=True))
-        detail = dev.get("address", "")
-        if dev.get("rssi"):
-            detail += f"  {dev['rssi']} dBm"
-        if dev.get("chosen"):
-            detail += "  (your node)"
-        names.append(text(detail, "body-medium", theme.TEXT_SECONDARY, mono=True))
+        names.set_valign(Gtk.Align.CENTER)
+        names.append(text(dev.get("name") or "Unknown", "body-medium", ellipsize=True))
+        names.append(text(dev.get("address", ""), "body-small", theme.TEXT_MUTED))
         row.append(names)
-        row.append(text_button("Connect", lambda: self.connect_node(dev)))
+        connect = Gtk.Button()
+        connect.add_css_class("flat")
+        connect.set_child(text("Connect", "body-small", theme.SIGNAL_ORANGE))
+        name_widget(connect, "Connect")
+        connect.set_valign(Gtk.Align.CENTER)
+        connect.connect("clicked", lambda *_: self.connect_node(dev))
+        row.append(connect)
+
+        def tapped(_gesture, _n, x: float, y: float) -> None:
+            target = row.pick(x, y, Gtk.PickFlags.DEFAULT)
+            if target is not None and (target is connect or target.is_ancestor(connect)):
+                return  # the button's own click
+            self.connect_node(dev)
+
+        tap = Gtk.GestureClick()
+        tap.connect("released", tapped)
+        row.add_controller(tap)
         return row
 
     def scan(self) -> None:
@@ -359,19 +376,44 @@ class SatelliteScreen(Page):
 
     def __init__(self, app):
         super().__init__(app, "Satellite")
+        # SetupPageLinks (MeshSatUI.kt:250): the row full width under the '<- Satellite' row, and
+        # fixed there while the cards scroll under it.
         passes = NavRow("outlined-schedule", "Satellite passes", lambda: app.push(PassesScreen(app)))
         passes.set_detail("When satellites are high overhead")
-        self.column.append(passes)
+        self.insert_child_after(passes, self.header)
         self.sbd, self.sbd_bars, self.imt, self.imt_bars = None, 0, None, 0
         self.show_imt = False
 
+        # A node over Bluetooth with its modem pipe (B9): Android's two cards; else the USB card
+        self.node_card = self.card(satellite_model.NODE_TITLE)
+        self.node_status, self.node_status_text = status_row(satellite_model.STATUS)
+        self.node_card.append(self.node_status)
+        self.use_node = SwitchRow(satellite_model.USE_NODE_MODEM, self.set_use_node)
+        self.node_card.append(self.use_node)
+        self.node_details = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(8))
+        self.node_card.append(self.node_details)
+        self.node_poll = filled_button(satellite_model.POLL_SIGNAL, self.poll_signal)
+        self.node_poll.add_css_class("small-text")
+        self.node_card.append(self.node_poll)
+        self.node_mailbox = MailboxButton(self)
+        self.node_card.append(self.node_mailbox)
+        self.node_note = text(satellite_model.NO_NODE_NOTE, "body-small", theme.TEXT_MUTED, wrap=True)
+        self.node_card.append(self.node_note)
+        self.health_card = self.card(satellite_model.HEALTH_TITLE)
+        self.health_rows = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(8))
+        self.health_card.append(self.health_rows)
+        self.health_warning = text("", "body-small", theme.AMBER, wrap=True)
+        self.health_card.append(self.health_warning)
+        self.health_card.append(text(satellite_model.HEALTH_NOTE, "body-small", theme.TEXT_MUTED, wrap=True))
+        self.stats, self.has_stats = None, False
+
         card = self.card(satellite_model.USB_TITLE)
+        self.usb_card = card
         self.status, self.status_text = status_row(satellite_model.STATUS)
         card.append(self.status)
         self.details = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(8))
         card.append(self.details)
-        self.poll = filled_button(satellite_model.POLL_SIGNAL, self.poll_signal)
-        self.poll.add_css_class("small-text")
+        self.poll = body_text(filled_button(satellite_model.POLL_SIGNAL, self.poll_signal))
         card.append(self.poll)
         self.mailbox = MailboxButton(self)
         card.append(self.mailbox)
@@ -388,11 +430,9 @@ class SatelliteScreen(Page):
         self.imt_details = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(8))
         self.imt_card.append(self.imt_details)
         self.imt_buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8), homogeneous=True)
-        poll = filled_button(satellite_model.POLL_SIGNAL, self.poll_imt_signal)
-        poll.add_css_class("small-text")
+        poll = body_text(filled_button(satellite_model.POLL_SIGNAL, self.poll_imt_signal))
         self.imt_buttons.append(poll)
-        off = filled_button(satellite_model.DISCONNECT, self.disconnect_imt)
-        off.add_css_class("small-text")
+        off = body_text(filled_button(satellite_model.DISCONNECT, self.disconnect_imt))
         off.add_css_class("red-fill")
         self.imt_buttons.append(off)
         self.imt_card.append(self.imt_buttons)
@@ -402,7 +442,25 @@ class SatelliteScreen(Page):
 
     def on_show(self) -> None:
         self.every(5, self.load)
+        self.every(10, self.load_stats)
         self.mailbox.load()
+        self.node_mailbox.load()
+
+    def load_stats(self) -> None:
+        if self.app.state.node_mode() == "bluetooth" and (self.app.state.ble or {}).get("satellite_pipe"):
+            self.fetch("/api/mesh/ble/satellite/stats", self.stats_loaded)
+
+    def stats_loaded(self, answer: api.Answer) -> None:
+        if answer.ok and isinstance(answer.body, dict):
+            self.stats, self.has_stats = answer.body, True
+        elif answer.status == 404:
+            self.stats, self.has_stats = None, False
+        self.render()
+
+    def set_use_node(self, on: bool) -> None:
+        """Use the node's modem: off hands it to the node at once, on takes it (GatewayService.kt:2863-2903)."""
+        self.call("/api/mesh/ble/satellite", lambda a: None if a.ok else self.app.toast(a.error or "The Bridge did not take it."),
+                  body={"enabled": on}, method="PUT")
 
     def load(self) -> None:
         self.fetch("/api/iridium/modem?type=sbd", lambda a: self.loaded("sbd", a))
@@ -444,6 +502,33 @@ class SatelliteScreen(Page):
         s = self.app.state
         # The poll's modem until the page's own read is in
         sbd = self.sbd if self.sbd is not None else (s.modem if (s.modem or {}).get("type") in (None, "", "sbd") else None)
+        ble = s.ble or {}
+        node = s.node_mode() == "bluetooth" and (bool(ble.get("satellite_pipe")) or (sbd or {}).get("port") == "ble")
+        self.node_card.set_visible(node)
+        self.usb_card.set_visible(not node)
+        self.health_card.set_visible(node and self.has_stats)
+        if node:
+            words, connected = satellite_model.node_status(ble, sbd, self.sbd_bars or (s.signal or {}).get("bars", 0))
+            self.node_status_text.set_text(words)
+            paint(self.node_status_text, theme.GREEN if connected else theme.TEXT_MUTED)
+            self.use_node.set_active(ble.get("satellite_enabled") is not False)
+            clear(self.node_details)
+            for label, value in satellite_model.usb_rows(sbd):
+                self.node_details.append(fact_row(label, value))
+            for w in (self.node_details, self.node_poll, self.node_mailbox):
+                w.set_visible(connected)
+            self.node_mailbox.set_connected(connected)
+            self.node_note.set_visible(not connected and not ble.get("satellite_pipe"))
+            clear(self.health_rows)
+            if self.stats is None:
+                self.health_rows.append(text(satellite_model.HEALTH_WAITING, "body-small", theme.TEXT_MUTED))
+                self.health_warning.set_visible(False)
+            else:
+                for label, value in satellite_model.node_stats_rows(self.stats):
+                    self.health_rows.append(fact_row(label, value))
+                warning = satellite_model.node_stats_warning(self.stats)
+                self.health_warning.set_text(warning or "")
+                self.health_warning.set_visible(bool(warning))
         words, connected = satellite_model.usb_status(bool(s.bridge), sbd, self.sbd_bars or (s.signal or {}).get("bars", 0))
         self.status_text.set_text(words)
         paint(self.status_text, theme.GREEN if connected else theme.TEXT_MUTED)
@@ -482,6 +567,27 @@ def status_row(label: str) -> tuple:
     return row, status
 
 
+def mesh_node_rows(box: Gtk.Box, nodes: list) -> None:
+    """SettingsScreen.kt:420-448: "Mesh Nodes (N)" in bodySmall TextMuted, 4 dp more above it,
+    then one row per node, the long name (or the id) at the left and the short name at the right
+    in the mesh colour, both bodySmall, 6 dp inside a strip of the card's own colour (so only its
+    inset shows); nothing while the node has sent no list."""
+    if not nodes:
+        return
+    caption = text(f"Mesh Nodes ({len(nodes)})", "body-small", theme.TEXT_MUTED)
+    caption.set_margin_top(theme.dp(4))
+    box.append(caption)
+    for n in nodes:
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
+        for side in ("start", "end", "top", "bottom"):
+            getattr(row, f"set_margin_{side}")(theme.dp(6))
+        name = text((n.get("long_name") or "").strip() or n.get("user_id", ""), "body-small", ellipsize=True)
+        name.set_hexpand(True)
+        row.append(name)
+        row.append(text((n.get("short_name") or "").strip(), "body-small", theme.MESH, xalign=1.0))
+        box.append(row)
+
+
 class SmsScreen(Page):
     """Setup > SMS, as the Android SMS section: the phone's SIM as a way out, and its state."""
 
@@ -494,7 +600,6 @@ class SmsScreen(Page):
         row, self.status = status_row("SMS")
         card.append(row)
         card.append(text("MeshSat sends and receives texts through this phone's SIM when the network works. Your carrier's normal rates apply.", "body-medium", theme.TEXT_SECONDARY, wrap=True))
-        card.append(text("SOS texts go to your emergency contacts under Safety. A text you write carries its own number.", "body-medium", theme.TEXT_SECONDARY, wrap=True))
         # SettingsScreen.kt:1945-1981: the one number a text with no recipient goes to (the
         # Bridge's SMS gateway's default number, MESHSAT-1412).
         from .model import messaging  # noqa: PLC0415
@@ -504,8 +609,9 @@ class SmsScreen(Page):
         self.gateway = None
         fallback = self.card(messaging.NO_RECIPIENT_TITLE)
         self.number = Field(messaging.NUMBER_LABEL, purpose=Gtk.InputPurpose.PHONE)
+        self.number.entry.add_css_class("text-14")  # textStyle = bodyMedium: Field(size=14), theme.py's .field-input.text-14
         fallback.append(self.number)
-        save = filled_button("Save", self.save_number, expand=False)
+        save = body_text(filled_button("Save", self.save_number, expand=False))
         save.set_halign(Gtk.Align.START)
         fallback.append(save)
         fallback.append(text(messaging.NO_RECIPIENT_NOTE, "body-small", theme.TEXT_MUTED, wrap=True))
@@ -569,16 +675,16 @@ class AdvancedScreen(Page):
     )
 
     def __init__(self, app):
-        super().__init__(app, "Advanced")
-        self.column.set_margin_start(theme.dp(0))
-        self.column.set_margin_end(theme.dp(0))
-        self.column.set_margin_top(theme.dp(0))
+        # AdvancedScreen: the rows one under the other, with no padding and no spacing of the
+        # page's own, and a divider under the last one.
+        super().__init__(app, "Advanced", spacing=0, padded=False)
         for name, title_text, detail, route in self.ROWS:
             if route == "nodelog" and app.state.node_mode() == "bluetooth":
                 detail = "The node's live log over Bluetooth, on demand"  # Android's words, where they hold
             row = NavRow(name, title_text, lambda t=title_text, r=route: self.open(t, r))
             row.set_detail(detail)
             self.column.append(row)
+        self.column.append(divider())
 
     def open(self, title_text: str, route: str) -> None:
         # The native pages, pushed over this one as Android's navigation does.

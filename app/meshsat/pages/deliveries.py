@@ -8,7 +8,7 @@ import time
 from gi.repository import Gtk
 
 from .. import api, theme
-from ..layout import empty_text
+from ..layout import empty_text, pinned_head
 from ..model import deliveries as model
 from ..model import words
 from ..screen import SubScreen
@@ -64,12 +64,15 @@ class DeliveryCard(Gtk.Box):
             self.append(row)
 
 
-class Ledger(Gtk.Box):
-    """DeliveryLedger: the counts by state (tapping one filters by it), one chip per link (the
-    row slides when there are more links than fit), and one card per message."""
+class Ledger:
+    """DeliveryLedger: the counts by state (tapping one filters by it) and one chip per link (the
+    row slides when there are more links than fit) in `head`, which stays put; one card per message
+    in `body`, the only part that scrolls (its LazyColumn(weight 1f)), 8 dp under the head (the
+    Column's spacedBy(8.dp)). The page puts each where it goes."""
 
     def __init__(self, app, on_open, on_cancel=None, on_retry=None):
-        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(8))
+        self.head = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(8))
+        self.body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         self.app = app
         self.on_open, self.on_cancel, self.on_retry = on_open, on_cancel, on_retry
         self.group = None
@@ -99,18 +102,18 @@ class Ledger(Gtk.Box):
             self.groups[key] = (button, count, label)
             row.append(button)
         counts.append(row)
-        self.append(counts)
+        self.head.append(counts)
         self.chip_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
         self.chips = {}
         self.chips_scroll = hscroll(self.chip_row)
         self.chips_scroll.set_visible(False)
-        self.append(self.chips_scroll)
+        self.head.append(self.chips_scroll)
         # Box(weight(1f), Alignment.Center): the empty text in the middle of the room under the
         # counts and the chips
         self.empty = empty_text()
-        self.append(self.empty)
+        self.body.append(self.empty)
         self.list = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(6))
-        self.append(self.list)
+        self.body.append(self.list)
 
     def set_group(self, key: str) -> None:
         self.group = None if self.group == key else key
@@ -250,7 +253,8 @@ class DeliveryScreen(SubScreen):
         super().__init__(app, "Message queue", spacing=8)
         self.route = "deliveries"
         self.ledger = Ledger(app, self.open)
-        self.column.append(self.ledger)
+        pinned_head(self, gap=8).append(self.ledger.head)
+        self.column.append(self.ledger.body)
 
     def on_show(self) -> None:
         self.every(4, self.load)
