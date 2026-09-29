@@ -334,6 +334,26 @@ class FakeBridge:
             return 200, [dict(row)] if row else []
         if path == "/api/iridium/mailbox" and method == "GET":
             return 200, dict(self.mailbox)
+        if path == "/api/mesh/ble/satellite" and method == "PUT":
+            # B9d: the switch kept in the node record; off hands the modem to the node at once
+            status = self.routes.get("GET /api/mesh/ble/status")
+            if not isinstance(status, dict) or not status.get("address"):
+                return 409, {"error": "the mesh port is not ble"}
+            if not isinstance(body, dict) or not isinstance(body.get("enabled"), bool):
+                return 400, {"error": "enabled must be true or false"}
+            status.update(satellite_enabled=body["enabled"], satellite_owner="phone" if body["enabled"] else "node")
+            modem = self.routes.get("GET /api/iridium/modem")
+            if isinstance(modem, dict) and modem.get("port") in ("ble", ""):
+                # As the Bridge: off detaches the node's satellite gateway (no port any more), on
+                # claims the modem again through the pipe
+                modem["connected"] = body["enabled"]
+                modem["port"] = "ble" if body["enabled"] else ""
+            return 200, dict(status)
+        if path == "/api/mesh/ble/satellite/stats" and method == "GET":
+            stats = self.routes.get("_node_stats")
+            if not isinstance(stats, dict):
+                return 404, {"error": "no connected MeshSat node reports its modem's health"}
+            return 200, dict(stats, read_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
         parts = path.split("/")
         if len(parts) == 5 and parts[1:3] == ["api", "keys"] and parts[3] in ("sms", "cellular", "mesh", "iridium"):
             # B21: a chat's key, by channel type and address (escaped or not), as the Bridge

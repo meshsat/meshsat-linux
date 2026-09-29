@@ -24,7 +24,10 @@ class AboutScreen(SubScreen):
         version = text(model.version_line(VERSION, provenance.get("build")), "body-large", theme.SIGNAL_ORANGE, xalign=0.5)
         version.set_margin_top(theme.dp(4))
         head.append(version)
-        subtitle = text(model.SUBTITLE, "body-medium", theme.TEXT_MUTED, xalign=0.5, wrap=True)
+        # A Text without textAlign in a centred Column: one line sits in the middle; wrapped, it
+        # fills the width and its lines start at the page's margin.
+        subtitle = text(model.SUBTITLE, "body-medium", theme.TEXT_MUTED, wrap=True)
+        subtitle.set_halign(Gtk.Align.CENTER)
         subtitle.set_margin_top(theme.dp(8))
         subtitle.set_margin_bottom(theme.dp(16))
         head.append(subtitle)

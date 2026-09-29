@@ -9,10 +9,11 @@ import threading
 from gi.repository import GLib, Gtk
 
 from .. import files, maptiles, theme
+from ..layout import material_icon_button
 from ..model import maps
 from ..model.mbtiles import NotRaster
 from ..screen import SubScreen
-from ..widgets import SwitchRow, clear, confirm, icon_button, name_widget, outlined_button, paint, text
+from ..widgets import SwitchRow, clear, confirm, name_widget, outlined_button, paint, text
 
 CHUNK = 1 << 20
 
@@ -104,7 +105,8 @@ class MapsScreen(SubScreen):
         else:
             use.connect("clicked", lambda *_: self.choose(entry.filename))
         row.append(use)
-        bin_ = icon_button("outlined-delete", lambda: self.ask_delete(entry), 24, theme.TEXT_MUTED, maps.delete_name(entry.name))
+        # Icons.Default.Delete, the filled bin, in TextMuted (SettingsScreen.kt:2126-2128)
+        bin_ = material_icon_button("delete", lambda: self.ask_delete(entry), 24, theme.TEXT_MUTED, maps.delete_name(entry.name))
         bin_.set_valign(Gtk.Align.CENTER)
         row.append(bin_)
         return row

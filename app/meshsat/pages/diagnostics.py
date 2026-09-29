@@ -45,7 +45,8 @@ class DiagnosticsScreen(SubScreen):
         self.route = "setup/diagnostics"
         self.scores = None
         self.health = self.card("Link health")
-        self.rows = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(4))
+        # SettingsScreen.kt:1091-1122: each link a row of the card's Column, 8 dp apart.
+        self.rows = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(8))
         self.health.append(self.rows)
         self.formula = text(FORMULA, "body-small", theme.TEXT_MUTED, wrap=True)
         self.health.append(self.formula)
@@ -106,7 +107,7 @@ class DiagnosticsScreen(SubScreen):
         self.show_share()
 
     def got_scores(self, answer: api.Answer) -> None:
-        from ..widgets import clear, tone_colour  # noqa: PLC0415
+        from ..widgets import clear, paint, tone_colour  # noqa: PLC0415
         from ..model import words  # noqa: PLC0415
 
         clear(self.rows)
@@ -117,8 +118,11 @@ class DiagnosticsScreen(SubScreen):
         self.formula.set_visible(True)
         for hs in answer.body:
             ch = hs.get("interface_id", "")
+            # background(MeshSatSurface, RoundedCornerShape(4.dp)).padding(8.dp): the card's own
+            # colour, so the row lies flat on it (tonal-box's corners and padding, not its raise).
             row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
             row.add_css_class("tonal-box")
+            paint(row, theme.SURFACE, background=True)
             name = text(ch, "body-small", theme.lane_colour(words.channel_lane(ch)) if words.channel_lane(ch) != "none" else theme.TEXT_SECONDARY)
             name.set_hexpand(True)
             row.append(name)

@@ -12,6 +12,7 @@ has no relay client to a kit (docs/PARITY.md, setup.hub.relay)."""
 from gi.repository import Gtk
 
 from .. import api, flows, system, theme
+from ..layout import body_text
 from ..model import hub as model
 from ..model import messaging as messaging_words
 from ..scan import Scanner
@@ -90,18 +91,24 @@ class HubScreen(SubScreen):
         self.username = Field(model.USERNAME_LABEL)
         self.password = Field(model.PASSWORD_LABEL, purpose=Gtk.InputPurpose.PASSWORD)
         self.password.entry.set_visibility(False)
+        # The eye is the field's trailingIcon: a 48 dp IconButton inside the outline at its end,
+        # centred on the box under the floating label's room; the typed text stops 4 dp before it
+        # (the entry's own 16 dp end padding plus these 36).
         self.eye = icon_button("filled-visibility", self.toggle_password, colour=theme.TEXT_SECONDARY, tooltip=model.SHOW_PASSWORD)
+        self.eye.set_halign(Gtk.Align.END)
         self.eye.set_valign(Gtk.Align.CENTER)
-        with_eye = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(4))
-        self.password.set_hexpand(True)
-        with_eye.append(self.password)
-        with_eye.append(self.eye)
-        self.details.append(pair(self.username, with_eye))
+        self.eye.set_margin_top(self.password.entry.get_margin_top())
+        self.password.box.add_overlay(self.eye)
+        self.password.entry.set_margin_end(theme.dp(36))
+        self.details.append(pair(self.username, self.password))
         self.interval = Field(model.INTERVAL_LABEL, purpose=Gtk.InputPurpose.DIGITS)
         self.interval.entry.connect("changed", self.only_digits)
         self.details.append(self.interval)
-        save = filled_button(model.SAVE, self.save, expand=False)
-        save.add_css_class("small-text")
+        # Each typed in bodyMedium, 14 sp (SettingsScreen.kt:1762-1835): Field(size=14), theme.py's
+        # .field-input.text-14.
+        for field in (self.url, self.bridge_id, self.callsign, self.username, self.password, self.interval):
+            field.entry.add_css_class("text-14")
+        save = body_text(filled_button(model.SAVE, self.save, expand=False))
         save.set_halign(Gtk.Align.START)
         self.details.append(save)
         card.append(self.details)

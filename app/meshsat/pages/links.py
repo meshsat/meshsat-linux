@@ -6,12 +6,30 @@ import time
 
 from gi.repository import Gdk, Gtk
 
-from .. import api, theme
+from .. import api, routes, theme
+from ..layout import pinned_head
 from ..model import links as model
 from ..model import rules as rules_model
 from ..model import words
 from ..screen import SubScreen
 from ..widgets import Card, Tabs, clear, confirm, divider, dot, hscroll, name_widget, outlined_button, state_tag, text, tone_colour
+
+
+# The Setup page each kind of link is set up and connected from, by the Bridge's channel type.
+SETUP_PAGES = {"mesh": "setup/node", "iridium": "setup/satellite", "iridium_imt": "setup/satellite", "cellular": "setup/sms", "mqtt": "setup/hub",
+               "aprs": "setup/integrations", "tak": "setup/integrations"}
+
+
+def setup_route(iface: dict) -> str | None:
+    """Where "Try to connect now" takes a link the Bridge has no device of its own to bind for:
+    its Setup page (the node, Satellite, SMS, the Hub, or Integrations for ham radio, TAK and
+    Reticulum); None for a link with none."""
+    kind, id_ = iface.get("channel_type") or "", iface.get("id", "")
+    if kind in SETUP_PAGES:
+        return SETUP_PAGES[kind]
+    if id_.startswith(("aprs", "tak", "tcp_rns", "rns")):
+        return "setup/integrations"
+    return routes.LANES.get(words.channel_lane(id_))
 
 
 def _rounded(cr, x: float, y: float, w: float, h: float, r: float) -> None:
@@ -32,10 +50,17 @@ class LinksScreen(SubScreen):
         self.lanes = self.lanes_of(app.state)
         self._content_key = None
         self._quiet = False
-        self.column.append(text(model.INTRO, "body-medium", theme.TEXT_SECONDARY, wrap=True))
+        # InterfacesScreen.kt:110-207: the intro (8 dp under it), the tabs, 4 dp and the divider
+        # stay put; each tab's content scrolls under them, from 12 dp under the divider.
+        head = pinned_head(self, gap=12)
+        intro = text(model.INTRO, "body-medium", theme.TEXT_SECONDARY, wrap=True)
+        intro.set_margin_bottom(theme.dp(8))
+        head.append(intro)
         self.tabs = Tabs(list(model.TABS), self.select_tab, plain=True)
-        self.column.append(hscroll(self.tabs))
-        self.column.append(divider())
+        head.append(hscroll(self.tabs))
+        line = divider()
+        line.set_margin_top(theme.dp(4))
+        head.append(line)
         self.content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(10))
         self.column.append(self.content)
         self.render()
@@ -86,6 +111,10 @@ class LinksScreen(SubScreen):
         badges = model.badges(self.interfaces, self.scores, self.lanes)
         for tab in model.TABS:
             self.tabs.set_badge(tab, badges.get(tab, 0))
+        # InterfacesScreen.kt:155-167: the links that work counted in green, the low scores in
+        # amber, each on a 12 % tint of its colour (theme.py's .count.tone-*).
+        for tab, tone in (("Links", "tone-green"), ("Health", "tone-amber")):
+            self.tabs.badges[tab].add_css_class(tone)
         tab = self.tabs.selected
         now = time.time()
         data = {
@@ -161,8 +190,10 @@ class LinksScreen(SubScreen):
             card.append(text(times, "body-small", theme.TEXT_MUTED, wrap=True))
         if attempts:
             card.append(text(attempts, "body-small", theme.AMBER))
-        if model.can_reconnect(state) and model.bind_target(iface):
+        # On every link that is off or not working (OutlinedButton, heightIn(min = 48.dp)).
+        if model.can_reconnect(state) and (model.bind_target(iface) or setup_route(iface)):
             button = outlined_button(model.RECONNECT, lambda i=iface: self.reconnect(i))
+            button.add_css_class("tall")
             button.set_halign(Gtk.Align.START)
             button.set_margin_top(theme.dp(4))
             card.append(button)
@@ -193,9 +224,16 @@ class LinksScreen(SubScreen):
         self.load_links()
 
     def reconnect(self, iface: dict) -> None:
+        """Android's reconnectNow: the Bridge binds the link's device again. A link with no device
+        of the Bridge's to bind (the mesh through the node, SMS through ModemManager, the Hub, the
+        networks of Integrations) connects from its own Setup page, which opens instead."""
         id_ = iface.get("id", "")
+        target = model.bind_target(iface)
+        if not target:
+            self.app.open_route(setup_route(iface))
+            return
         self.app.toast(model.toast_reconnect(id_))
-        self.call(f"/api/interfaces/{id_}/bind", lambda a: None if a.ok else self.app.toast(f"That did not work: {a.error}"), body={"device_id": model.bind_target(iface)})
+        self.call(f"/api/interfaces/{id_}/bind", lambda a: None if a.ok else self.app.toast(f"That did not work: {a.error}"), body={"device_id": target})
 
     # Rules: the routing rules of every link (read-only)
     def rules_tab(self, now: float) -> None:

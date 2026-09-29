@@ -35,9 +35,19 @@ def case_new_message_to_everyone_and_by_satellite(ctx):
 
 
 def case_counts_have_a_singular(ctx):
+    """Every node of the radio's list is counted, the phone's own included (MessagesScreen.kt's
+    nodes.size): the phone and MSPA are "2 nodes"; the phone alone is "1 node" (Android's "1 nodes"
+    is its slip, not copied)."""
     ctx.app.open("messages")
-    ctx.tree.wait_text("1 node")
+    ctx.tree.wait_text("2 nodes")
     ctx.tree.wait_text("2 today")
+    ctx.bridge.scenario("one-node")
+    ctx.app.refresh()
+    ctx.tree.wait_text("1 node", timeout=10)
+    assert not ctx.tree.has_text("1 nodes"), "one node reads '1 nodes'"
+    ctx.bridge.scenario("mesh-only")
+    ctx.app.refresh()
+    ctx.tree.wait_text("2 nodes", timeout=10)
 
 
 def case_search_filters_all_messages(ctx):

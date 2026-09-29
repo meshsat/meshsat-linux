@@ -9,7 +9,7 @@ import math
 import threading
 import time
 
-from gi.repository import Gdk, GLib, Gtk
+from gi.repository import Gdk, GLib, Gtk, Pango
 
 from . import api, theme
 from .model import sky
@@ -296,6 +296,24 @@ def rgba_hex(colour: str, alpha: float) -> str:
     return f"{colour}{round(alpha * 255):02X}"
 
 
+def typeset(label: Gtk.Label, size: float | None = None, weight: "Pango.Weight | None" = None, colour: str | None = None) -> Gtk.Label:
+    """A label's size (in sp), weight and colour as Pango attributes, over whatever the
+    stylesheet gives the label: the few words on this page whose Compose style no class of
+    theme.py matches (a TextButton's label in labelMedium, a SemiBold titleMedium). A colour set
+    this way also stays when the button it is on is off."""
+    attrs = Pango.AttrList()
+    if size is not None:
+        attrs.insert(Pango.attr_size_new_absolute(round(size * theme.SCALE * Pango.SCALE)))
+    if weight is not None:
+        attrs.insert(Pango.attr_weight_new(weight))
+    if colour is not None:
+        rgba = Gdk.RGBA()
+        rgba.parse(colour)
+        attrs.insert(Pango.attr_foreground_new(round(rgba.red * 65535), round(rgba.green * 65535), round(rgba.blue * 65535)))
+    label.set_attributes(attrs)
+    return label
+
+
 class SegmentedChoice(Gtk.Box):
     """A row of equal choices, the chosen one filled: sized to the screen, never cut off."""
 
@@ -400,7 +418,10 @@ class PassesScreen(Screen):
         self.orbit_label = text("Orbit data: No data", "label-small", theme.TEXT_MUTED, ellipsize=True)
         self.orbit_label.set_hexpand(True)
         orbit_row.append(self.orbit_label)
+        # TextButton { Text("Update", style = labelMedium, color = ColorIridium) }: lavender 12 sp
+        # medium, "Updating" too while it works
         self.update_button = text_button("Update", self.refresh_tles)
+        typeset(self.update_button.get_child(), 12, Pango.Weight.MEDIUM, theme.IRIDIUM)
         orbit_row.append(self.update_button)
         footer.append(orbit_row)
         self.column.append(footer)
@@ -577,24 +598,31 @@ class PassesScreen(Screen):
         overhead = active is not None
         p = active or upcoming
         accent = theme.GREEN if overhead else theme.IRIDIUM
-        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(8))
+        # PassBanner (PassPredictorScreen.kt:465-535): the label in labelMedium at 80 % of the
+        # accent, the satellite in titleMedium SemiBold; the countdown in headlineSmall Plex Mono
+        # Bold, which Type.kt maps to Plex Mono's Medium; 8 dp to the chips, 4 dp to the line under.
+        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         card.add_css_class("pass-banner")
         card.add_css_class("pass-banner-green" if overhead else "pass-banner-iridium")
         top = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
         left = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         left.set_hexpand(True)
-        left.append(text("Overhead now" if overhead else "Next pass", "label-medium", accent))
-        left.append(text(p["satellite"], "title-medium", accent))
+        label = text("Overhead now" if overhead else "Next pass", "label-medium", accent)
+        label.set_opacity(0.8)
+        left.append(label)
+        left.append(typeset(text(p["satellite"], "title-medium", accent), weight=Pango.Weight.SEMIBOLD))
         top.append(left)
         right = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         right.set_halign(Gtk.Align.END)
         if not overhead:
-            right.append(text(countdown_text(p["aos"] - now), "headline-small", accent, xalign=1.0, mono=True))
+            countdown = text(countdown_text(p["aos"] - now), "headline-small", accent, xalign=1.0, mono=True)
+            right.append(typeset(countdown, weight=Pango.Weight.MEDIUM))
         right.append(text(hhmm(p["aos"]), "title-medium", theme.TEXT_SECONDARY if not overhead else accent, xalign=1.0, mono=True))
         right.append(text(f"{date_short(p['aos'])} UTC", "label-small", theme.TEXT_MUTED, xalign=1.0))
         top.append(right)
         card.append(top)
         chips = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(16))
+        chips.set_margin_top(theme.dp(8))
         for name, value in (("Duration", duration_text(p["duration_min"])), ("Peak", f"{round(p['peak_elev_deg'])}°"), ("Az", f"{round(p['peak_azimuth'])}°")):
             chip = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(4))
             chip.append(text(name, "label-small", theme.TEXT_MUTED))
@@ -602,7 +630,9 @@ class PassesScreen(Screen):
             chips.append(chip)
         card.append(chips)
         if overhead:
-            card.append(text("A message can go out now.", "label-small", accent))
+            now_line = text("A message can go out now.", "label-small", accent)
+            now_line.set_margin_top(theme.dp(4))
+            card.append(now_line)
         self.banner.append(card)
 
     def pass_row(self, p: dict, now: int) -> Gtk.Widget:

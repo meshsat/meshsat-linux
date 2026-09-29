@@ -29,20 +29,34 @@ def save(rows: list) -> None:
 
 
 class CardsSection(Card):
+    """The card of ContactCards.kt:84-152, a Column with no spacing of its own: the title, the
+    description 4 dp under it and 12 dp over the buttons, My card and Scan a card side by side,
+    Paste a card instead right under them, then "No cards yet." 12 dp lower or the cards, each
+    12 dp under the one before (theme.py's .card-row), nothing under an empty list. Material
+    keeps a 48 dp touch height round its 40 dp buttons: the row of outlined buttons takes 4 dp
+    above and below, the text buttons are 48 dp tall with their words in the middle."""
+
     def __init__(self, app):
-        super().__init__(spacing=8)
+        super().__init__(spacing=0)
         self.app = app
         self.add_css_class("cards-section")
         self.append(text(cards.TITLE, "title-medium"))
-        self.append(text(cards.DESCRIPTION, "body-small", theme.TEXT_MUTED, wrap=True))
+        description = text(cards.DESCRIPTION, "body-small", theme.TEXT_MUTED, wrap=True)
+        description.set_margin_top(theme.dp(4))
+        description.set_margin_bottom(theme.dp(12))
+        self.append(description)
         buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
+        buttons.set_margin_top(theme.dp(4))
+        buttons.set_margin_bottom(theme.dp(4))
         buttons.append(outlined_button(cards.MY_CARD, self.my_card))
         buttons.append(outlined_button(cards.SCAN, self.scan))
         self.append(buttons)
         paste = text_button(cards.PASTE, self.paste)
+        paste.set_size_request(-1, theme.dp(48))
         paste.set_halign(Gtk.Align.START)
         self.append(paste)
         self.empty = text(cards.NO_CARDS, "body-small", theme.TEXT_MUTED)
+        self.empty.set_margin_top(theme.dp(12))
         self.append(self.empty)
         self.rows = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         self.append(self.rows)
@@ -52,6 +66,7 @@ class CardsSection(Card):
     def fill(self) -> None:
         rows = cards.ordered(load())
         self.empty.set_visible(not rows)
+        self.rows.set_visible(bool(rows))
         clear(self.rows)
         for card in rows:
             box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
@@ -60,6 +75,7 @@ class CardsSection(Card):
             box.append(text(card.get("fingerprint", ""), "body-small", theme.TEXT_MUTED, mono=True))
             box.append(text(cards.row_line(card), "body-small", theme.TEXT_MUTED, wrap=True))
             forget = text_button(cards.FORGET, lambda fp=card["fingerprint"]: self.forget(fp))
+            forget.set_size_request(-1, theme.dp(48))
             forget.set_halign(Gtk.Align.START)
             box.append(forget)
             self.rows.append(box)

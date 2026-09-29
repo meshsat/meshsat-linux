@@ -204,7 +204,9 @@ def case_not_connected_offers_the_node_page(ctx):
     ctx.bridge.set("GET /api/status", status)
     ctx.app.refresh()
     ctx.tree.wait_text("Your phone is not connected to your node, so its settings cannot be read or changed.", timeout=10)
-    assert not ctx.tree.find("text", name="Long name").sensitive, "the name can be typed with no node"
+    # IdentityTabContent keeps the fields enabled with no node; only "Save name" waits for it.
+    assert ctx.tree.find("text", name="Long name").sensitive, "the name fields are greyed with no node"
+    assert not ctx.tree.find("button", name="Save name").sensitive, "the name can be saved with no node"
     ctx.shot("not-connected")
     ctx.tree.click("Connect your node")
     ctx.tree.wait_text("Your MeshSat node", timeout=10)

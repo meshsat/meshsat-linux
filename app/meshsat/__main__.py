@@ -3,6 +3,7 @@
 with their own stacks, the navigation bar), night mode as the colour matrix Android applies,
 and the few things the screens ask of it: push, pop, toast, copy, open a route, pick a tab."""
 import json
+import math
 import os
 import subprocess
 import sys
@@ -12,13 +13,14 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
+from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
 
 from . import __version__, api, flows, maptiles, routes, sosflow, store, theme, trace  # noqa: E402
 from .home import HomeScreen  # noqa: E402
 from .mapview import MapScreen  # noqa: E402
 from .messages import ChatScreen, MessagesScreen, name_of  # noqa: E402
 from .model import dashboard, words  # noqa: E402
+from .model.home import MODEM_SEEN  # noqa: E402
 from .people import PeopleScreen  # noqa: E402
 from .setup import SetupScreen  # noqa: E402
 from .system import bluetooth_on  # noqa: E402
@@ -31,6 +33,11 @@ TEST = os.environ.get("MESHSAT_APP_TEST") == "1"
 NOTIFY = not TEST or os.environ.get("MESHSAT_APP_NOTIFY") == "1"
 TABS = (("home", "Home", HomeScreen), ("messages", "Messages", MessagesScreen), ("map", "Map", MapScreen), ("people", "People", PeopleScreen), ("setup", "Setup", SetupScreen))
 TABS_BY_KEY = {key for key, _title, _cls in TABS}
+# A toast (Android's Toast, see MeshSatApp.build_toast): how long one stays, its fade, and how many
+# wait their turn at most (Android shows five of one app's toasts in turn and drops the rest).
+TOAST_SECONDS = 3
+TOAST_FADE_MS = 250
+TOAST_QUEUE = 5
 
 GLib.set_prgname("net.meshsat.Bridge")
 GLib.set_application_name("MeshSat")
@@ -58,6 +65,11 @@ class MeshSatApp(Adw.Application):
         self._note_timer = 0
         self._note_sent_at = 0.0
         self._down_since = None  # when this app first saw the node's link go (NodeLinkBanner)
+        # The toast on view and the ones waiting their turn (build_toast)
+        self.toast_revealer = None
+        self.toast_label = None
+        self._toast_queue = []
+        self._toast_on = False
         self.night = False
         self.tabs = {}
         self.current = "home"
@@ -261,8 +273,11 @@ class MeshSatApp(Adw.Application):
         # Night mode, as Android's: the red-only matrix over the whole screen, icons and images included.
         self.filter = Filtered(column, theme.NIGHT_MATRIX)
         self.filter.on = self.night
-        self.toasts = Adw.ToastOverlay()
+        # The toasts float over everything, outside the night filter, as Android's system toast
+        # lies outside the app's window.
+        self.toasts = Gtk.Overlay()
         self.toasts.set_child(self.filter)
+        self.toasts.add_overlay(self.build_toast())
         if self.prefs.get("welcome_done", False):
             self.window.set_content(self.toasts)
         else:
@@ -405,7 +420,8 @@ class MeshSatApp(Adw.Application):
             elif peer == "satellite":
                 self.push(ChatScreen(self, "satellite", "Satellite", "satellite"), "Satellite")
             elif peer.startswith("sms:"):
-                self.push(ChatScreen(self, peer, self.state.contact_name(peer[4:]), "sms"), "SMS")
+                # Peers.displayName: a phone number is named by itself, a contact's too
+                self.push(ChatScreen(self, peer, peer[4:], "sms"), "SMS")
             else:
                 self.push(ChatScreen(self, peer, name_of(peer, self.state), "mesh"), name_of(peer, self.state))
             return
@@ -427,11 +443,69 @@ class MeshSatApp(Adw.Application):
         if hasattr(screen, "night_changed"):
             screen.night_changed(self.night)
 
+    def build_toast(self) -> Gtk.Widget:
+        """Android's system Toast (text_toast.xml), where libadwaita's toast had bold words, a
+        close button and a bordered box: the words in bodyMedium, at most two lines, on a pill of
+        SurfaceHigh with no border and no button, 16 dp in from its ends and 12 dp from its top
+        and bottom, centred 24 dp above the bottom edge (toast_y_offset). Nothing in it takes a
+        tap, so the navigation bar under it stays usable, as under Android's.
+
+        The pill sits at the bottom of a see-through box that fills the window: an overlay child
+        of its own would be sized by its preferred size, two lines high for any text that can be
+        ellipsized, where the box gives it the height its words need at the width they get."""
+        self.toast_label = text("", "body-medium", xalign=0.0, wrap=True, ellipsize=True)
+        self.toast_label.set_lines(2)
+        for side, value in (("start", 16), ("end", 16), ("top", 12), ("bottom", 12)):
+            getattr(self.toast_label, f"set_margin_{side}")(theme.dp(value))
+        pill = Gtk.Overlay()
+        background = Gtk.DrawingArea(accessible_role=Gtk.AccessibleRole.PRESENTATION)
+        background.set_draw_func(draw_pill)
+        pill.set_child(background)
+        pill.add_overlay(self.toast_label)
+        pill.set_measure_overlay(self.toast_label, True)
+        self.toast_revealer = Gtk.Revealer(transition_type=Gtk.RevealerTransitionType.CROSSFADE, transition_duration=TOAST_FADE_MS)
+        self.toast_revealer.set_child(pill)
+        self.toast_revealer.set_halign(Gtk.Align.CENTER)
+        self.toast_revealer.set_valign(Gtk.Align.END)
+        self.toast_revealer.set_vexpand(True)
+        holder = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        holder.set_can_target(False)
+        holder.set_margin_start(theme.dp(16))
+        holder.set_margin_end(theme.dp(16))
+        holder.set_margin_bottom(theme.dp(24))
+        holder.append(self.toast_revealer)
+        return holder
+
     def toast(self, message: str) -> None:
+        """A toast: `message` for TOAST_SECONDS, one at a time, the next ones in turn."""
         trace.event("toast", text=message)
-        toast = Adw.Toast.new(message)
-        toast.set_timeout(3)
-        self.toasts.add_toast(toast)
+        if self.toast_revealer is None or len(self._toast_queue) + int(self._toast_on) >= TOAST_QUEUE:
+            return
+        self._toast_queue.append(message)
+        if not self._toast_on:
+            self._next_toast()
+
+    def _next_toast(self) -> bool:
+        if not self._toast_queue:
+            self._toast_on = False
+            return False
+        message = self._toast_queue.pop(0)
+        self._toast_on = True
+        self.toast_label.set_text(message)
+        self.toast_revealer.set_reveal_child(True)
+        # A screen reader says it, as TalkBack says a toast (GTK 4.14's announcements)
+        if self.window is not None and hasattr(self.window, "announce") and hasattr(Gtk, "AccessibleAnnouncementPriority"):
+            self.window.announce(message, Gtk.AccessibleAnnouncementPriority.MEDIUM)
+        GLib.timeout_add(TOAST_SECONDS * 1000, self._toast_done)
+        return False
+
+    def _toast_done(self) -> bool:
+        self.toast_revealer.set_reveal_child(False)
+        if self._toast_queue:
+            GLib.timeout_add(TOAST_FADE_MS, self._next_toast)
+        else:
+            self._toast_on = False
+        return False
 
     def copy(self, value: str) -> None:
         self.window.get_clipboard().set(value)
@@ -621,11 +695,18 @@ class MeshSatApp(Adw.Application):
                     os.remove(flag)
             except OSError:
                 pass
+        # An SOS uses the satellite whenever this phone has had a modem, connected now or not
+        # (GatewayService.initSos): the last IMEI the Bridge reported is kept for SosReach.
+        imei = str((s.modem or {}).get("imei") or "").strip()
+        if imei and imei != self.prefs.get(MODEM_SEEN, ""):
+            self.prefs.set(**{MODEM_SEEN: imei})
         bars = (s.signal or {}).get("bars", 0)
         if s.modem_connected():
             self.strip.set_lane("satellite", "working", f"{bars}/5", f"Satellite signal {bars} of 5")
         elif s.modem and s.modem.get("port") not in ("", "supervisor", None):
-            self.strip.set_lane("satellite", "trying", "", "Satellite not connected")
+            # IridiumSpp's Connecting: amber while the modem is looked for, red while it stays
+            # silent (MeshSatUI.kt's StatusStrip, modemSilent)
+            self.strip.set_lane("satellite", "failed" if s.modem.get("silent") else "trying", "", "Satellite not connected")
         else:
             self.strip.set_lane("satellite", "off", "", "Satellite not connected")
         if s.mesh_connected():
@@ -649,6 +730,23 @@ class MeshSatApp(Adw.Application):
         if not getattr(self, "_opened", True):
             GLib.idle_add(self.open_window)
         return False
+
+
+def draw_pill(_area, cr, width: int, height: int) -> None:
+    """The toast's pill: SurfaceHigh, its ends round (24 dp corners at most)."""
+    if width <= 0 or height <= 0:
+        return
+    rgba = Gdk.RGBA()
+    rgba.parse(theme.SURFACE_HIGH)
+    r = min(theme.dp(24), height / 2, width / 2)
+    cr.new_sub_path()
+    cr.arc(width - r, r, r, -math.pi / 2, 0)
+    cr.arc(width - r, height - r, r, 0, math.pi / 2)
+    cr.arc(r, height - r, r, math.pi / 2, math.pi)
+    cr.arc(r, r, r, math.pi, 1.5 * math.pi)
+    cr.close_path()
+    cr.set_source_rgba(rgba.red, rgba.green, rgba.blue, 1.0)
+    cr.fill()
 
 
 def link_down(s: api.State) -> bool:

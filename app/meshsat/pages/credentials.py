@@ -8,10 +8,10 @@ import os
 from gi.repository import Gtk
 
 from .. import api, files, theme
-from ..layout import centred
+from ..layout import centred, material_icon, material_icon_button
 from ..model import credentials as model
 from ..screen import SubScreen
-from ..widgets import Card, clear, confirm, icon, icon_button, text, tone_colour
+from ..widgets import Card, clear, confirm, icon, text
 
 
 class CredentialsScreen(SubScreen):
@@ -66,10 +66,13 @@ class CredentialsScreen(SubScreen):
             self.list.append(self.card(cred))
 
     def card(self, cred: dict) -> Card:
-        card = Card(spacing=4)
+        """CredentialCard: one Column with no spacing of its own; the name over its badges at the
+        left of the filled bin, then 4 dp, then the lines one under the other."""
+        card = Card(spacing=0)
         top = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
-        texts = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(4))
+        texts = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         texts.set_hexpand(True)
+        texts.set_valign(Gtk.Align.CENTER)
         texts.append(text(cred.get("name", ""), "body-medium", wrap=True))
         badges = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
         for badge in model.badges(cred):
@@ -79,21 +82,24 @@ class CredentialsScreen(SubScreen):
             badges.append(label)
         texts.append(badges)
         top.append(texts)
-        top.append(icon_button("outlined-delete", lambda c=cred: self.delete_asked(c), 18, theme.RED, tooltip="Delete"))
+        delete = material_icon_button("delete", lambda c=cred: self.delete_asked(c), 18, model.DELETE_TINT, tooltip="Delete")
+        delete.set_valign(Gtk.Align.CENTER)
+        top.append(delete)
         card.append(top)
         tone = model.expiry_tone(cred.get("cert_not_after", ""))
-        for line, kind in model.lines(cred):
+        colour = model.expiry_colour(tone) or theme.TEXT_MUTED
+        for at, (line, kind) in enumerate(model.lines(cred)):
             if kind == "expiry":
                 row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(4))
-                if tone in ("red", "amber"):
-                    warning = icon("outlined-error-outline", 14, tone_colour(tone))
-                    warning.set_valign(Gtk.Align.CENTER)
-                    row.append(warning)
-                row.append(text(line, "body-small", tone_colour(tone)))
-                card.append(row)
+                if model.expiry_warns(tone):
+                    row.append(material_icon("warning", 14, colour))
+                row.append(text(line, "body-small", colour))
+                widget = row
             else:
-                label = text(line, "body-small", theme.TEXT_MUTED, ellipsize=kind == "plain", mono=kind == "mono", wrap=kind == "mono")
-                card.append(label)
+                widget = text(line, "body-small", theme.TEXT_MUTED, ellipsize=kind == "plain", mono=kind == "mono", wrap=kind == "mono")
+            if at == 0:
+                widget.set_margin_top(theme.dp(4))  # Spacer(4.dp) under the name and the bin
+            card.append(widget)
         return card
 
     def import_pem(self) -> None:

@@ -13,6 +13,14 @@ from gi.repository import Gdk, Gtk
 
 SCALE = float(os.environ.get("MESHSAT_APP_SCALE", "0.9"))
 
+
+def _over(colour: str, base: str, alpha: float) -> str:
+    """`colour` at `alpha` laid over `base`, as one opaque colour: what Android draws for
+    colour.copy(alpha = ...) on a surface of that colour."""
+    top, under = (tuple(int(c[i:i + 2], 16) for i in (1, 3, 5)) for c in (colour, base))
+    return "#" + "".join(f"{round(t * alpha + u * (1 - alpha)):02X}" for t, u in zip(top, under))
+
+
 # Colour.kt tokens
 SPACE_BLACK = "#040406"
 SIGNAL_ORANGE = "#F96118"
@@ -41,10 +49,14 @@ SURFACE_HIGH = "#1B1B22"
 OUTLINE = "#3A3A44"
 ERROR_CONTAINER = "#3B1414"
 ON_ERROR_CONTAINER = "#FCA5A5"
-TAG_MESH = "#26231D"
-TAG_SATELLITE = "#24213A"
-TAG_HUB = "#17232F"
-TAG_SMS = "#2B2515"
+# A conversation's transport tag (MessagesScreen.kt's ConversationCard): the lane's colour at 15 %
+# on the card's Surface.
+TAG_MESH = _over(MESH, SURFACE, 0.15)
+TAG_SATELLITE = _over(IRIDIUM, SURFACE, 0.15)
+TAG_HUB = _over(HUB, SURFACE, 0.15)
+TAG_SMS = _over(SMS, SURFACE, 0.15)
+# Not a Color.kt token: the literal red of SettingsScreen's "Restart" and of CredentialsScreen.
+SOFT_RED = "#E57373"
 
 FONT = "IBM Plex Sans"
 MONO = "IBM Plex Mono"
@@ -132,38 +144,45 @@ bottom-sheet > dimming {{ background-color: alpha(black, 0.32); }}
 window {{ background-color: {SPACE_BLACK}; color: {TEXT_PRIMARY}; font-family: "{FONT}", sans-serif; font-size: {px(16)}; }}
 * {{ outline-width: 0; -gtk-icon-style: symbolic; }}
 label {{ color: {TEXT_PRIMARY}; }}
-toast {{ background-color: {SURFACE_HIGH}; border: 1px solid {BORDER}; border-radius: {px(8)}; box-shadow: none; }}
-toast label {{ color: {TEXT_PRIMARY}; font-size: {px(14)}; }}
+toast {{ background-color: {SURFACE_HIGH}; border: none; border-radius: {px(24)}; box-shadow: none; padding: {px(12)} {px(16)}; border-spacing: 0; }}
+toast > widget {{ margin: 0; }}
+toast label {{ color: {TEXT_PRIMARY}; font-size: {px(14)}; font-weight: 400; }}
+toast > button.circular {{ opacity: 0; min-width: 0; min-height: 0; padding: 0; border: none; margin: -8px 0 -8px -16px; }}
+toast > button.circular > image {{ -gtk-icon-size: 16px; }}
 .sheet {{ padding: {px(16)} {px(16)} {px(24)} {px(16)}; }}
 .mono {{ font-family: "{MONO}", monospace; }}
 .display-small {{ font-size: {px(32)}; font-weight: 600; }}
 .headline-large {{ font-size: {px(28)}; font-weight: 600; }}
 .headline-medium {{ font-size: {px(22)}; font-weight: 600; }}
-.headline-small {{ font-size: {px(19)}; font-weight: 600; }}
+.headline-small {{ font-size: {px(20)}; font-weight: 600; }}
 .title-large {{ font-size: {px(18)}; font-weight: 600; }}
-.title-medium {{ font-size: {px(16)}; font-weight: 500; }}
+.title-medium {{ font-size: {px(16)}; font-weight: 500; line-height: {px(22)}; }}
 .title-small {{ font-size: {px(14)}; font-weight: 500; }}
-.body-large {{ font-size: {px(16)}; }}
-.body-medium {{ font-size: {px(14)}; }}
-.body-small {{ font-size: {px(12)}; }}
+.body-large {{ font-size: {px(16)}; line-height: {px(24)}; }}
+.body-medium {{ font-size: {px(14)}; line-height: {px(20)}; }}
+.body-small {{ font-size: {px(12)}; line-height: {px(16)}; }}
 .label-large {{ font-size: {px(14)}; font-weight: 500; }}
 .label-medium {{ font-size: {px(12)}; font-weight: 500; }}
-.strip {{ background-color: {SURFACE}; min-height: {px(36)}; padding: 0 {px(16)}; }}
-.strip label {{ font-family: "{MONO}", monospace; font-size: {px(12)}; font-weight: 500; color: {TEXT_SECONDARY}; }}
+.strip {{ background-color: {SURFACE}; min-height: {px(36)}; padding: 0 {px(12)}; }}
+.strip label {{ font-family: "{MONO}", monospace; font-size: {px(12)}; font-weight: 400; color: {TEXT_SECONDARY}; }}
 .banner {{ background-color: {AMBER}; padding: {px(10)} {px(16)}; border-radius: 0; border: none; box-shadow: none; }}
 .banner label {{ color: {SPACE_BLACK}; font-size: {px(14)}; }}
 .banner.sos {{ background-color: {RED}; }}
 .banner.sos.test {{ background-color: {AMBER}; }}
 .card {{ background-color: {SURFACE}; border: 1px solid {BORDER}; border-radius: {px(8)}; }}
+.card.borderless {{ border: none; }}
 .card.sos-on {{ border-color: {RED}; }}
 .card.sos-test {{ border-color: {AMBER}; }}
 .tonal {{ background-color: {SURFACE_LIGHT}; border-radius: {px(20)}; padding: 0 {px(16)}; min-height: {px(40)}; border: none; box-shadow: none; }}
 .tonal label {{ color: {OFF_WHITE}; font-size: {px(14)}; font-weight: 500; }}
 .card-pad {{ padding: {px(12)}; }}
-.lane-row {{ padding: {px(12)} {px(12)} {px(8)} {px(12)}; min-height: {px(76)}; }}
+.lane-row {{ padding: {px(12)} {px(8)} {px(12)} {px(16)}; min-height: {px(76 - 24)}; }}
+.lane-trying {{ opacity: 0.75; }}
 .lane-sep {{ background-color: {BORDER}; min-height: 1px; }}
 .flat {{ background: none; border: none; box-shadow: none; padding: 0; border-radius: 0; }}
-button label.body-large, button label.body-medium, button label.body-small {{ font-weight: 400; }}
+button label.body-large {{ font-size: {px(16)}; font-weight: 400; }}
+button label.body-medium {{ font-size: {px(14)}; font-weight: 400; }}
+button label.body-small {{ font-size: {px(12)}; font-weight: 400; }}
 .flat:hover {{ background-color: {SURFACE_LIGHT}; }}
 .icon-button {{ background: none; border: none; box-shadow: none; padding: {px(12)}; min-width: {px(24)}; min-height: {px(24)}; border-radius: {px(24)}; color: {TEXT_PRIMARY}; }}
 .icon-button:hover {{ background-color: {SURFACE_LIGHT}; }}
@@ -176,16 +195,19 @@ button label.body-large, button label.body-medium, button label.body-small {{ fo
 .nav-icon {{ color: {TEXT_MUTED}; }}
 .nav-item.active .nav-icon {{ color: {OFF_WHITE}; }}
 .nav-item:hover, .nav-item:active, .nav-item:focus, .lane-row:hover, .flat.nav-item:hover {{ background: none; }}
-.chip {{ background-color: {SURFACE}; border: 1px solid {OUTLINE}; border-radius: {px(8)}; padding: 0 {px(14)}; min-height: {px(32)}; color: {TEXT_PRIMARY}; font-size: {px(14)}; font-weight: 500; box-shadow: none; }}
+.chip {{ background: none; border: 1px solid {OUTLINE}; border-radius: {px(4)}; padding: 0 {px(14)}; min-height: {px(32)}; color: {TEXT_SECONDARY}; font-size: {px(12)}; font-weight: 400; box-shadow: none; }}
+.chip label {{ color: {TEXT_SECONDARY}; }}
 .chip.selected {{ background-color: {SURFACE_LIGHT}; border-color: {SURFACE_LIGHT}; }}
+.chip.selected label {{ color: {OFF_WHITE}; }}
 .chip.filter-chip {{ font-size: {px(12)}; font-weight: 400; }}
 .chip.filter-chip.selected {{ background-color: alpha({SIGNAL_ORANGE}, 0.2); border-color: transparent; }}
-.tag {{ border-radius: {px(4)}; padding: {px(2)} {px(6)}; font-size: {px(12)}; font-weight: 500; }}
+.chip.filter-chip.selected label {{ color: {TEXT_PRIMARY}; }}
+.tag {{ border-radius: {px(4)}; padding: {px(2)} {px(6)}; font-size: {px(12)}; font-weight: 400; }}
 .tag-mesh {{ background-color: {TAG_MESH}; color: {MESH}; }}
 .tag-satellite {{ background-color: {TAG_SATELLITE}; color: {IRIDIUM}; }}
 .tag-hub {{ background-color: {TAG_HUB}; color: {HUB}; }}
 .tag-sms {{ background-color: {TAG_SMS}; color: {SMS}; }}
-.count {{ background-color: {SURFACE_LIGHT}; border-radius: {px(4)}; padding: {px(2)} {px(6)}; font-size: {px(12)}; color: {TEXT_SECONDARY}; font-family: "{MONO}", monospace; }}
+.count {{ background-color: {SURFACE_LIGHT}; border-radius: {px(4)}; padding: {px(2)} {px(6)}; font-size: {px(12)}; font-weight: 400; color: {TEXT_SECONDARY}; }}
 .filled {{ background-color: {SIGNAL_ORANGE}; border-radius: {px(20)}; padding: 0 {px(24)}; min-height: {px(40)}; border: none; box-shadow: none; }}
 .filled label {{ color: {ON_PRIMARY}; font-size: {px(14)}; font-weight: 500; }}
 .filled:hover {{ background-color: {ORANGE_LIGHT}; }}
@@ -198,7 +220,10 @@ button label.body-large, button label.body-medium, button label.body-small {{ fo
 .textbutton.off-white label {{ color: {OFF_WHITE}; }}
 .field {{ background-color: transparent; border: 1px solid {OUTLINE}; border-radius: {px(4)}; padding: 0 {px(14)}; min-height: {px(56)}; color: {TEXT_PRIMARY}; font-size: {px(16)}; caret-color: {SIGNAL_ORANGE}; }}
 .field:focus-within {{ border: 2px solid {SIGNAL_ORANGE}; }}
+.field.label-medium {{ font-family: "{FONT}", sans-serif; font-size: {px(12)}; font-weight: 500; }}
 .field.field-input, .field.field-input:focus-within {{ background: none; border: none; box-shadow: none; padding: 0 {px(16)}; }}
+.field.field-input.text-14 {{ font-size: {px(14)}; }}
+entry > text > placeholder {{ color: {TEXT_SECONDARY}; opacity: 1; }}
 .field-input > text > placeholder {{ color: {TEXT_SECONDARY}; opacity: 1; }}
 .field-box.resting .field-input > text > placeholder {{ opacity: 0; }}
 .field-label {{ color: {TEXT_SECONDARY}; font-size: {px(12)}; font-weight: 400; }}
@@ -227,8 +252,9 @@ button label.body-large, button label.body-medium, button label.body-small {{ fo
 .lane-dot {{ border-radius: {px(5)}; }}
 .divider {{ background-color: {BORDER}; min-height: 1px; }}
 .dimmed {{ opacity: 0.6; }}
+.card.dimmed {{ opacity: 1; background-color: {_over("#000000", SURFACE, 0.3)}; border-color: {_over("#000000", BORDER, 0.3)}; }}
 .ledger-counts {{ padding: {px(4)}; }}
-.ledger-group {{ border-radius: {px(6)}; padding: {px(4)} 0; min-height: {px(48)}; }}
+.ledger-group {{ border-radius: {px(6)}; padding: {px(4)} 0; min-height: {px(48 - 2 * 4)}; }}
 .ledger-group.selected.tint-green {{ background-color: alpha({GREEN}, 0.15); }}
 .ledger-group.selected.tint-amber {{ background-color: alpha({AMBER}, 0.15); }}
 .ledger-group.selected.tint-red {{ background-color: alpha({RED}, 0.15); }}
@@ -241,32 +267,36 @@ button label.body-large, button label.body-medium, button label.body-small {{ fo
 .tab-chip label {{ color: {TEXT_MUTED}; font-size: {px(14)}; font-weight: 400; }}
 .tab-chip.selected {{ background-color: {SURFACE_LIGHT}; }}
 .tab-chip.selected label {{ color: {TEXT_PRIMARY}; font-weight: 600; }}
-.tab-chip label.count {{ color: {TEXT_SECONDARY}; background-color: {BORDER}; font-weight: 400; }}
+.tab-chip.even {{ padding: 0 {px(14)}; }}
+.tab-chip.even label, .tab-chip.even.selected label {{ font-weight: 500; }}
+.tab-chip label.count, .tab-chip.selected label.count {{ color: {TEXT_SECONDARY}; background-color: {BORDER}; border-radius: {px(4)}; padding: {px(1)} {px(6)}; font-family: "{FONT}", sans-serif; font-size: {px(12)}; font-weight: 500; }}
+.tab-chip label.count.tone-green {{ color: {GREEN}; background-color: alpha({GREEN}, 0.12); }}
+.tab-chip label.count.tone-amber {{ color: {AMBER}; background-color: alpha({AMBER}, 0.12); }}
 .card-tight {{ padding: {px(8)} {px(4)} {px(4)} {px(12)}; }}
 .card-tap {{ padding: {px(12)}; border-radius: {px(8)}; }}
 .stats-card {{ padding: {px(10)} {px(12)}; }}
 .log-view {{ background-color: {SURFACE}; border: 1px solid {BORDER}; border-radius: {px(8)}; padding: {px(8)}; }}
 .log-line {{ font-family: "{MONO}", monospace; font-size: {px(11)}; }}
 .output-card {{ padding: {px(12)}; }}
-.field.multiline {{ padding: {px(8)} {px(14)}; min-height: {px(96)}; }}
+.field.multiline {{ padding: {px(16)}; min-height: {px(3 * 16)}; }}
 .field.multiline > text {{ background: none; }}
-.filled.tonal-surface {{ background-color: {SURFACE}; border: 1px solid {BORDER}; }}
+.filled.tonal-surface {{ background-color: {SURFACE}; border: none; }}
 .filled.tonal-surface label {{ color: {TEXT_PRIMARY}; }}
 .filled.amber-fill {{ background-color: {AMBER}; }}
 .filled.red-fill {{ background-color: {RED}; }}
-.filled.small-text label {{ font-size: {px(12)}; }}
+.filled.small-text label {{ font-size: {px(12)}; font-weight: 400; }}
 .mode-chip {{ background-color: {SURFACE}; border: none; border-radius: {px(4)}; padding: {px(4)} {px(8)}; min-height: 0; min-width: 0; color: {TEXT_MUTED}; font-size: {px(12)}; box-shadow: none; }}
 .mode-chip.selected {{ background-color: alpha({SIGNAL_ORANGE}, 0.15); color: {SIGNAL_ORANGE}; }}
 .mode-chip:disabled {{ opacity: 0.4; }}
 .mode-chip label {{ color: inherit; font-size: {px(12)}; }}
 .filled.red-fill label {{ color: {SPACE_BLACK}; }}
-.outlined.red-outline {{ border-color: alpha({RED}, 0.6); }}
-.outlined.red-outline label {{ color: {RED}; }}
+.outlined.red-outline label {{ color: {SOFT_RED}; }}
 .dot {{ border-radius: {px(4)}; min-width: {px(8)}; min-height: {px(8)}; }}
 .dot-small {{ border-radius: {px(3)}; min-width: {px(6)}; min-height: {px(6)}; }}
 .segments {{ background-color: {SURFACE}; border: 1px solid {BORDER}; border-radius: {px(8)}; padding: {px(3)}; min-height: {px(30)}; }}
 .segment {{ background: none; border: none; box-shadow: none; border-radius: {px(6)}; padding: 0; min-height: {px(28)}; font-family: "{MONO}", monospace; font-size: {px(14)}; font-weight: 500; color: {TEXT_MUTED}; }}
 .segment.on {{ background-color: alpha({IRIDIUM}, 0.22); color: {IRIDIUM}; }}
+.segment label {{ color: inherit; }}
 .preset {{ background-color: {SURFACE}; border: 1px solid {BORDER}; border-radius: {px(8)}; padding: {px(8)} 0; box-shadow: none; }}
 .preset label {{ color: {TEXT_SECONDARY}; }}
 .preset label.label-small {{ color: {TEXT_MUTED}; }}
@@ -279,7 +309,7 @@ button label.body-large, button label.body-medium, button label.body-small {{ fo
 .pass-row {{ background-color: alpha({SURFACE}, 0.5); border-radius: {px(8)}; padding: {px(10)} {px(12)}; }}
 .pass-row.active {{ background-color: alpha({IRIDIUM}, 0.1); border: 1px solid alpha({IRIDIUM}, 0.2); }}
 .pass-row.past {{ opacity: 0.4; }}
-.label-small {{ font-size: {px(11)}; font-weight: 500; }}
+.label-small {{ font-size: {px(12)}; font-weight: 500; }}
 .dot-green {{ background-color: {GREEN}; }}
 .dot-amber {{ background-color: {AMBER}; }}
 .dot-red {{ background-color: {RED}; }}
@@ -312,7 +342,7 @@ button label.body-large, button label.body-medium, button label.body-small {{ fo
 .map-row > button.flat {{ padding: {px(10)} 0; }}
 .map-row > button.flat:hover {{ background: none; }}
 .node-sheet {{ padding: {px(8)} {px(24)} {px(24)} {px(24)}; }}
-.card.card-pad.cards-section {{ padding: {px(16)}; }}
+.card.card-pad.cards-section {{ padding: {px(16)}; border: none; }}
 .card-row {{ padding-top: {px(12)}; }}
 .card-fingerprint {{ margin: {px(8)} 0; }}
 .my-card-fingerprint {{ font-size: {px(18)}; font-weight: 500; margin-top: {px(12)}; }}
@@ -324,13 +354,13 @@ button label.body-large, button label.body-medium, button label.body-small {{ fo
 .field.compose-field:focus-within {{ border: 2px solid {TEXT_SECONDARY}; }}
 .field.compose-field text placeholder {{ font-size: {px(14)}; }}
 .group-title {{ font-size: {px(14)}; font-weight: 500; color: {TEXT_SECONDARY}; padding: {px(20)} {px(16)} {px(4)} {px(16)}; }}
-.nav-row {{ min-height: {px(64)}; padding: {px(8)} {px(16)}; }}
+.nav-row {{ min-height: {px(64 - 2 * 10)}; padding: {px(10)} {px(16)}; }}
 .kv-key {{ color: {TEXT_SECONDARY}; font-size: {px(14)}; }}
 .kv-value {{ color: {TEXT_PRIMARY}; font-size: {px(14)}; }}
 .dialog {{ background-color: {SURFACE_HIGH}; border: 1px solid {BORDER}; border-radius: {px(16)}; padding: {px(24)}; }}
 .dialog-title {{ font-size: {px(20)}; font-weight: 600; }}
 .field.error {{ border-color: {RED}; }}
-.switch-row {{ min-height: {px(56)}; }}
+.switch-row {{ min-height: {px(48)}; }}
 .check-row {{ padding: {px(8)} 0; }}
 .check {{ border: 2px solid {TEXT_MUTED}; border-radius: {px(3)}; min-width: {px(18)}; min-height: {px(18)}; }}
 .check.on {{ border-color: {SIGNAL_ORANGE}; background-color: {SIGNAL_ORANGE}; }}
@@ -340,7 +370,7 @@ button label.body-large, button label.body-medium, button label.body-small {{ fo
 .hold {{ background: none; border: 2px solid {SIGNAL_ORANGE}; border-radius: {px(12)}; padding: 0; box-shadow: none; min-height: {px(64)}; }}
 .hold.danger {{ border-color: {RED}; }}
 .timeout-row {{ border-radius: {px(4)}; padding: {px(8)} {px(12)}; }}
-.timeout-row.selected {{ background-color: alpha({GREEN}, 0.15); }}
+.timeout-row.selected {{ background-color: alpha({SIGNAL_ORANGE}, 0.15); }}
 .contact-row {{ background-color: {SURFACE_LIGHT}; border-radius: {px(6)}; padding-left: {px(12)}; }}
 .status-banner {{ border-radius: {px(8)}; padding: {px(10)} {px(12)}; }}
 .status-banner.amber {{ background-color: alpha({AMBER}, 0.12); border: 1px solid alpha({AMBER}, 0.4); }}
@@ -366,7 +396,7 @@ checkbutton check {{ border-radius: {px(3)}; }}
 checkbutton radio:checked {{ border-color: {SIGNAL_ORANGE}; background: radial-gradient(circle, {SIGNAL_ORANGE} 0%, {SIGNAL_ORANGE} 45%, transparent 50%); }}
 checkbutton check:checked {{ border-color: {SIGNAL_ORANGE}; background-color: {SIGNAL_ORANGE}; }}
 popover > contents {{ background-color: {SURFACE_HIGH}; color: {TEXT_PRIMARY}; border: 1px solid {BORDER}; border-radius: {px(8)}; }}
-.bold {{ font-weight: 700; }}
+.bold {{ font-weight: 600; }}
 .legend flowboxchild {{ padding: 0; min-width: 0; min-height: 0; background: none; }}
 .checklist {{ padding: {px(8)} 0; }}
 .checklist-row {{ padding: {px(10)} {px(12)}; background: none; border: none; box-shadow: none; border-radius: 0; }}
@@ -381,7 +411,7 @@ popover > contents {{ background-color: {SURFACE_HIGH}; color: {TEXT_PRIMARY}; b
 .people-tap {{ background-color: {SURFACE}; border: {px(0.5)} solid {BORDER}; border-radius: 0; box-shadow: none; padding: {px(8)} {px(12)}; min-height: {px(40)}; }}
 .people-tap:hover {{ background-color: {SURFACE_HIGH}; }}
 .dot-primary {{ background-color: {TEXT_PRIMARY}; }}
-.chip.people-chip {{ min-height: {px(48)}; }}
+.chip.people-chip {{ min-height: {px(48)}; font-size: {px(14)}; font-weight: 500; }}
 .chip.people-chip label {{ color: {TEXT_SECONDARY}; }}
 .chip.people-chip.selected label {{ color: {TEXT_PRIMARY}; }}
 .new-row {{ min-height: {px(44)}; padding: {px(6)} 0; border-radius: {px(8)}; }}

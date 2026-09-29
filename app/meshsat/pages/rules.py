@@ -8,7 +8,7 @@ import time
 from gi.repository import GLib, Gtk
 
 from .. import api, theme
-from ..layout import empty_text
+from ..layout import empty_text, pinned_head
 from ..model import deliveries as deliveries_model
 from ..model import rules as model
 from ..model import words
@@ -34,10 +34,21 @@ class RulesScreen(SubScreen):
         self.fab = Fab("outlined-add", model.ADD, self.add_rule)
         overlay.add_overlay(self.fab)
         self.append(overlay)
-        self.column.append(text(model.INTRO, "body-medium", theme.TEXT_SECONDARY, wrap=True))
+        # RulesScreen.kt:190-305: the intro (8 dp under it), the tabs, 4 dp, the divider, 12 dp and
+        # the tab's own line stay put; only the list under them scrolls (LazyColumn(weight 1f)),
+        # from 8 dp under that line.
+        head = pinned_head(self, gap=8)
+        intro = text(model.INTRO, "body-medium", theme.TEXT_SECONDARY, wrap=True)
+        intro.set_margin_bottom(theme.dp(8))
+        head.append(intro)
         self.tabs = Tabs(list(model.TABS), self.select_tab, plain=True)
-        self.column.append(hscroll(self.tabs))
-        self.column.append(divider())
+        head.append(hscroll(self.tabs))
+        line = divider()
+        line.set_margin_top(theme.dp(4))
+        head.append(line)
+        self.tab_head = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        self.tab_head.set_margin_top(theme.dp(12))
+        head.append(self.tab_head)
         self.content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(8))
         self.column.append(self.content)
         self.render()
@@ -78,9 +89,11 @@ class RulesScreen(SubScreen):
         if tab == "Deliveries":
             if self._content_key != ("Deliveries",):
                 self._content_key = ("Deliveries",)
+                clear(self.tab_head)
                 clear(self.content)
                 self.ledger = Ledger(self.app, self.open_details)
-                self.content.append(self.ledger)
+                self.tab_head.append(self.ledger.head)
+                self.content.append(self.ledger.body)
             self.ledger.set(self.deliveries)
             return
         if tab == "Queue":
@@ -90,6 +103,7 @@ class RulesScreen(SubScreen):
         if key == self._content_key:
             return
         self._content_key = key
+        clear(self.tab_head)
         clear(self.content)
         if tab == "Queue":
             self.queue_tab(now)
@@ -97,9 +111,8 @@ class RulesScreen(SubScreen):
             self.rules_tab(tab, now)
 
     def rules_tab(self, tab: str, now: float) -> None:
-        subtitle = text(model.SUBTITLES[tab], "body-small", theme.TEXT_MUTED, wrap=True)
-        subtitle.set_margin_bottom(theme.dp(4))
-        self.content.append(subtitle)
+        # RulesListContent: the sub-line (padding(bottom = 8.dp), the pinned head's gap) over the list
+        self.tab_head.append(text(model.SUBTITLES[tab], "body-small", theme.TEXT_MUTED, wrap=True))
         rules = model.by_tab(self.rules)[tab]
         if not rules:
             # RulesListContent's Box(weight(1f), Alignment.Center): the empty text in the middle
@@ -169,9 +182,8 @@ class RulesScreen(SubScreen):
 
     # The queue tab
     def queue_tab(self, now: float) -> None:
-        intro = text(deliveries_model.QUEUE_INTRO, "body-small", theme.TEXT_MUTED, wrap=True)
-        intro.set_margin_bottom(theme.dp(4))
-        self.content.append(intro)
+        # QueueTabContent: its line (padding(bottom = 8.dp), the pinned head's gap) over the list
+        self.tab_head.append(text(deliveries_model.QUEUE_INTRO, "body-small", theme.TEXT_MUTED, wrap=True))
         waiting, gave_up = deliveries_model.queue_sections(self.deliveries)
         if not waiting and not gave_up:
             # QueueTabContent's Box(weight(1f), Alignment.Center), as the rule tabs

@@ -4,20 +4,71 @@ Messages / New message, the conversation cards; the chat with its orange back ar
 subtitle, lock, bubbles and composer; the New message dialog."""
 import time
 
-from gi.repository import GLib, Gtk
+from gi.repository import Gdk, GLib, Gtk, Pango
 
 from . import api, theme
 from .layout import empty_text
 from .model import chat as chat_words
 from .model import chatkeys, words
 from .screen import Screen
-from .widgets import Card, Chip, SubHeader, Tag, clear, hscroll, icon, icon_button, name_widget, page, scroller, spacer, state_tag, text, tone_colour, when, when_date
+from .widgets import (Card, Chip, Field, SubHeader, Tag, clear, hscroll, icon, icon_button, name_widget, page, paint, scroller, spacer, state_tag, text, tone_colour,
+                      when, when_date)
 
 EVERYONE = "!ffffffff"
 SATELLITE = "satellite"
 # The transport's badge on a message, as Android stores the transport ("iridium", not "satellite").
 BADGE = {"mesh": "MESH", "satellite": "IRIDIUM", "sms": "SMS"}
 TRANSPORT_OF_LANE = {"mesh": "mesh", "satellite": "iridium", "sms": "sms"}
+# The compose box (OutlinedTextField, maxLines = 4): the text 16 dp in from the outline on every
+# side, at most four lines before it scrolls.
+COMPOSE_PAD = 16
+COMPOSE_LINES = 4
+
+
+def css() -> str:
+    """The chat's compose bar, which theme.py has no class for (its .field is an entry's), on a
+    stylesheet of this screen's own, one priority step above theme.py's, for classes only this
+    screen sets:
+
+    - the compose box (OutlinedTextField with focusedBorderColor = TextSecondary and
+      unfocusedBorderColor = Border): see-through on its card, a 1 dp Border outline, 2 dp in
+      TextSecondary while typing (drawn inside it, so nothing moves), 4 dp corners, 56 dp for
+      one line, the text 16 dp in; bodyLarge text, the orange cursor;
+    - the send arrow in TextMuted at full strength while there is nothing to send (Compose's
+      explicit tint on a disabled IconButton), where GTK dims a disabled button and its image."""
+    border = 1  # px: GTK lays the border out, Compose draws it inside the bounds
+    return "\n".join((
+        f".compose-box {{ background: none; border: {border}px solid {theme.BORDER}; border-radius: {theme.px(4)}; padding: 0 {16 * theme.SCALE - border:.1f}px; "
+        f"min-height: {56 * theme.SCALE - 2 * border:.1f}px; box-shadow: none; }}",
+        f".compose-box:focus-within {{ border-color: {theme.TEXT_SECONDARY}; box-shadow: inset 0 0 0 1px {theme.TEXT_SECONDARY}; }}",
+        f"textview.compose-text, textview.compose-text > text {{ background: none; color: {theme.TEXT_PRIMARY}; font-size: {theme.px(16)}; "
+        f"font-weight: 400; caret-color: {theme.SIGNAL_ORANGE}; }}",
+        ".send-button:disabled, .send-button:disabled > image { filter: none; opacity: 1; -gtk-icon-filter: none; }",
+    ))
+
+
+_STYLE = None
+
+
+def style() -> None:
+    """css() on the display, once."""
+    global _STYLE
+    display = Gdk.Display.get_default()
+    if _STYLE is not None or display is None:
+        return
+    _STYLE = Gtk.CssProvider()
+    _STYLE.load_from_string(css())
+    Gtk.StyleContext.add_provider_for_display(display, _STYLE, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 1)
+
+
+def filter_chip(label_text: str, on_tap, lane: str | None = None, selected: bool = False) -> Chip:
+    """A FilterChip (theme.py's .chip: see-through with its outline, a grey bodySmall label;
+    selected, SurfaceLight and OffWhite). `lane` (mesh, satellite, sms): selected, the lane's colour
+    at 20 % behind a label in that colour (MessagesScreen.kt:227-244, theme.py's .chip.lane-*)."""
+    chip = Chip(label_text, on_tap, selected=selected)
+    if lane:
+        chip.add_css_class(f"lane-{lane}")
+    return chip
 
 
 def lane_of(message: dict) -> str:
@@ -67,7 +118,7 @@ def conversations(s: api.State) -> list:
         elif key == EVERYONE:
             title = "Everyone on the mesh"
         elif key.startswith("sms:"):
-            title = s.contact_name(key[4:])
+            title = key[4:]  # Peers.displayName: a phone number is named by itself, an emergency contact's too
         else:
             title = name_of(key, s)
         out.append({"key": key, "title": title, "lane": lane_of(items[0]), "items": items, "last": items[0]})
@@ -78,22 +129,25 @@ def conversations(s: api.State) -> list:
 class MessagesScreen(Screen):
     def __init__(self, app):
         super().__init__(app)
+        style()
         self.filter = "all"
         self.view = "chats"
         self._list_key = None
         column = page(spacing=12)
         column.append(text("Messages", "headline-medium"))
 
+        # The transport filters: a selected Mesh, Satellite or SMS chip takes its lane's colour
         filters = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
         self.filter_chips = {}
         for key, label_text in (("all", "All"), ("mesh", "Mesh"), ("satellite", "Satellite"), ("sms", "SMS")):
-            chip = Chip(label_text, lambda c, k=key: self.set_filter(k), selected=key == "all")
+            chip = filter_chip(label_text, lambda c, k=key: self.set_filter(k), lane=None if key == "all" else key, selected=key == "all")
             self.filter_chips[key] = chip
             filters.append(chip)
         column.append(hscroll(filters))
 
+        # The counts in bodySmall TextMuted, 16 dp apart
         self.counts = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(16))
-        self.count_labels = [text("0 nodes", "body-medium", theme.TEXT_SECONDARY), text("0 today", "body-medium", theme.TEXT_SECONDARY), text("0 stored", "body-medium", theme.TEXT_SECONDARY)]
+        self.count_labels = [text(value, "body-small", theme.TEXT_MUTED) for value in ("0 nodes", "0 today", "0 stored")]
         for label in self.count_labels:
             self.counts.append(label)
         column.append(self.counts)
@@ -101,10 +155,10 @@ class MessagesScreen(Screen):
         views = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
         self.view_chips = {}
         for key, label_text in (("chats", "Chats"), ("all", "All Messages")):
-            chip = Chip(label_text, lambda c, k=key: self.set_view(k), selected=key == "chats")
+            chip = filter_chip(label_text, lambda c, k=key: self.set_view(k), selected=key == "chats")
             self.view_chips[key] = chip
             views.append(chip)
-        views.append(Chip("New message", lambda c: new_message(self.app)))
+        views.append(filter_chip("New message", lambda c: new_message(self.app)))
         column.append(hscroll(views))
 
         # The search bar of All Messages (MessagesScreen.kt): a magnifier, the query, a clear button.
@@ -153,12 +207,13 @@ class MessagesScreen(Screen):
 
     def update(self, s: api.State) -> None:
         stats = s.message_stats or {}
-        self.count_labels[0].set_text(words.count(len(s.others()), "node"))
+        # Every node of the radio's list, the phone's own included (MessagesScreen.kt: nodes.size)
+        self.count_labels[0].set_text(words.count(len(s.nodes), "node"))
         self.count_labels[1].set_text(f"{stats.get('today_text', 0)} today")
         self.count_labels[2].set_text(f"{stats.get('total', 0)} stored")
         if self.view == "chats":
             chats = [c for c in conversations(s) if self.filter == "all" or c["lane"] == self.filter]
-            key = ("chats", tuple((c["key"], c["title"], len(c["items"]), c["last"].get("rx_time"), c["last"].get("decoded_text")) for c in chats))
+            key = ("chats", tuple((c["key"], c["title"], len(c["items"]), c["last"].get("rx_time"), c["last"].get("decoded_text"), sealed(c)) for c in chats))
             if key == self._list_key:
                 return
             self._list_key = key
@@ -185,21 +240,30 @@ class MessagesScreen(Screen):
                 self.list.append(self.message_card(m, s))
 
     def chat_card(self, chat: dict) -> Gtk.Widget:
+        """ConversationCard (MessagesScreen.kt:396-448): the name in titleMedium, the lane's tag,
+        the amber lock when a message of the conversation went or came sealed; at the right the
+        date in bodySmall TextMuted right over the count on its SurfaceLight badge; the last text
+        in bodyMedium TextMuted, one line, 4 dp under them."""
         button = Gtk.Button()
         button.add_css_class("flat")
-        card = Card()
+        card = Card(spacing=4)
         top = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
         top.append(text(chat["title"], "title-medium", ellipsize=True))
         top.append(Tag(chat["lane"]))
+        if sealed(chat):
+            lock = icon("filled-lock", 16, theme.AMBER)
+            lock.set_valign(Gtk.Align.CENTER)
+            name_widget(lock, "Encrypted")
+            top.append(lock)
         top.append(spacer())
-        right = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(4))
-        right.append(text(when_date(chat["last"].get("rx_time")), "body-medium", theme.TEXT_SECONDARY, xalign=1.0, mono=True))
-        count = text(str(len(chat["items"])), "count", xalign=1.0)
+        right = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        right.append(text(when_date(chat["last"].get("rx_time")), "body-small", theme.TEXT_MUTED, xalign=1.0))
+        count = text(str(len(chat["items"])), "count", xalign=1.0)  # theme.py's .count: bodySmall in Plex Sans on SurfaceLight
         count.set_halign(Gtk.Align.END)
         right.append(count)
         top.append(right)
         card.append(top)
-        card.append(text(chat["last"].get("decoded_text", ""), "body-large", theme.TEXT_SECONDARY, ellipsize=True))
+        card.append(text(chat["last"].get("decoded_text", ""), "body-medium", theme.TEXT_MUTED, ellipsize=True))
         button.set_child(card)
         button.update_property([Gtk.AccessibleProperty.LABEL], [f"Chat with {chat['title']}"])
         button.connect("clicked", lambda *_: self.app.push(ChatScreen(self.app, chat["key"], chat["title"], chat["lane"]), chat["title"]))
@@ -238,6 +302,7 @@ class ChatScreen(Screen):
 
     def __init__(self, app, key: str, title: str, lane: str):
         super().__init__(app)
+        style()
         self.key, self.lane, self.title = key, lane, title
         self.route = "chat/" + key
         self._key = None
@@ -268,15 +333,44 @@ class ChatScreen(Screen):
         composer.set_margin_end(theme.dp(16))
         composer.set_margin_bottom(theme.dp(16))
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
-        self.entry = Gtk.Entry(placeholder_text=chat_words.placeholder(self.transport, self.everyone))
-        self.entry.add_css_class("field")
-        self.entry.add_css_class("compose-field")
-        self.entry.set_hexpand(True)
-        self.entry.update_property([Gtk.AccessibleProperty.LABEL], ["Message"])
-        self.entry.connect("activate", lambda *_: self.send())
-        self.entry.connect("changed", lambda *_: self.composer_changed())
-        row.append(self.entry)
-        self.send_button = icon_button("outlined-send", self.send, 24, theme.TEXT_MUTED, tooltip="Send")
+        # OutlinedTextField(maxLines = 4): the text wraps and the box grows with it to four lines,
+        # then scrolls. A TextView in a scroller that takes its height, up to four lines; the
+        # placeholder lies over it while it is empty (a TextView has none of its own).
+        placeholder = chat_words.placeholder(self.transport, self.everyone)
+        self.entry = Gtk.TextView(wrap_mode=Gtk.WrapMode.WORD_CHAR, accepts_tab=False)
+        self.entry.set_top_margin(theme.dp(COMPOSE_PAD))
+        self.entry.set_bottom_margin(theme.dp(COMPOSE_PAD))
+        self.entry.add_css_class("compose-text")
+        self.entry.update_property([Gtk.AccessibleProperty.LABEL, Gtk.AccessibleProperty.PLACEHOLDER], ["Message", placeholder])
+        self.buffer = self.entry.get_buffer()
+        self.buffer.connect("changed", lambda *_: self.composer_changed())
+        keys = Gtk.EventControllerKey()
+        keys.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)  # before the TextView makes Enter a new line
+        keys.connect("key-pressed", self.composer_key)
+        self.entry.add_controller(keys)
+        self.entry_box = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER, vscrollbar_policy=Gtk.PolicyType.AUTOMATIC, propagate_natural_height=True)
+        self.entry_box.add_css_class("compose-box")
+        self.entry_box.set_child(self.entry)
+        self.fit_composer(round(16 * theme.SCALE * 1.3))  # IBM Plex Sans' line is 1.3 em; measured once on view
+        self.placeholder = Gtk.Label(label=placeholder, xalign=0.0, accessible_role=Gtk.AccessibleRole.PRESENTATION)
+        self.placeholder.add_css_class("body-medium")
+        paint(self.placeholder, theme.TEXT_SECONDARY)
+        self.placeholder.set_ellipsize(Pango.EllipsizeMode.END)
+        self.placeholder.set_can_target(False)
+        self.placeholder.set_halign(Gtk.Align.FILL)
+        self.placeholder.set_valign(Gtk.Align.START)
+        self.placeholder.set_margin_start(theme.dp(COMPOSE_PAD))
+        self.placeholder.set_margin_end(theme.dp(COMPOSE_PAD))
+        self.placeholder.set_margin_top(1 + theme.dp(COMPOSE_PAD))  # under the 1 px outline, where the first line starts
+        field = Gtk.Overlay()
+        field.set_hexpand(True)
+        field.set_child(self.entry_box)
+        field.add_overlay(self.placeholder)
+        row.append(field)
+        # IconButton(48 dp) with the filled Send arrow, in the middle of the box's height
+        self.send_button = icon_button("filled-send", self.send, 24, theme.TEXT_MUTED, tooltip="Send")
+        self.send_button.add_css_class("send-button")
+        self.send_button.set_valign(Gtk.Align.CENTER)
         row.append(self.send_button)
         composer.append(row)
         self.hint = text("", "body-small", theme.TEXT_SECONDARY, wrap=True)
@@ -289,6 +383,7 @@ class ChatScreen(Screen):
 
     # The chat's key
     def on_show(self) -> None:
+        self.fit_composer(self.entry.create_pango_layout("Mg").get_pixel_size()[1])
         self.fetch(chatkeys.path(self.key), self.key_loaded)
         self.paint_lock()
 
@@ -308,17 +403,35 @@ class ChatScreen(Screen):
     def toggle_key(self) -> None:
         self.key_section.set_visible(not self.key_section.get_visible())
 
+    def fit_composer(self, line: int) -> None:
+        """The box grows to COMPOSE_LINES lines of `line` px, then scrolls."""
+        if line > 0:
+            self.entry_box.set_max_content_height(2 * theme.dp(COMPOSE_PAD) + COMPOSE_LINES * line)
+
+    def composed(self) -> str:
+        return self.buffer.get_text(self.buffer.get_start_iter(), self.buffer.get_end_iter(), False)
+
+    def composer_key(self, _controller, keyval: int, _keycode: int, state) -> bool:
+        """Enter sends, as the keyboard's Send key does on Android (ImeAction.Send); Shift+Enter
+        starts a new line."""
+        if keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter, Gdk.KEY_ISO_Enter) and not state & Gdk.ModifierType.SHIFT_MASK:
+            self.send()
+            return True
+        return False
+
     def composer_changed(self) -> None:
-        """The hint and the send button follow what is typed and what is connected."""
+        """The hint and the send button follow what is typed and what is connected; the
+        placeholder shows while the box is empty."""
         s = self.app.state
-        value = self.entry.get_text()
+        value = self.composed()
+        self.placeholder.set_visible(not value)
         self.hint.set_text(chat_words.compose_hint(self.transport, value, self.everyone, s.mesh_connected(), s.modem_connected()))
         ready = chat_words.can_send(self.transport, value) and not self.sending
         self.send_button.set_sensitive(ready)
-        self.send_button.set_child(icon("outlined-send", 24, theme.SIGNAL_ORANGE if ready else theme.TEXT_MUTED))
+        self.send_button.set_child(icon("filled-send", 24, theme.SIGNAL_ORANGE if ready else theme.TEXT_MUTED))
 
     def send(self) -> None:
-        value = self.entry.get_text().strip()
+        value = self.composed().strip()
         if not chat_words.can_send(self.transport, value) or self.sending:
             return
         body = {"text": value}
@@ -345,7 +458,7 @@ class ChatScreen(Screen):
                 self.composer_changed()
                 self.app.toast(answer.error or "The message did not go.")
                 return
-            self.entry.set_text("")
+            self.buffer.set_text("")
             self.composer_changed()
             api.record_sent(value, body.get("to"), self.lane, me)
             self.app.poller.poll_now()
@@ -408,6 +521,11 @@ class ChatScreen(Screen):
         filler = Gtk.Box()
         row.attach(filler, 0 if mine else 4, 0, 1, 1)
         return row
+
+
+def sealed(chat: dict) -> bool:
+    """A message of the conversation went or came sealed (ConversationSummary.hasEncrypted)."""
+    return any(m.get("encrypted") for m in chat["items"])
 
 
 def name_of(node_id: str | None, s: api.State) -> str:
@@ -505,15 +623,18 @@ class ChatKeySection(Gtk.Box):
         self.set_margin_bottom(theme.dp(8))
         self.append(text(chatkeys.TITLE, "title-small"))
         self.append(text(chatkeys.NOTE, "body-small", theme.TEXT_MUTED, wrap=True))
-        self.append(text(chatkeys.FIELD, "body-small", theme.TEXT_SECONDARY))
-        self.entry = Gtk.Entry()
-        self.entry.add_css_class("field")
-        self.entry.add_css_class("mono")
+        # OutlinedTextField(label = { Text("Hex key (64 chars)", style = bodySmall) }, textStyle =
+        # labelMedium): the label inside the box until there is a key, then on its outline, 12 sp
+        # in both places (its own style, not the field's bodyLarge); the key in Plex Sans, 12 sp,
+        # medium (theme.py's .field.label-medium)
+        self.field = Field(chatkeys.FIELD, purpose=Gtk.InputPurpose.PASSWORD)
+        attrs = Pango.AttrList()
+        attrs.insert(Pango.attr_size_new_absolute(round(12 * theme.SCALE * Pango.SCALE)))
+        self.field.label.set_attributes(attrs)
+        self.entry = self.field.entry
         self.entry.add_css_class("label-medium")
         self.entry.set_visibility(False)
-        self.entry.set_input_purpose(Gtk.InputPurpose.PASSWORD)
-        self.entry.update_property([Gtk.AccessibleProperty.LABEL], [chatkeys.FIELD])
-        self.append(self.entry)
+        self.append(self.field)
         row1 = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8), homogeneous=True)
         self.show_button = key_button(chatkeys.SHOW, self.toggle_show, "tonal-surface")
         row1.append(self.show_button)
