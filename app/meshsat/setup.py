@@ -36,7 +36,7 @@ class SetupScreen(Screen):
         column.append(group_title("Using MeshSat"))
         rows = (
             ("outlined-health-and-safety", "Safety", "SOS, check-in timer, zones", lambda: app.push(SafetyScreen(app))),
-            ("outlined-lock", "Messaging", "Encryption, compression, quick messages", lambda: app.push(MessagingScreen(app))),
+            ("outlined-lock", "Messaging", "Encryption, compression, quick messages", lambda: app.open_route("setup/messaging")),
             ("outlined-map", "Maps", "Offline maps for when there is no internet", lambda: app.push(MapsScreen(app))),
             ("outlined-radio", "Ham radio, TAK and Reticulum", "Other networks MeshSat can bridge", lambda: app.push(IntegrationsScreen(app))),
             ("outlined-tune", "Mesh radio settings", "Region, channels, transmit power", lambda: app.open_route("radio-config")),
@@ -494,7 +494,54 @@ class SmsScreen(Page):
         self.details = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         card.append(self.details)
         card.append(text("SOS texts go to your emergency contacts under Safety. A text you write carries its own number.", "body-medium", theme.TEXT_SECONDARY, wrap=True))
+        # SettingsScreen.kt:1945-1981: the one number a text with no recipient goes to (the
+        # Bridge's SMS gateway's default number, MESHSAT-1412).
+        from .model import messaging  # noqa: PLC0415
+        from .widgets import Field  # noqa: PLC0415
+
+        self.words = messaging
+        self.gateway = None
+        fallback = self.card(messaging.NO_RECIPIENT_TITLE)
+        self.number = Field(messaging.NUMBER_LABEL, purpose=Gtk.InputPurpose.PHONE)
+        fallback.append(self.number)
+        save = filled_button("Save", self.save_number, expand=False)
+        save.set_halign(Gtk.Align.START)
+        fallback.append(save)
+        fallback.append(text(messaging.NO_RECIPIENT_NOTE, "body-small", theme.TEXT_MUTED, wrap=True))
         self.update(app.state)
+
+    def on_show(self) -> None:
+        self.fetch("/api/gateways/cellular", self.got_gateway)
+
+    def got_gateway(self, answer: api.Answer) -> None:
+        if answer.ok and isinstance(answer.body, dict):
+            self.gateway = answer.body
+        elif answer.status == 404:
+            self.gateway = {}  # no SMS gateway set up yet: a save sets one up, switched off
+        else:
+            return
+        if not self.number.text:
+            self.number.set_text(self.words.default_number(self.gateway.get("config") or {}))
+
+    def save_number(self) -> None:
+        if self.gateway is None:
+            # Not read yet: a PUT without the gateway's own switch would switch it off.
+            self.fetch("/api/gateways/cellular", lambda a: (self.got_gateway(a), self.gateway is not None and self.save_number()))
+            return
+        number = self.number.text.strip()
+        if not self.words.number_ok(number):
+            self.number.set_error(self.words.BAD_NUMBER)
+            return
+        self.number.set_error(None)
+
+        def done(answer: api.Answer) -> None:
+            if answer.ok:
+                self.app.toast(self.words.SAVED)
+                self.fetch("/api/gateways/cellular", self.got_gateway)
+            else:
+                self.app.toast(answer.error or "The Bridge did not take the number.")
+
+        self.call("/api/gateways/cellular", done, body=self.words.cellular_body(self.gateway, number), method="PUT")
 
     def update(self, s: api.State) -> None:
         for c in ("dot-green", "dot-amber", "dot-muted"):
@@ -511,24 +558,6 @@ class SmsScreen(Page):
                      ("Network", (c.get("operator") or "-") + (f", {c['network_type']}" if c.get("network_type") else "")), ("Number", c.get("phone_number") or "-"),
                      ("Sent, received", f"{c.get('sms_sent', 0)}, {c.get('sms_received', 0)}")):
             self.details.append(KeyValue(k, v, mono=k == "Number"))
-
-
-class MessagingScreen(Page):
-    def __init__(self, app):
-        super().__init__(app, "Messaging")
-        enc = self.card("Encryption")
-        self.keys = text("", "body-medium", theme.TEXT_SECONDARY, wrap=True)
-        enc.append(self.keys)
-        enc.append(text("Keys are kept by the Bridge and used on every way out. Manage them under Advanced > Certificates and keys.", "body-medium", theme.TEXT_SECONDARY, wrap=True))
-        comp = self.card("Message compression")
-        comp.append(text("The Bridge compresses satellite messages with MSVQ-SC when a sidecar is configured, and sends them plain otherwise.", "body-medium", theme.TEXT_SECONDARY, wrap=True))
-        quick = self.card("Quick messages")
-        quick.append(text("The node's canned messages, as on every MeshSat node. Sent from a chat as any other message.", "body-medium", theme.TEXT_SECONDARY, wrap=True))
-        self.update(app.state)
-
-    def update(self, s: api.State) -> None:
-        k = s.keys or {}
-        self.keys.set_text(f"{k.get('active', 0)} active keys, {k.get('retired', 0)} retired, {k.get('revoked', 0)} revoked. Encryption {'on' if k.get('enabled') else 'off'}.")
 
 
 class MapsScreen(Page):

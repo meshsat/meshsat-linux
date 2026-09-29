@@ -204,6 +204,11 @@ toast label {{ color: {TEXT_PRIMARY}; font-size: {px(14)}; }}
 .filled.tonal-surface label {{ color: {TEXT_PRIMARY}; }}
 .filled.amber-fill {{ background-color: {AMBER}; }}
 .filled.red-fill {{ background-color: {RED}; }}
+.filled.small-text label {{ font-size: {px(12)}; }}
+.mode-chip {{ background-color: {SURFACE}; border: none; border-radius: {px(4)}; padding: {px(4)} {px(8)}; min-height: 0; min-width: 0; color: {TEXT_MUTED}; font-size: {px(12)}; box-shadow: none; }}
+.mode-chip.selected {{ background-color: alpha({SIGNAL_ORANGE}, 0.15); color: {SIGNAL_ORANGE}; }}
+.mode-chip:disabled {{ opacity: 0.4; }}
+.mode-chip label {{ color: inherit; font-size: {px(12)}; }}
 .filled.red-fill label {{ color: {SPACE_BLACK}; }}
 .outlined.red-outline {{ border-color: alpha({RED}, 0.6); }}
 .outlined.red-outline label {{ color: {RED}; }}

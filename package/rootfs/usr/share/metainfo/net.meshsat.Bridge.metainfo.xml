@@ -36,6 +36,11 @@
   </recommends>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.9.1" date="2026-09-29">
+      <description>
+        <p>Setup > Messaging as MeshSat Android's: the encryption key of the SMS link (generate, save, copy, paste), encryption on or off, and the automatic decryption of incoming texts, which keeps a text from an ordinary phone as it came; message compression per link where the Bridge can compress; the 30 quick messages. The SMS page takes the number a text with no recipient goes to, or none. Underneath, the Bridge no longer sends a text in the clear on a link set to encrypt when its key cannot encrypt, and checks a key when it is saved.</p>
+      </description>
+    </release>
     <release version="0.9.0" date="2026-09-29">
       <description>
         <p>Mesh radio settings in seven tabs, as MeshSat Android's: the node's name; region (checked against the country the phone is in), preset, transmit power, hops and transmit, each change asked about where Android asks; the channels with what their keys mean, edited without ever touching a key; position sharing; Bluetooth with its pairing modes, asked about before it is switched off; WiFi; setting the clock, restarting, switching off, forgetting heard nodes and a factory reset, each after a question. Only what was changed goes to the node. With the LoRa back cover the transmit power stays at 0 dBm, with the reason beside it. A node over Bluetooth streams its own log to the Node log page while its switch is on.</p>

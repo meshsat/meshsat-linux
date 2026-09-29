@@ -598,13 +598,13 @@
   {
    "id": "setup.sms",
    "kind": "screen",
-   "android": "ui/screens/SettingsScreen.kt:sms",
+   "android": "ui/screens/SettingsScreen.kt:1903-1981",
    "linux": "setup.py:SmsScreen",
    "modes": "both",
-   "state": "partial",
-   "test": "",
+   "state": "verified",
+   "test": "h_messaging::no_recipient_number_goes_over_the_sms_gateway",
    "capture": "setup-sms",
-   "note": "'Where a text goes with no recipient' comes with 0.9.1"
+   "note": "Text messages (the SIM through the Bridge, ModemManager) and Where a text goes with no recipient"
   },
   {
    "id": "setup.safety",
@@ -675,13 +675,13 @@
   {
    "id": "setup.messaging",
    "kind": "screen",
-   "android": "ui/screens/SettingsScreen.kt:messaging",
-   "linux": "setup.py:MessagingScreen",
+   "android": "ui/screens/SettingsScreen.kt:736-983, 1134-1177",
+   "linux": "pages/messaging.py:MessagingScreen",
    "modes": "both",
-   "state": "partial",
-   "test": "",
+   "state": "verified",
+   "test": "h_messaging::the_three_cards_in_androids_words",
    "capture": "setup-messaging",
-   "note": "read only until 0.9.1"
+   "note": "the settings live in the Bridge's link chains (PUT /api/interfaces/{id}/transforms, MESHSAT-1412); the app's preferences keep what the chains cannot (the key while encryption is off)"
   },
   {
    "id": "setup.maps",
@@ -1385,6 +1385,61 @@
    "test": "RadioTabTest.test_only_what_changed_is_sent",
    "capture": "source",
    "note": "labels, limits, the changes each tab sends, the questions and the toasts; a refusal of the Bridge in Android's words (409, 503) or its own (400)",
+   "state": "verified"
+  },
+  {
+   "id": "setup.messaging.encryption",
+   "kind": "card",
+   "android": "ui/screens/SettingsScreen.kt:736-894",
+   "linux": "pages/messaging.py (Encryption)",
+   "modes": "both",
+   "test": "h_messaging::a_generated_key_becomes_the_sms_chains",
+   "capture": "setup-messaging",
+   "note": "as Android, the SMS link's: encrypt on send, an optional decrypt on receive (Auto-decrypt: a text from an ordinary phone is kept, not dropped); Show, Generate, Save, Copy, Paste; Share saves a file (the approved share-sheet exclusion); a key that is not 64 hex characters is refused before it goes (the Bridge refuses it too, and no longer sends plain text with it, MESHSAT-1411); the QR button comes with the scanner (0.11.0, row setup.messaging.scan)",
+   "state": "verified"
+  },
+  {
+   "id": "setup.messaging.scan",
+   "kind": "behaviour",
+   "android": "ui/screens/SettingsScreen.kt:862-884",
+   "linux": "",
+   "modes": "both",
+   "state": "missing",
+   "test": "",
+   "capture": "",
+   "note": "Scan QR Code (Hub Key Sync): with the scanner in 0.11.0"
+  },
+  {
+   "id": "setup.messaging.compression",
+   "kind": "card",
+   "android": "ui/screens/SettingsScreen.kt:896-983",
+   "linux": "pages/messaging.py (Message compression)",
+   "modes": "both",
+   "test": "h_messaging::compression_where_the_bridge_can_encode",
+   "capture": "setup-messaging",
+   "note": "SMS and Iridium SBD, Off or MSVQ-SC, the stages; MSVQ-SC offered only where the Bridge can encode (GET /api/transforms/capabilities; this phone has no encoder: the Linux sentence says so); Android's MQTT (Hub) row is not here: the Bridge's Hub link has no transform chain",
+   "state": "verified"
+  },
+  {
+   "id": "setup.messaging.quick",
+   "kind": "card",
+   "android": "ui/screens/SettingsScreen.kt:1134-1177, codec/CannedCodebook.kt",
+   "linux": "pages/messaging.py (Quick messages), model/messaging.py:CODEBOOK",
+   "modes": "both",
+   "test": "CannedCodebookTest.test_known_messages_match_expected_text",
+   "capture": "setup-messaging",
+   "note": "the 30 brevity codes (CannedCodebookTest ported); the Bridge now reads a received code as its words (MESHSAT-1412), so 'Auto-detected on receive' holds",
+   "state": "verified"
+  },
+  {
+   "id": "setup.sms.no-recipient",
+   "kind": "card",
+   "android": "ui/screens/SettingsScreen.kt:1945-1981",
+   "linux": "setup.py:SmsScreen.save_number",
+   "modes": "both",
+   "test": "h_messaging::no_recipient_number_goes_over_the_sms_gateway",
+   "capture": "setup-sms",
+   "note": "the SMS gateway's default number (destination_numbers), written with the gateway's switch and masked secrets kept (MESHSAT-1412); empty = a text with no recipient is not sent, as Android; against a real Bridge: s_messaging::the_sms_gateway_without_a_default_number",
    "state": "verified"
   }
  ]
