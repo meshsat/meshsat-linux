@@ -103,7 +103,7 @@ def run_module(path: str, args, report: Report) -> None:
         # client on 127.0.0.1 together (MESHSAT_API_RATE_LIMIT, 600 a minute), the person's own
         # app and the notifier included.
         app = App(work, url, app_dir=args.app_dir, hardware=hardware, units=units, poll=getattr(module, "POLL", 4.0 if tier == "l" else 2.0),
-                  env=getattr(module, "ENV", None)).start()
+                  env={k: str(v).replace("{bridge}", url) for k, v in (getattr(module, "ENV", None) or {}).items()}).start()
         if getattr(module, "NOTIFIER", False):
             from driver.notifications import NotificationDaemon  # noqa: PLC0415
 
@@ -127,7 +127,13 @@ def run_module(path: str, args, report: Report) -> None:
         try:
             if index:
                 # Each case starts with no dialog open: a case that failed halfway leaves its own.
-                closed = ctx.tree.close_dialogs()
+                # A sheet has no button that closes it (as on Android): the app's test action does.
+                try:
+                    closed = ctx.tree.close_dialogs()
+                except HarnessError:
+                    app.action("close-dialog", "")
+                    time.sleep(0.8)
+                    closed = 1 + ctx.tree.close_dialogs()
                 if closed:
                     ctx.note(f"closed {closed} dialogs left by the case before")
             fn(ctx)

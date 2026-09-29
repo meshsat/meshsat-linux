@@ -66,6 +66,14 @@ class Scripted:
     def state(self) -> dict:
         return self.fake.control("GET", "/__fake__/state", None)[1]
 
+    def position(self, node_id: str, lat: float, lon: float) -> list:
+        """A node reports a position: logged, the node moved, the zones checked; the crossings."""
+        return self.fake.control("POST", "/__fake__/position", {"node_id": node_id, "lat": lat, "lon": lon})[1]["crossings"]
+
+    def tiles(self, down: bool) -> int:
+        """The map's tile server reachable or not; the tiles asked for so far."""
+        return self.fake.control("POST", "/__fake__/tiles", {"down": down})[1]["requests"]
+
     def wait_request(self, method: str, path_prefix: str, timeout: float = 5.0, since: int = 0) -> dict:
         deadline = time.time() + timeout
         while time.time() < deadline:

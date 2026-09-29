@@ -37,7 +37,7 @@ class SetupScreen(Screen):
         rows = (
             ("outlined-health-and-safety", "Safety", "SOS, check-in timer, zones", lambda: app.push(SafetyScreen(app))),
             ("outlined-lock", "Messaging", "Encryption, compression, quick messages", lambda: app.open_route("setup/messaging")),
-            ("outlined-map", "Maps", "Offline maps for when there is no internet", lambda: app.push(MapsScreen(app))),
+            ("outlined-map", "Maps", "Offline maps for when there is no internet", lambda: app.open_route("setup/maps")),
             ("outlined-radio", "Ham radio, TAK and Reticulum", "Other networks MeshSat can bridge", lambda: app.push(IntegrationsScreen(app))),
             ("outlined-tune", "Mesh radio settings", "Region, channels, transmit power", lambda: app.open_route("radio-config")),
         )
@@ -558,15 +558,6 @@ class SmsScreen(Page):
                      ("Network", (c.get("operator") or "-") + (f", {c['network_type']}" if c.get("network_type") else "")), ("Number", c.get("phone_number") or "-"),
                      ("Sent, received", f"{c.get('sms_sent', 0)}, {c.get('sms_received', 0)}")):
             self.details.append(KeyValue(k, v, mono=k == "Number"))
-
-
-class MapsScreen(Page):
-    def __init__(self, app):
-        super().__init__(app, "Maps")
-        card = self.card("Offline maps")
-        card.append(text("World overview", "body-large"))
-        card.append(text("Built in, always installed. The map uses OpenStreetMap when there is internet.", "body-medium", theme.TEXT_SECONDARY, wrap=True))
-        card.append(outlined_button("Add a detailed map", lambda: app.toast("Detailed offline maps are not on this device yet.")))
 
 
 class IntegrationsScreen(Page):

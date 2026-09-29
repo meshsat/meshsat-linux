@@ -367,46 +367,46 @@
   {
    "id": "map",
    "kind": "screen",
-   "android": "ui/screens/MapScreen.kt",
-   "linux": "mapview.py:MapScreen",
+   "android": "ui/screens/MapScreen.kt:345-415",
+   "linux": "mapview.py:MapScreen, mapwidget.py:MeshMap",
    "modes": "both",
-   "state": "partial",
-   "test": "",
+   "state": "verified",
+   "test": "h_tracks::a_the_map_and_its_panel",
    "capture": "map",
-   "note": "the phone row, the toasts and Show on map come with 0.10.0"
+   "note": "one map for the app's life, as Android's (layers, hidden nodes and camera kept); the camera rules (the first node positions fit everyone once, before them the phone's first fix at 14); Centre on me (the phone layer on, zoom max(current, 15)), Show everyone (showPoints), the three toasts; the markers drawn above the dark filter: sand diamonds 22 dp faded after 15 min with their names on a pill, this phone an 18 dp orange dot with its accuracy circle; bubbles on markers and tracks (osmdroid's info window: title and snippet), a marker tap pans to it. In cover mode the node that is the phone's own radio is the orange dot, not a diamond; a node over Bluetooth is a device of its own and a diamond"
   },
   {
    "id": "map.chrome",
    "kind": "card",
-   "android": "ui/components/MapChrome.kt",
-   "linux": "mapview.py:MapScreen",
+   "android": "ui/components/MapChrome.kt:107-194",
+   "linux": "mapwidget.py:MeshMap",
    "modes": "both",
-   "state": "partial",
-   "test": "",
+   "state": "verified",
+   "test": "h_maps::f_offline_the_detailed_map_serves",
    "capture": "map",
-   "note": "the offline-map notes come with 0.10.0"
+   "note": "the round 48 dp buttons (Zoom in, Zoom out and the screen's own), the note in the corner: the OpenStreetMap credit online, 'Offline map: <name>. Outside it, the world overview.' or the world overview's sentence offline; offline after three failed downloads in a row, back with one that works (shared by both maps); the Map tab zooms out to 5 offline with only the world overview"
   },
   {
    "id": "map.panel",
    "kind": "card",
-   "android": "ui/components/MapChrome.kt:layers",
-   "linux": "mapview.py:update",
+   "android": "ui/screens/MapScreen.kt:418-620",
+   "linux": "mapview.py:MapScreen.fill_panel",
    "modes": "both",
-   "state": "built",
-   "test": "",
-   "capture": "map",
-   "note": "layers and per-node hide"
+   "state": "verified",
+   "test": "h_tracks::b_a_hidden_node_loses_marker_and_track",
+   "capture": "map-panel",
+   "note": "Layers and nodes: the summary, the three layers with their dots, this phone's row with its accuracy, Show all and Hide all, the node rows newest first (a check box hides the marker and the track; the row centres the map on the node at zoom max(current, 14)); the list at most half the map area's height; the hidden nodes are kept, so a node heard later shows"
   },
   {
    "id": "map.tracks",
    "kind": "behaviour",
-   "android": "map/MapTracks.kt",
-   "linux": "",
+   "android": "map/MapTracks.kt, ui/screens/MapScreen.kt:101-233",
+   "linux": "model/tracks.py:group, mapview.py",
    "modes": "both",
-   "state": "missing",
-   "test": "",
-   "capture": "",
-   "note": "0.10.0"
+   "state": "verified",
+   "test": "h_tracks::a_the_map_and_its_panel",
+   "capture": "map",
+   "note": "the positions of the last 24 hours from the Bridge (GET /api/positions, 5,000 newest, all nodes together), re-read every 30 s while on view; a dashed sand line per node (75 %, 3 dp, 8 on 5 off, round caps), joined to its marker, two points at least; 'Track of <name>'; stations only the position log knows (APRS, TAK) are markers and tracks too"
   },
   {
    "id": "people",
@@ -456,12 +456,12 @@
    "id": "people.sheet",
    "kind": "sheet",
    "android": "ui/components/NodeDetailSheet.kt",
-   "linux": "__main__.py:node_sheet",
+   "linux": "__main__.py:node_sheet, model/nodes.py",
    "modes": "both",
-   "state": "partial",
-   "test": "",
-   "capture": "",
-   "note": "the signal words and the sheet's layout come with 0.12.0"
+   "state": "verified",
+   "test": "h_tracks::g_the_node_sheet_and_show_on_map",
+   "capture": "people-sheet",
+   "note": "the title (' (your node)'), the short name and id two spaces apart, the rows with their 96 dp labels (Last heard and Signal not for your own node, Hardware when known, Position '%.5f, %.5f, ago' or 'Not shared yet...'), Message (not for your own node) and Show on map (only with a position); the signal words from the node list (the Bridge keeps no last-packet signal per node: 'as your node last measured it'); battery: the Bridge's 0 is Android's -1, 'Not reported'"
   },
   {
    "id": "setup",
@@ -665,12 +665,12 @@
    "id": "geofence",
    "kind": "screen",
    "android": "ui/screens/GeofenceScreen.kt",
-   "linux": "",
+   "linux": "pages/zones.py:ZonesScreen",
    "modes": "both",
-   "state": "missing",
-   "test": "",
-   "capture": "",
-   "note": "0.10.0"
+   "state": "verified",
+   "test": "h_zones::a_the_list_in_androids_words",
+   "capture": "zones",
+   "note": "the map over the top half (long press to place or move, Centre on me, the zones in amber, the nodes, this phone), the list or the editor under it; the zones live in the Bridge (MESHSAT-1414: every mesh position checked, the crossings kept in memory until it restarts, as Android's service), read every 5 s; the alerts go nowhere but this list, as on Android"
   },
   {
    "id": "setup.messaging",
@@ -686,13 +686,13 @@
   {
    "id": "setup.maps",
    "kind": "screen",
-   "android": "ui/screens/SettingsScreen.kt:maps",
-   "linux": "setup.py:MapsScreen",
+   "android": "ui/screens/SettingsScreen.kt:1984-2223",
+   "linux": "pages/maps.py:MapsScreen",
    "modes": "both",
-   "state": "partial",
-   "test": "",
+   "state": "verified",
+   "test": "h_maps::b_a_map_added_is_in_use",
    "capture": "setup-maps",
-   "note": "0.10.0"
+   "note": "Offline maps: the world overview always there (Android's own world.mbtiles, byte for byte), the detailed maps with their size and zooms, In use, the vector line, Use my detailed map (keeps its file), Add a detailed map (the copy is checked before it replaces a map of the same name, where Android overwrote first; a file named world.mbtiles keeps a name of its own), the three add toasts"
   },
   {
    "id": "setup.integrations",
@@ -1440,6 +1440,61 @@
    "test": "h_messaging::no_recipient_number_goes_over_the_sms_gateway",
    "capture": "setup-sms",
    "note": "the SMS gateway's default number (destination_numbers), written with the gateway's switch and masked secrets kept (MESHSAT-1412); empty = a text with no recipient is not sent, as Android; against a real Bridge: s_messaging::the_sms_gateway_without_a_default_number",
+   "state": "verified"
+  },
+  {
+   "id": "map.focus",
+   "kind": "behaviour",
+   "android": "ui/components/MapFocus.kt, ui/screens/MapScreen.kt:306-320",
+   "linux": "__main__.py:show_on_map, mapview.py:MapScreen.focus",
+   "modes": "both",
+   "test": "h_tracks::g_the_node_sheet_and_show_on_map",
+   "capture": "map",
+   "note": "People's Show on map: the Map tab as the tab bar opens it, the node back on the map, the Nodes layer on, zoom max(current, 14); 'This node has not sent a position yet.' when there is none",
+   "state": "verified"
+  },
+  {
+   "id": "geofence.editor",
+   "kind": "card",
+   "android": "ui/screens/GeofenceScreen.kt:557-668",
+   "linux": "pages/zones.py:ZonesScreen.build_editor",
+   "modes": "both",
+   "test": "h_zones::b_a_long_press_places_a_zone_and_save_sends_it",
+   "capture": "zones-editor",
+   "note": "New zone: the centre line, Name, the logarithmic slider (50 m to 5 km in 10, 25, 100 m steps) and the metres field (10 to 50,000, digits only) in step, 'About ... across.', Alert when a node, the note, Save zone and Cancel; the three errors at once; saved as Android's 32-vertex circle; the draft a 60-point geodesic circle in orange",
+   "state": "verified"
+  },
+  {
+   "id": "geofence.delete",
+   "kind": "dialog",
+   "android": "ui/screens/GeofenceScreen.kt:528-554",
+   "linux": "pages/zones.py:ZonesScreen.ask_delete",
+   "modes": "both",
+   "test": "h_zones::e_delete_asks_first",
+   "capture": "zones",
+   "note": "Delete <name>?, Delete zone (red), Keep it; the alerts stay",
+   "state": "verified"
+  },
+  {
+   "id": "geofence.alerts",
+   "kind": "card",
+   "android": "ui/screens/GeofenceScreen.kt:494-523",
+   "linux": "pages/zones.py:ZonesScreen.fill_list",
+   "modes": "both",
+   "test": "h_zones::f_a_node_crossing_is_listed",
+   "capture": "zones",
+   "note": "Recent alerts: the newest 20 of the Bridge's 50, '<who> entered|left <zone>, <ago>', the node's name when the radio knows one",
+   "state": "verified"
+  },
+  {
+   "id": "setup.maps.delete",
+   "kind": "dialog",
+   "android": "ui/screens/SettingsScreen.kt:2189-2221",
+   "linux": "pages/maps.py:MapsScreen.ask_delete",
+   "modes": "both",
+   "test": "h_maps::h_delete_asks_first",
+   "capture": "setup-maps",
+   "note": "Delete this map?, Delete (red), Keep it; 'Map deleted: <name>'",
    "state": "verified"
   }
  ]

@@ -17,6 +17,21 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 FIXTURES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures")
 
 
+def solid_png(rgb: tuple, size: int = 256) -> bytes:
+    """A tile of one colour, as an OpenStreetMap tile server would send one (PNG, 8-bit RGB)."""
+    import struct
+    import zlib
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+
+    rows = b"".join(b"\x00" + bytes(rgb) * size for _ in range(size))
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", size, size, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b"")
+
+
+TILE = solid_png((242, 239, 233))  # OpenStreetMap's land colour
+
+
 def load_scenario(name: str) -> dict:
     """A scenario by name: `tests/fixtures/scenarios.py` builds it from the recorded answers."""
     import importlib.util
@@ -50,6 +65,12 @@ class FakeBridge:
         self.radio_log = None  # the radio log lines (`_radio_log`), and whether the node offers it over Bluetooth
         self.log_available = False
         self.follows = 0
+        self.zones = None  # the zones (`_zones`), as the Bridge's geofence monitor holds them; None: no monitor (503)
+        self.zone_events = []  # their crossings, newest first (`_zone_events`)
+        self.inside = {}  # zone id -> {node id: inside}, as GeofenceMonitor
+        self.positions = None  # the position log, newest first (`_positions`)
+        self.tiles_down = False  # the map's tile server (MESHSAT_APP_OSM_URL={bridge}/tiles/...) unreachable
+        self.tile_requests = 0
         self.apply(scenario or {})
         fake = self
 
@@ -100,6 +121,9 @@ class FakeBridge:
                 if self.path == "/api/events" and method == "GET":
                     fake.stream(self)
                     return
+                if self.path.startswith("/tiles/") and method == "GET":
+                    fake.tile(self)
+                    return
                 try:
                     status, answer = fake.answer(method, self.path, body)
                 except ConnectionError:
@@ -140,6 +164,12 @@ class FakeBridge:
         self.radio_log = [dict(line) for line in log] if log is not None else None
         self.log_available = bool(routes.pop("_log_available", False))
         self.follows = 0
+        zones = routes.pop("_zones", None)
+        self.zones = [dict(z) for z in zones] if zones is not None else None
+        self.zone_events = [dict(e) for e in routes.pop("_zone_events", [])]
+        self.inside = {z["id"]: {} for z in self.zones or []}
+        positions = routes.pop("_positions", None)
+        self.positions = [dict(p) for p in positions] if positions is not None else None
         self.routes = routes
 
     # Life
@@ -344,6 +374,42 @@ class FakeBridge:
             security = ((self.settings or {}).get("config") or {}).get("security")
             return 200, {"count": len(lines), "last_reset_reason": "", "lines": lines, "available": self.log_available, "following": following,
                          "debug_log_api_enabled": security.get("debug_log_api_enabled") if security else None}
+        # The zones, as the Bridge's geofence.go (MESHSAT-1414): 503 without a monitor, a zone
+        # needs an id and three vertices, alert_on defaults to "both", a delete answers 204.
+        if path.startswith("/api/geofences"):
+            if self.zones is None:
+                return 503, {"error": "geofence monitor not available"}
+            if path == "/api/geofences" and method == "GET":
+                return 200, [dict(z) for z in self.zones]
+            if path == "/api/geofences/events" and method == "GET":
+                return 200, {"events": [dict(e) for e in self.zone_events[:50]]}
+            if path == "/api/geofences" and method == "POST":
+                zone = dict(body or {})
+                if not zone.get("id"):
+                    return 400, {"error": "id is required"}
+                if len(zone.get("polygon") or []) < 3:
+                    return 400, {"error": "polygon must have at least 3 vertices"}
+                zone.setdefault("alert_on", "both")
+                zone["alert_on"] = zone["alert_on"] or "both"
+                zone = {"id": zone["id"], "name": zone.get("name", ""), "polygon": zone["polygon"], "alert_on": zone["alert_on"], "message": zone.get("message", "")}
+                self.zones.append(zone)
+                self.inside[zone["id"]] = {}
+                return 201, dict(zone)
+            parts = path.split("/")
+            if len(parts) == 4 and method == "DELETE":
+                zone_id = urllib.parse.unquote(parts[3])
+                for zone in self.zones:
+                    if zone["id"] == zone_id:
+                        self.zones.remove(zone)
+                        break
+                self.inside.pop(zone_id, None)
+                return 204, None
+        if self.positions is not None and path == "/api/positions" and method == "GET":
+            query = urllib.parse.parse_qs(urllib.parse.urlparse(full_path).query)
+            since = query.get("since", [""])[0]
+            limit = min(max(int(query.get("limit", ["100"])[0] or 100), 1), 10000)
+            rows = [dict(p) for p in self.positions if not since or p.get("created_at", "").replace("T", " ").rstrip("Z") >= since]
+            return 200, {"positions": rows[:limit], "node_id": query.get("node", [""])[0]}
         # A link switched on or off changes the interface list the scenario serves; a bind is taken.
         if path.startswith("/api/interfaces/") and method == "POST":
             parts = path.split("/")
@@ -493,6 +559,22 @@ class FakeBridge:
                     line["seq"] = max([l.get("seq", 0) for l in self.radio_log] + [0]) + 1
                     self.radio_log.append(line)
                 return 200, {"lines": len(self.radio_log)}
+            if order == "position":
+                # A node reports a position: logged, the node moved, the zones checked, as the
+                # Bridge's processor does with every mesh position.
+                node_id, lat, lon = body["node_id"], float(body["lat"]), float(body["lon"])
+                stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                if self.positions is not None:
+                    self.positions.insert(0, {"id": len(self.positions) + 1, "node_id": node_id, "latitude": lat, "longitude": lon, "altitude": 0, "created_at": stamp})
+                listed = (self.routes.get("GET /api/nodes") or {}).get("nodes") or []
+                for n in listed:
+                    if n.get("user_id") == node_id:
+                        n.update(latitude=lat, longitude=lon, last_heard=int(time.time()))
+                crossings = self.check_zones(node_id, lat, lon)
+                return 200, {"crossings": crossings}
+            if order == "tiles":
+                self.tiles_down = bool(body.get("down", False))
+                return 200, {"down": self.tiles_down, "requests": self.tile_requests}
             if order == "delay":
                 self.delay = float(body.get("seconds", 0))
                 return 200, {"delay": self.delay}
@@ -508,12 +590,60 @@ class FakeBridge:
             if order == "state":
                 return 200, {"sos": self.sos, "deadman": self.deadman, "down": self.down, "delay": self.delay, "deliveries": self.deliveries, "rules": self.rules,
                              "credentials": self.credentials, "audit_count": len(self.audit) if self.audit is not None else None, "settings": self.settings,
-                             "follows": self.follows, "gateways": self.gateways,
+                             "follows": self.follows, "gateways": self.gateways, "zones": self.zones, "zone_events": self.zone_events,
+                             "tiles_down": self.tiles_down, "tile_requests": self.tile_requests,
                              "interfaces": self.routes.get("GET /api/interfaces")}
         if order == "event":
             self.push(body)
             return 200, {"listeners": len(self.listeners)}
         return 404, {"error": f"no such order: {order}"}
+
+    def tile(self, handler) -> None:
+        """A map tile, never logged with the API calls; with the tiles "down" the connection ends
+        unanswered, as with no network."""
+        with self.lock:
+            self.tile_requests += 1
+            down = self.tiles_down or self.down
+        if down:
+            handler.close_connection = True
+            return
+        try:
+            handler.send_response(200)
+            handler.send_header("Content-Type", "image/png")
+            handler.send_header("Content-Length", str(len(TILE)))
+            handler.end_headers()
+            handler.wfile.write(TILE)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
+    def check_zones(self, node_id: str, lat: float, lon: float) -> list:
+        """GeofenceMonitor.CheckPosition: ray casting on degrees, no hysteresis; entering is
+        remembered even by a zone that alerts only on leaving."""
+        out = []
+        for zone in self.zones or []:
+            poly = zone.get("polygon") or []
+            inside, j = False, len(poly) - 1
+            for i in range(len(poly)):
+                yi, xi, yj, xj = poly[i]["lat"], poly[i]["lon"], poly[j]["lat"], poly[j]["lon"]
+                if (yi > lat) != (yj > lat) and lon < (xj - xi) * (lat - yi) / (yj - yi) + xi:
+                    inside = not inside
+                j = i
+            if len(poly) < 3:
+                inside = False
+            state = self.inside.setdefault(zone["id"], {})
+            was = state.get(node_id, False)
+            event = None
+            if inside and not was:
+                event = "enter" if zone.get("alert_on") in ("enter", "both") else None
+                state[node_id] = True
+            elif not inside and was:
+                event = "exit" if zone.get("alert_on") in ("exit", "both") else None
+                state[node_id] = False
+            if event:
+                record = {"zone_name": zone.get("name", ""), "node_id": node_id, "event": event, "timestamp": int(time.time() * 1000)}
+                self.zone_events.insert(0, record)
+                out.append(record)
+        return out
 
     # The event stream
     def push(self, event: dict) -> None:

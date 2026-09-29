@@ -31,6 +31,7 @@ ROUTES = {
     "credentials": "No credentials stored",
     "decrypt": "No encryption key configured. Go to Settings to set one.",
     "setup/diagnostics": "Restart Gateway Service",
+    "geofence": "When a mesh node reports a position that crosses a zone's edge",
 }
 
 

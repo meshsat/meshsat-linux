@@ -35,7 +35,7 @@ class App:
 
     def environment(self) -> dict:
         env = dict(os.environ)
-        for name in ("XDG_CONFIG_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME"):
+        for name in ("XDG_CONFIG_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME", "XDG_DATA_HOME"):
             path = os.path.join(self.work, "xdg", name.split("_")[1].lower())
             os.makedirs(path, exist_ok=True)
             env[name] = path
@@ -101,6 +101,35 @@ class App:
         """One poll now (F5): the way a test waits for a changed scenario to reach the screen."""
         self.action("refresh")
 
+    def press(self, kind: str, lat: float, lon: float) -> None:
+        """A finger on the map on view: "tap" or "long" at a place (the app's test action)."""
+        self.action("map-press", f"{kind},{lat},{lon}")
+
+    def map_facts(self, timeout: float = 5.0) -> dict:
+        """What the map on view draws, from the inspection (the first map)."""
+        found = self.inspect().get("maps") or []
+        if not found:
+            raise AssertionError("no map on view")
+        return found[0]
+
+    def wait_map(self, check, timeout: float = 10.0, what: str = "") -> dict:
+        """Until `check(facts)` holds for the map on view; the facts."""
+        deadline = time.time() + timeout
+        facts = {}
+        while time.time() < deadline:
+            try:
+                facts = self.map_facts()
+                if check(facts):
+                    return facts
+            except AssertionError:
+                pass
+            time.sleep(0.4)
+        raise AssertionError(f"the map never showed {what or 'what was asked'}; it shows {json.dumps(facts)[:1200]}")
+
+    def bubbles(self, since_mark: bool = True) -> list:
+        events = self.trace_since_mark() if since_mark else self.trace()
+        return [(e.get("title"), e.get("snippet")) for e in events if e.get("kind") == "bubble"]
+
     def inspect(self) -> dict:
         path = os.path.join(self.work, "inspect.json")
         if os.path.exists(path):
@@ -150,14 +179,18 @@ class App:
             for line in lines:
                 handle.write(line + "\n")
 
-    def pick(self, content: bytes | None) -> None:
-        """What the person picks next: this content, or nothing (None)."""
+    def pick(self, content: bytes | None, name: str | None = None) -> None:
+        """What the person picks next: this content (in a file of this name, when it matters), or
+        nothing (None)."""
+        if os.path.lexists(self.pick_path):
+            os.remove(self.pick_path)
         if content is None:
-            if os.path.exists(self.pick_path):
-                os.remove(self.pick_path)
             return
-        with open(self.pick_path, "wb") as handle:
+        target = os.path.join(os.path.dirname(self.pick_path), name) if name else self.pick_path
+        with open(target, "wb") as handle:
             handle.write(content)
+        if name:
+            os.symlink(target, self.pick_path)
 
     def saved(self) -> dict:
         """The copies the app saved: {name: text}."""

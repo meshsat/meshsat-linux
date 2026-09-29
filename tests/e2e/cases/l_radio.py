@@ -11,7 +11,7 @@ from driver import BenchError
 BLE_NODE = "E0:72:A1:B3:C2:ED"  # T-Deck A (MSPA_c2ec), bonded with the phone
 HARDWARE = {"node": "bluetooth", "why": "a T-Deck adopted over Bluetooth for the live radio case", "model": "PinePhone Pro"}
 POLL = 2.0
-HOPS = 4  # the node's own is 3; the laptop puts it back after the run
+HOPS = 4  # the node's own is 3 (3 when a run left it at 4); tools/e2e-run.sh puts 3 back after the run
 
 
 def named(ctx) -> dict:
@@ -44,8 +44,9 @@ def case_a_hop_limit_set_in_the_app_reaches_the_tdeck(ctx):
     ctx.tree.click("Radio")
     ctx.tree.wait_text("Hops", timeout=10)
     ctx.shot("radio-live")
+    target = HOPS if lora.get("hop_limit") != HOPS else 3  # always a change, so Apply sends it
     ctx.app.mark()
-    ctx.tree.set_text("Hops", str(HOPS))
+    ctx.tree.set_text("Hops", str(target))
     ctx.tree.click("Apply")
     ctx.app.wait_toast("Sent to the radio. It switches over in a few seconds; older firmware restarts to do it.", timeout=10)
     # The node's own answer: the page asks for the section again 2.5 s later; its reply replaces the Bridge's copy.
@@ -53,13 +54,13 @@ def case_a_hop_limit_set_in_the_app_reaches_the_tdeck(ctx):
     lora = {}
     while time.time() < deadline:
         lora = (named(ctx).get("config") or {}).get("lora") or {}
-        if lora.get("hop_limit") == HOPS:
+        if lora.get("hop_limit") == target:
             break
         time.sleep(1)
-    assert lora.get("hop_limit") == HOPS, f"the node holds hop_limit {lora.get('hop_limit')}"
+    assert lora.get("hop_limit") == target, f"the node holds hop_limit {lora.get('hop_limit')}"
     assert lora.get("region") == region, f"the region changed from {region} to {lora.get('region')}"
     ctx.tree.wait_text("Hops", timeout=5)
-    ctx.note(f"hop_limit {HOPS} set in the app and held by the node (read back through the Bridge); region still {region}")
+    ctx.note(f"hop_limit {target} set in the app and held by the node (read back through the Bridge); region still {region}")
     ctx.app.open("home")
 
 
