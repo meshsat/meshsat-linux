@@ -103,24 +103,55 @@ PROBES = {"wifi 6050": ("192.168.77.1", 6050, "192.168.77.2"), "wifi 4403": ("19
 MINE = {"lo 6050": ("127.0.0.1", 6050, "127.0.0.1"), "lo6 6050": ("::1", 6050, "::1"), "own address 6050": ("192.168.77.1", 6050, "192.168.77.1"),
         "lo 4403": ("127.0.0.1", 4403, "127.0.0.1"), "lo 9443": ("127.0.0.1", 9443, "127.0.0.1")}
 
-peer = subprocess.Popen(["unshare", "--net", "sleep", "60"], env=dict(os.environ, PATH=PATH))
+# The other machine on the network: a namespace of its own whose one process runs what it is
+# told, one JSON line in, one out, so nothing has to enter the namespace from outside.
+AGENT = r"""
+import json, subprocess, sys
+held = {}
+for line in sys.stdin:
+    req = json.loads(line)
+    if req["op"] == "run":
+        r = subprocess.run(req["argv"], capture_output=True, text=True, timeout=120)
+        out = {"rc": r.returncode, "stdout": r.stdout, "stderr": r.stderr}
+    elif req["op"] == "spawn":
+        held[req["id"]] = subprocess.Popen(req["argv"], stdout=subprocess.PIPE, text=True)
+        out = {"rc": 0}
+    else:
+        stdout, _ = held.pop(req["id"]).communicate(timeout=60)
+        out = {"rc": 0, "stdout": stdout}
+    print(json.dumps(out), flush=True)
+"""
+peer = subprocess.Popen(["unshare", "--net", "python3", "-u", "-c", AGENT], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, env=dict(os.environ, PATH=PATH))
+
+
+def there(op: str, argv=None, ident: str = "") -> dict:
+    peer.stdin.write(json.dumps({"op": op, "argv": argv, "id": ident}) + "\n")
+    peer.stdin.flush()
+    return json.loads(peer.stdout.readline())
+
+
+def sh_there(*args) -> None:
+    answer = there("run", list(args))
+    if answer["rc"] != 0:
+        raise RuntimeError(f"{args}: {answer['stderr']}")
+
+
 try:
     mine = os.readlink("/proc/self/ns/net")
     deadline = time.time() + 5
     while os.readlink(f"/proc/{peer.pid}/ns/net") == mine and time.time() < deadline:
         time.sleep(0.02)
-    there = ["nsenter", f"--net=/proc/{peer.pid}/ns/net"]
     sh("ip", "link", "set", "lo", "up")
     sh("ip", "link", "add", "wlan0", "type", "veth", "peer", "name", "eth0", "netns", str(peer.pid))
     sh("ip", "link", "add", "wwan0", "type", "veth", "peer", "name", "eth1", "netns", str(peer.pid))
     for dev, address in (("wlan0", "192.168.77.1/24"), ("wlan0", "198.51.100.1/24"), ("wlan0", "fd77::1/64"), ("wlan0", "2001:db8:77::1/64"), ("wwan0", "10.64.0.1/24")):
         sh("ip", "addr", "add", address, "dev", dev, *(["nodad"] if ":" in address else []))
     for dev, address in (("eth0", "192.168.77.2/24"), ("eth0", "198.51.100.2/24"), ("eth0", "fd77::2/64"), ("eth0", "2001:db8:77::2/64"), ("eth1", "10.64.0.2/24")):
-        sh(*there, "ip", "addr", "add", address, "dev", dev, *(["nodad"] if ":" in address else []))
+        sh_there("ip", "addr", "add", address, "dev", dev, *(["nodad"] if ":" in address else []))
     for dev in ("wlan0", "wwan0"):
         sh("ip", "link", "set", dev, "up")
     for dev in ("lo", "eth0", "eth1"):
-        sh(*there, "ip", "link", "set", dev, "up")
+        sh_there("ip", "link", "set", dev, "up")
     for port in (6050, 4403, 9443, 7050):
         listener = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
         listener.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
@@ -132,8 +163,8 @@ try:
     def probe(probes, inside=False):
         names = list(probes)
         command = ["python3", "-c", CLIENT, json.dumps([probes[n] for n in names])]
-        run = subprocess.run(command if inside else there + command, capture_output=True, text=True, timeout=60)
-        return dict(zip(names, json.loads(run.stdout), strict=True))
+        stdout = subprocess.run(command, capture_output=True, text=True, timeout=60).stdout if inside else there("run", command)["stdout"]
+        return dict(zip(names, json.loads(stdout), strict=True))
 
     def table():
         return subprocess.run(["nft", "list", "table", "inet", "meshsat"], capture_output=True, text=True, env=dict(os.environ, PATH=PATH)).stdout
@@ -145,13 +176,13 @@ try:
     out["shared flag"] = os.path.exists(flag)
     out["shared"], out["shared mine"], out["shared table"] = probe(PROBES), probe(MINE, inside=True), table()
     ready, go = os.path.join(work, "ready"), os.path.join(work, "go")
-    held = subprocess.Popen(there + ["python3", "-c", HOLD, ready, go], stdout=subprocess.PIPE, text=True)
+    there("spawn", ["python3", "-c", HOLD, ready, go], "held")
     deadline = time.time() + 10
     while not os.path.exists(ready) and time.time() < deadline:
         time.sleep(0.05)
     out["off"] = share("off")
     open(go, "w").close()
-    out["held across off"] = held.communicate(timeout=30)[0].strip()
+    out["held across off"] = there("wait", None, "held")["stdout"].strip()
     out["off flag"] = os.path.exists(flag)
     out["after off"] = probe(PROBES)
     with open(os.path.join(work, "bridge.env"), "w", encoding="utf-8") as handle:
