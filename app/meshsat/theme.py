@@ -138,17 +138,11 @@ def css() -> str:
   --sheet-bg-color: {SURFACE}; --sheet-fg-color: {TEXT_PRIMARY}; }}
 bottom-sheet > sheet {{ background-color: {SURFACE}; }}
 floating-sheet > sheet {{ background-color: {SURFACE}; color: {TEXT_PRIMARY}; border-radius: {px(16)}; box-shadow: none; }}
-dialog.alert floating-sheet > sheet {{ background-color: {SURFACE_HIGH}; }}
 floating-sheet > dimming {{ background-color: alpha(black, 0.6); }}
 bottom-sheet > dimming {{ background-color: alpha(black, 0.32); }}
 window {{ background-color: {SPACE_BLACK}; color: {TEXT_PRIMARY}; font-family: "{FONT}", sans-serif; font-size: {px(16)}; }}
 * {{ outline-width: 0; -gtk-icon-style: symbolic; }}
 label {{ color: {TEXT_PRIMARY}; }}
-toast {{ background-color: {SURFACE_HIGH}; border: none; border-radius: {px(24)}; box-shadow: none; padding: {px(12)} {px(16)}; border-spacing: 0; }}
-toast > widget {{ margin: 0; }}
-toast label {{ color: {TEXT_PRIMARY}; font-size: {px(14)}; font-weight: 400; }}
-toast > button.circular {{ opacity: 0; min-width: 0; min-height: 0; padding: 0; border: none; margin: -8px 0 -8px -16px; }}
-toast > button.circular > image {{ -gtk-icon-size: 16px; }}
 .sheet {{ padding: {px(16)} {px(16)} {px(24)} {px(16)}; }}
 .mono {{ font-family: "{MONO}", monospace; }}
 .display-small {{ font-size: {px(32)}; font-weight: 600; }}
@@ -350,9 +344,6 @@ entry > text > placeholder {{ color: {TEXT_SECONDARY}; opacity: 1; }}
 .subheader {{ min-height: {px(56)}; border-bottom: 1px solid {BORDER}; padding: 0 {px(4)}; }}
 .subheader.plain {{ min-height: {px(48)}; border-bottom: none; padding: 0; }}
 .compose {{ padding: {px(8)}; }}
-.field.compose-field {{ border-color: {BORDER}; }}
-.field.compose-field:focus-within {{ border: 2px solid {TEXT_SECONDARY}; }}
-.field.compose-field text placeholder {{ font-size: {px(14)}; }}
 .group-title {{ font-size: {px(14)}; font-weight: 500; color: {TEXT_SECONDARY}; padding: {px(20)} {px(16)} {px(4)} {px(16)}; }}
 .nav-row {{ min-height: {px(64 - 2 * 10)}; padding: {px(10)} {px(16)}; }}
 .kv-key {{ color: {TEXT_SECONDARY}; font-size: {px(14)}; }}
@@ -377,13 +368,6 @@ entry > text > placeholder {{ color: {TEXT_SECONDARY}; opacity: 1; }}
 .status-banner.red {{ background-color: {ERROR_CONTAINER}; border: 1px solid alpha({RED}, 0.4); }}
 .status-banner.green {{ background-color: alpha({GREEN}, 0.10); border: 1px solid alpha({GREEN}, 0.35); }}
 .status-banner.muted {{ background-color: {SURFACE}; border: 1px solid {BORDER}; }}
-dialog.alert .heading-bin label {{ color: {TEXT_PRIMARY}; font-size: {px(20)}; font-weight: 600; }}
-dialog.alert .message-area > label.body {{ color: {TEXT_SECONDARY}; font-size: {px(14)}; }}
-dialog.alert .response-area > button {{ background: none; border: none; box-shadow: none; min-height: {px(40)}; padding: 0 {px(12)}; border-radius: {px(20)}; }}
-dialog.alert .response-area > button label {{ color: {SIGNAL_ORANGE}; font-size: {px(14)}; font-weight: 500; }}
-dialog.alert .response-area > button.suggested-action {{ background-color: {SIGNAL_ORANGE}; padding: 0 {px(24)}; }}
-dialog.alert .response-area > button.suggested-action label {{ color: {ON_PRIMARY}; }}
-dialog.alert .response-area > button.destructive-action label {{ color: {RED}; }}
 .dialog-card {{ padding: {px(24)}; }}
 .textbutton.dialog-button {{ min-height: {px(40)}; min-width: {px(34)}; padding: 0 {px(12)}; }}
 .textbutton.danger-text label {{ color: {RED}; }}

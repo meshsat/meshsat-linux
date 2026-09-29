@@ -472,7 +472,7 @@
    "state": "verified",
    "test": "h_node::a_connected_in_androids_words",
    "capture": "node-bluetooth-connected",
-   "note": "the Bluetooth card as Android's; the cover card and the device card are this edition's"
+   "note": "the Bluetooth card as Android's; the cover card and the device card are this edition's The battery line carries Android's time left (NodeBattery.hoursLeft over the node's last three hours of readings, which the Bridge keeps: GET /api/telemetry; NodeBatteryTest ported, h_node::h_battery_time_left_from_the_bridges_history)."
   },
   {
    "id": "setup.node.cover",

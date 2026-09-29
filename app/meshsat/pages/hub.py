@@ -93,8 +93,9 @@ class HubScreen(SubScreen):
         self.password.entry.set_visibility(False)
         # The eye is the field's trailingIcon: a 48 dp IconButton inside the outline at its end,
         # centred on the box under the floating label's room; the typed text stops 4 dp before it
-        # (the entry's own 16 dp end padding plus these 36).
-        self.eye = icon_button("filled-visibility", self.toggle_password, colour=theme.TEXT_SECONDARY, tooltip=model.SHOW_PASSWORD)
+        # (the entry's own 16 dp end padding plus these 36). Android draws Icons.Outlined.Visibility
+        # and VisibilityOff here (SettingsScreen.kt:1817; the radio page's are the filled ones).
+        self.eye = icon_button("outlined-visibility", self.toggle_password, colour=theme.TEXT_SECONDARY, tooltip=model.SHOW_PASSWORD)
         self.eye.set_halign(Gtk.Align.END)
         self.eye.set_valign(Gtk.Align.CENTER)
         self.eye.set_margin_top(self.password.entry.get_margin_top())
@@ -216,7 +217,7 @@ class HubScreen(SubScreen):
         shown = not self.password.entry.get_visibility()
         self.password.entry.set_visibility(shown)
         label = model.HIDE_PASSWORD if shown else model.SHOW_PASSWORD
-        self.eye.set_child(icon("filled-visibility-off" if shown else "filled-visibility", 24, theme.TEXT_SECONDARY))
+        self.eye.set_child(icon("outlined-visibility-off" if shown else "outlined-visibility", 24, theme.TEXT_SECONDARY))
         self.eye.set_tooltip_text(label)
         name_widget(self.eye, label)
 

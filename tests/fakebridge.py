@@ -315,6 +315,10 @@ class FakeBridge:
                 return 200, {"status": "queued", "gateway": (body or {}).get("gateway"), "delivery_id": len(self.sent), "msg_ref": ref,
                              "precedence": "Routine", "plain": bool((body or {}).get("plain"))}
             return 200, {"status": "sent", "id": len(self.sent)}
+        if path == "/api/telemetry" and method == "GET":
+            # As the Bridge: a node's telemetry history, newest first (_telemetry in a scenario)
+            node = urllib.parse.parse_qs(urllib.parse.urlparse(full_path).query).get("node", [""])[0]
+            return 200, {"telemetry": list(self.routes.get("_telemetry") or []), "node_id": node}
         if path == "/api/nodes/request-info" and method == "POST":
             return 200, {"status": "nodeinfo request sent"}
         if path == "/api/deliveries/stats" and method == "GET" and self.deliveries is not None:

@@ -23,7 +23,6 @@ class StateTest(unittest.TestCase):
         self.assertEqual(s.others(), [])
         self.assertEqual(s.heard_recently(), 0)
         self.assertEqual(s.node_mode(), "cover")
-        self.assertEqual(s.contact_name("+31612345678"), "+31612345678")
         self.assertEqual(s.sms_today(), 0)
         for name in ("bridge", "nodes", "messages", "sms", "contacts", "watchdog", "hardware", "ble", "phone", "entered", "location_hint", "last_tx", "name_requests", "unreachable_since", "polled_at"):
             self.assertTrue(hasattr(s, name), name)

@@ -40,18 +40,80 @@ def battery(level) -> str | None:
     return None
 
 
-def describe(level, voltage=None) -> str | None:
+def describe(level, voltage=None, hours_left: float | None = None, with_voltage: bool = True) -> str | None:
     """NodeBattery.describe as the node's own card calls it (SettingsScreen.kt:411-414): "82%,
-    3.98 V", "82%" when the node sends no voltage, "On USB power", None when it has reported no
-    battery. Android adds ", about N h left" from three hours of its own readings of the node;
-    the Bridge keeps none, so that part is not here."""
+    3.98 V, about 14 h left", "82%" when the node sends no voltage, "On USB power", None when it
+    has reported no battery. The time left is hours_left() over the node's readings, which the
+    Bridge keeps (GET /api/telemetry)."""
     level = int(level or 0)
     if level > 100:
         return "On USB power"
     if level <= 0:
         return None
     volts = float32(voltage)
-    return f"{level}%" + (f", {words.fixed(volts, 2)} V" if volts > 0 else "")
+    text = f"{level}%" + (f", {words.fixed(volts, 2)} V" if with_voltage and volts > 0 else "")
+    return text + (f", {time_left_text(hours_left)}" if hours_left is not None else "")
+
+
+# NodeBattery.hoursLeft (ble/NodeBattery.kt): the rate the level has really been falling
+EXTERNAL_POWER = 101  # what Meshtastic sends as the battery level of a node on external power
+WINDOW_S = 3 * 3600  # readings older than this do not count
+MIN_SPAN_S = 30 * 60  # an estimate needs this much time on battery behind it...
+MIN_DROP = 2  # ...and this many points of drop
+
+
+def hours_left(readings: list, now: float) -> float | None:
+    """Hours left at the rate the level has been falling: a least-squares line through the
+    battery readings ((at, level), at in seconds) of the last three hours since the node last ran
+    on external power. None until they span half an hour and fell by two points, so nothing is
+    shown from a guess about the cell's capacity."""
+    recent = sorted((r for r in readings if r[0] >= now - WINDOW_S), key=lambda r: r[0])
+    last_usb = max((i for i, r in enumerate(recent) if r[1] > 100), default=-1)
+    on_battery = [r for r in recent[last_usb + 1:] if 0 <= r[1] <= 100]
+    if len(on_battery) < 3 or on_battery[-1][0] - on_battery[0][0] < MIN_SPAN_S:
+        return None
+    if max(r[1] for r in on_battery) - on_battery[-1][1] < MIN_DROP:
+        return None
+    t0 = on_battery[0][0]
+    xs = [(r[0] - t0) / 3600.0 for r in on_battery]
+    ys = [float(r[1]) for r in on_battery]
+    mx, my = sum(xs) / len(xs), sum(ys) / len(ys)
+    sxx = sum((x - mx) ** 2 for x in xs)
+    if sxx == 0:
+        return None
+    slope = sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / sxx
+    if slope >= 0:
+        return None
+    return on_battery[-1][1] / -slope
+
+
+def time_left_text(hours: float) -> str:
+    """"about 40 min left", "about 14 h left", "about 3 days left" (Kotlin's roundToInt, half up)."""
+    if hours < 1:
+        return f"about {max(half_up(hours * 60 / 5) * 5, 5)} min left"
+    if hours < 48:
+        return f"about {half_up(hours)} h left"
+    return f"about {half_up(hours / 24)} days left"
+
+
+def readings_of(telemetry: list) -> list:
+    """(at, level) from the Bridge's telemetry records (GET /api/telemetry: battery_level,
+    created_at in RFC 3339); records without a time or a level are skipped."""
+    import datetime  # noqa: PLC0415
+    import re  # noqa: PLC0415
+
+    out = []
+    for rec in telemetry or []:
+        stamp = str((rec or {}).get("created_at") or "")
+        level = (rec or {}).get("battery_level")
+        if not stamp or level is None:
+            continue
+        stamp = re.sub(r"(\.\d{6})\d+", r"\1", stamp.replace("Z", "+00:00"))
+        try:
+            out.append((datetime.datetime.fromisoformat(stamp).timestamp(), int(level)))
+        except ValueError:
+            continue
+    return out
 
 
 def float32(value) -> float:

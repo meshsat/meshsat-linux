@@ -250,3 +250,23 @@ def case_g_this_device_in_both_modes_and_looking_again(ctx):
         with open(path, "w", encoding="utf-8") as handle:
             json.dump(HARDWARE, handle)
         ctx.app.refresh()
+
+
+def case_h_battery_time_left_from_the_bridges_history(ctx):
+    # Android's NodeBattery: a least-squares line through the node's readings of the last three
+    # hours, which the Bridge keeps (GET /api/telemetry): 84 % to 78 % in an hour is about 13 h left
+    ctx.bridge.scenario("bluetooth-connected")
+    nodes = json.loads(json.dumps(ctx.bridge.fake.routes["GET /api/nodes"]["nodes"]))
+    for n in nodes:
+        if n["user_id"] == "!a1b3c2ec":
+            n.update(battery_level=78, voltage=3.98)
+    ctx.bridge.set("GET /api/nodes", {"nodes": nodes})
+    now = time.time()
+    records = [{"node_id": "!a1b3c2ec", "battery_level": int(84 - 6 * m / 60.0), "voltage": 3.98,
+                "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now - (60 - m) * 60))} for m in range(0, 61)]
+    ctx.bridge.set("_telemetry", list(reversed(records)))
+    before = ctx.bridge.count()
+    node_page(ctx)
+    ctx.bridge.wait_request("GET", "/api/telemetry", since=before, timeout=10)
+    ctx.tree.wait_text("78%, 3.98 V, about 13 h left", timeout=15)
+    ctx.shot("battery-time-left")

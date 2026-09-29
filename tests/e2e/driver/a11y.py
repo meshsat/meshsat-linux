@@ -214,24 +214,16 @@ class Tree:
             out.append(n)
         return out
 
-    @staticmethod
-    def _is_toast(subtree: list) -> bool:
-        """An Adw.Toast reaches the bus as an "alert" too; its one button is "Dismiss"."""
-        return [n.name for n in subtree if n.role == "button"] == ["Dismiss"]
-
     def _dialogs(self) -> list:
+        """Every dialog on view with its widgets. The app's toast is a pill of its own
+        (MeshSatApp.build_toast: a label over a drawing, no button), neither an alert nor a dialog
+        on the bus, so none is mistaken for one."""
         nodes = self.walk()
-        found = []
-        for i, n in enumerate(nodes):
-            if n.role in ("alert", "dialog"):
-                subtree = self._subtree(nodes, i)
-                if not self._is_toast(subtree):
-                    found.append(subtree)
-        return found
+        return [self._subtree(nodes, i) for i, n in enumerate(nodes) if n.role in ("alert", "dialog")]
 
     def dialog(self, timeout: float = 5.0) -> list:
-        """The widgets of the dialog in front (an alert or a sheet; never a toast), for a
-        button that shares its name with one on the page behind it."""
+        """The widgets of the dialog in front (an alert or a sheet), for a button that shares its
+        name with one on the page behind it."""
         deadline = time.time() + timeout
         while True:
             found = self._dialogs()

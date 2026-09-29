@@ -8,12 +8,13 @@ import time
 
 from gi.repository import Gdk, Gtk
 
-from . import api, sos, theme
+from . import api, theme
 from .mailbox import MailboxButton
 from .messages import sms_as_messages
 from .model import dashboard, sky
 from .model import home as words_of_home
 from .model import sosrun, words
+from .pages.sos import ask_test
 from .passes import SkyChart, sky_legend
 from .screen import Screen
 from .widgets import (Card, HoldButton, LaneRow, Sheet, Wordmark, clear, confirm, filled_button, icon, icon_button, name_widget, outlined_button, page, paint,
@@ -347,12 +348,9 @@ class HomeScreen(Screen):
         self.app.open_route("setup/safety" if s.sms_ready() else "setup/node")
 
     def test_asked(self) -> None:
-        """TestAlarmDialog: what the test text is, what each route carries and costs."""
-        s = self.app.state
-        text_of_test = sos.test_text(s.sos_name)
-        parts = sosrun.test_parts(s, s.sos_name)
-        confirm(self.app, "Test the alarm?", sosrun.test_dialog_text(text_of_test, parts), "Send the test", self.test_fire, cancel="Not now",
-                filled=True, cancel_colour=theme.OFF_WHITE)
+        """TestAlarmDialog: what the test text is, what each route carries and costs (the same
+        dialog as Setup > Safety's, pages/sos.ask_test)."""
+        ask_test(self.app, self.test_fire)
 
     def test_fire(self) -> None:
         self.app.sos.start(self.app.state, test=True, trigger="hold")
