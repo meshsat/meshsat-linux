@@ -9,9 +9,9 @@ from .. import addressbook, api, sos, theme
 from ..layout import restyle
 from ..model import contacts as book
 from ..model import home as words_of_home
-from ..model import sosrun
 from ..screen import SubScreen
-from ..widgets import Field, NavRow, Sheet, SwitchRow, clear, confirm, filled_button, icon_button, name_widget, outlined_button, paint, text, text_button
+from ..widgets import Field, NavRow, Sheet, SwitchRow, clear, filled_button, icon_button, name_widget, outlined_button, paint, text, text_button
+from .sos import ask_test
 
 TIMEOUTS = (("30", "30 min"), ("60", "1 hour"), ("120", "2 hours"), ("240", "4 hours"), ("480", "8 hours"))
 
@@ -206,11 +206,9 @@ class SafetyScreen(SubScreen):
         self.app.set_contacts([c for c in self.app.state.contacts if c.get("phone") != phone])
         self.update(self.app.state)
 
-    # The test
+    # The test: TestAlarmDialog, the same dialog as Home's (the routes of the reach rule)
     def test_asked(self) -> None:
-        s = self.app.state
-        parts = sosrun.test_parts(s, s.sos_name)
-        confirm(self.app, "Test the alarm?", sosrun.test_dialog_text(sos.test_text(s.sos_name), parts), "Send the test", self.test_fire, cancel="Not now")
+        ask_test(self.app, self.test_fire)
 
     def test_fire(self) -> None:
         self.app.sos.start(self.app.state, test=True, trigger="hold")
@@ -231,7 +229,11 @@ class SafetyScreen(SubScreen):
         self.call("/api/deadman", lambda a: self.app.poller.poll_now(), body={"enabled": current.get("enabled", False), "timeout_min": current.get("timeout_min", 240)})
 
     def update(self, s: api.State) -> None:
-        self.reach.set_text(words_of_home.reach_sentence(s))
+        # SosReach, as Home's SOS card reads it (model/home.reach): every route set up, a modem this
+        # phone has had included, not only the routes up this minute.
+        seen = self.app.prefs.get(words_of_home.MODEM_SEEN, "")
+        anywhere = words_of_home.reach(s, seen)["anywhere"]
+        self.reach.set_text(words_of_home.reach_sentence(s, seen))
         can_sms = bool((s.cellular or {}).get("connected")) and bool(s.bridge)
         reason = s.sms_reason()
         for w in (self.contacts_title, self.contacts_note, self.contact_rows):
@@ -258,10 +260,10 @@ class SafetyScreen(SubScreen):
                 self.contact_rows.append(row)
         self.adding_box.set_visible(can_sms and len(s.contacts) < book.MAX)
         run = self.app.sos.active()
-        can_test = sosrun.anywhere(s) and run is None
+        can_test = anywhere and run is None  # reach.anywhere && run?.active != true
         self.test_button.set_sensitive(can_test)
         restyle(self.test_button.get_child(), f"color: {theme.OFF_WHITE if can_test else theme.TEXT_MUTED}; filter: none;")
-        self.no_way.set_visible(not sosrun.anywhere(s))
+        self.no_way.set_visible(not anywhere)
         d = s.deadman or {}
         self.enabled.set_active(bool(d.get("enabled")))
         on = bool(d.get("enabled"))

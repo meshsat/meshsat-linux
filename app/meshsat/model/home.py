@@ -129,7 +129,9 @@ def reach(s, modem_seen: str = "") -> dict:
     had a modem, connected now or not (`modem_seen`: the IMEI the app remembers, Android's
     lastModemImei), the mesh once a node is paired (Bluetooth) or started (the cover), SMS while
     the phone can text and has emergency contacts, the Hub once it is set up. On this edition the
-    Bridge queues every route, so without it an SOS has nowhere to go.
+    Bridge queues every route, so without it an SOS has nowhere to go. The one rule for Home's SOS
+    card, Setup > Safety and the alarm test's dialog (sosrun.test_parts), as Android's one SosReach
+    is for SosCard, SosSettingsCard and TestAlarmDialog.
 
     {"satellite", "mesh", "sms", "hub": each route; "can_sms": the phone can text at all;
     "anywhere": at least one route}."""

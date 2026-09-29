@@ -7,7 +7,7 @@ is kept in the app's preferences, so the banner, the result screen and the cance
 survive a restart."""
 import time
 
-from . import words
+from . import home, words
 
 WAITING, SENDING, SENT, STOPPED, FAILED = "waiting", "sending", "sent", "stopped", "failed"
 HUB_LABEL = "Hub, over the internet"
@@ -207,19 +207,24 @@ def clock(ts: float) -> str:
     return time.strftime("%H:%M", time.localtime(ts))
 
 
-def test_parts(s, name_words: str) -> list:
-    """What each route of a test carries, and what it costs (TestAlarmDialog)."""
+def test_parts(s, modem_seen: str = "") -> list:
+    """What each route of a test carries, and what it costs (TestAlarmDialog, SosScreens.kt:414-429).
+    The routes are SosReach's, as Home's SOS card and Setup > Safety show them (home.reach: every
+    route set up, the satellite once the phone has had a modem, `modem_seen` being the IMEI the
+    app remembers), not only the ones up this minute."""
+    routes = home.reach(s, modem_seen)
     parts = []
-    if s.modem_connected():
+    if routes["satellite"]:
         parts.append("a position report to the Hub by satellite, 1 credit")
-    if s.mesh_connected():
+    if routes["mesh"]:
         parts.append("the text on the mesh")
-    if s.sms_ready() and s.contacts:
+    if routes["sms"]:
         if len(s.contacts) == 1:
-            parts.append(f"the text by SMS to {s.contacts[0].get('name') or '1 contact'}, at your carrier's rate")
+            name = s.contacts[0].get("name") or ""
+            parts.append(f"the text by SMS to {name if name.strip() else '1 contact'}, at your carrier's rate")  # name.ifBlank { "1 contact" }
         else:
             parts.append(f"the text by SMS to {len(s.contacts)} contacts, at your carrier's rate")
-    if s.hub_configured():
+    if routes["hub"]:
         parts.append("a test event to the Hub online")
     return parts
 
@@ -227,8 +232,3 @@ def test_parts(s, name_words: str) -> list:
 def test_dialog_text(text: str, parts: list) -> str:
     joined = parts[0] if len(parts) == 1 else ("; ".join(parts[:-1]) + "; and " + parts[-1] if parts else "")
     return f"The test text is \"{text}\". It goes as {joined}. Nobody is alarmed, and the Hub does not raise an SOS."
-
-
-def anywhere(s) -> bool:
-    """An SOS has somewhere to go (SosReach.anywhere)."""
-    return bool(s.bridge) and (s.modem_connected() or s.mesh_connected() or (s.sms_ready() and bool(s.contacts)) or s.hub_configured())

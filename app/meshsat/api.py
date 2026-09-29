@@ -513,12 +513,6 @@ class State:
         start = time.time() - (time.time() % 86400)
         return sum(1 for m in self.sms if (m.get("timestamp") or 0) >= start)
 
-    def contact_name(self, phone: str) -> str:
-        for c in self.contacts:
-            if c.get("phone") == phone and c.get("name"):
-                return c["name"]
-        return phone
-
     def own_node(self) -> dict | None:
         if not self.bridge:
             return None

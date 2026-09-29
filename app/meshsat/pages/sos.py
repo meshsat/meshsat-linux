@@ -1,15 +1,28 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """The SOS result screen (SosScreens.kt SosScreen): where each route of the SOS or the alarm
-test stands, what was not used, and Cancel."""
+test stands, what was not used, and Cancel; and the alarm test's dialog, which Home's SOS card
+and Setup > Safety both open."""
 from gi.repository import Gtk
 
 from .. import api, sos, theme
 from ..model import sosrun
+from ..model.home import MODEM_SEEN
 from ..screen import SubScreen
 from ..widgets import Card, clear, confirm, filled_button, icon, text, text_button
 
 ICONS = {sosrun.SENT: ("outlined-done", theme.GREEN), sosrun.SENDING: ("outlined-sync", theme.AMBER), sosrun.WAITING: ("outlined-schedule", theme.AMBER),
          sosrun.STOPPED: ("outlined-block", theme.TEXT_MUTED), sosrun.FAILED: ("outlined-error-outline", theme.RED)}
+
+
+def ask_test(app, on_test) -> None:
+    """TestAlarmDialog (SosScreens.kt:414-443), one dialog for Home's SOS card and Setup > Safety
+    as on Android: the test text, then what each route carries and what it costs, the routes being
+    SosReach's (model/home.reach, a modem this phone has had included); "Send the test" filled in
+    orange, "Not now" in OffWhite."""
+    s = app.state
+    parts = sosrun.test_parts(s, app.prefs.get(MODEM_SEEN, ""))
+    confirm(app, "Test the alarm?", sosrun.test_dialog_text(sos.test_text(s.sos_name), parts), "Send the test", on_test, cancel="Not now",
+            filled=True, cancel_colour=theme.OFF_WHITE)
 
 
 class SosScreen(SubScreen):
@@ -48,7 +61,8 @@ class SosScreen(SubScreen):
             self.update(self.app.state)
             return
         confirm(self.app, "Cancel the SOS?", "Nothing more goes out, and everyone who got the SOS is told you are safe.", "Cancel SOS",
-                lambda: (self.app.sos.cancel(self.app.state), self.update(self.app.state)), cancel="Keep it on")
+                lambda: (self.app.sos.cancel(self.app.state), self.update(self.app.state)), cancel="Keep it on",
+                filled=True, cancel_colour=theme.OFF_WHITE)
 
     def update(self, s: api.State) -> None:
         run = self.app.sos.run

@@ -7,7 +7,7 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "app"))
 
 from meshsat import api, sos  # noqa: E402
-from meshsat.model import sosrun  # noqa: E402
+from meshsat.model import home, sosrun  # noqa: E402
 
 
 def state(**fields) -> api.State:
@@ -103,13 +103,50 @@ class SosRunTest(unittest.TestCase):
 
     def test_the_test_dialog_lists_every_leg(self):
         s = state(bridge=CONNECTED, cellular=SIM, contacts=[{"name": "Anna", "phone": "+316"}, {"name": "", "phone": "+317"}], hub={"url": "mqtts://hub"}, modem={"connected": True, "port": "/dev/ttyUSB4"})
-        parts = sosrun.test_parts(s, "flaneur")
+        parts = sosrun.test_parts(s)
         self.assertEqual(parts, ["a position report to the Hub by satellite, 1 credit", "the text on the mesh", "the text by SMS to 2 contacts, at your carrier's rate", "a test event to the Hub online"])
         text = sosrun.test_dialog_text(sos.test_text("flaneur"), parts)
         self.assertTrue(text.startswith('The test text is "Test from flaneur: checking the MeshSat alarm routes. No help needed.". It goes as a position report'))
         self.assertTrue(text.endswith("; and a test event to the Hub online. Nobody is alarmed, and the Hub does not raise an SOS."))
         one = sosrun.test_dialog_text("t", ["the text on the mesh"])
         self.assertIn("It goes as the text on the mesh.", one)
+
+    def test_the_test_dialog_takes_every_route_set_up(self):
+        """TestAlarmDialog lists SosReach's routes (SosScreens.kt:423-428), as Home and Safety count
+        them: a modem this phone has had, a node paired while it reconnects; not only what is up
+        this minute. One contact is named, a blank name is "1 contact" (ifBlank)."""
+        imei = "300434065000000"
+        s = state(bridge=CONNECTED | {"connected": False}, hardware={"node": "bluetooth"}, ble={"mode": "lost", "address": "E0:72"},
+                  modem={"connected": False, "port": "", "imei": ""}, cellular=SIM, contacts=[{"name": "  ", "phone": "+316"}], hub={"url": "mqtts://hub"})
+        self.assertEqual(sosrun.test_parts(s, imei), ["a position report to the Hub by satellite, 1 credit", "the text on the mesh",
+                                                      "the text by SMS to 1 contact, at your carrier's rate", "a test event to the Hub online"])
+        # No modem ever seen: no satellite leg; the Bridge's own word on a modem it knows counts too
+        self.assertNotIn("a position report to the Hub by satellite, 1 credit", sosrun.test_parts(s))
+        s.modem = {"connected": False, "port": "/dev/ttyUSB4", "imei": imei, "silent": True}
+        self.assertIn("a position report to the Hub by satellite, 1 credit", sosrun.test_parts(s))
+        s.contacts = [{"name": "Anna", "phone": "+316"}]
+        self.assertIn("the text by SMS to Anna, at your carrier's rate", sosrun.test_parts(s))
+        # The cover: the node started is the mesh route, connected yet or not
+        cover = state(bridge=CONNECTED | {"connected": False}, node_service=True)
+        self.assertEqual(sosrun.test_parts(cover), ["the text on the mesh"])
+        # Without the Bridge nothing goes, whatever was set up
+        s.bridge = None
+        self.assertEqual(sosrun.test_parts(s, imei), [])
+
+    def test_the_test_dialog_and_the_reach_rule_agree(self):
+        """One rule (model/home.reach) for the SOS card, Safety and the test's dialog: a leg for each
+        route it counts, and none when an SOS would have nowhere to go."""
+        imei = "300434065000000"
+        states = [state(bridge=None), state(bridge=CONNECTED | {"connected": False}), state(bridge=CONNECTED | {"connected": False}, node_service=True),
+                  state(bridge=CONNECTED, cellular=SIM), state(bridge=CONNECTED, cellular=SIM, contacts=[{"name": "Anna", "phone": "+316"}], hub={"url": "mqtts://hub"}),
+                  state(bridge=CONNECTED | {"connected": False}, hardware={"node": "bluetooth"}, ble={"mode": "idle"}, cellular={"connected": True, "sim_state": "PIN_REQUIRED"},
+                        contacts=[{"name": "Anna", "phone": "+316"}])]
+        for s in states:
+            for seen in ("", imei):
+                routes = home.reach(s, seen)
+                parts = sosrun.test_parts(s, seen)
+                self.assertEqual(len(parts), sum(routes[k] for k in ("satellite", "mesh", "sms", "hub")), (vars(s), seen))
+                self.assertEqual(bool(parts), routes["anywhere"], (vars(s), seen))
 
 
 if __name__ == "__main__":

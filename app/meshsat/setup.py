@@ -4,6 +4,8 @@ in three groups, and one page of cards per row. This edition: the node is the Lo
 cover driven by meshtasticd on this phone, the satellite modem is a RockBLOCK on USB-C, and
 there is no SMS row (the phone's own modem is not the app's)."""
 import threading
+import time
+import urllib.parse
 
 from gi.repository import Adw, GLib, Gtk
 
@@ -101,6 +103,7 @@ class NodeScreen(Page):
         self.devices = None
         self.scanning = False
         self.pin_asked_for = None
+        self.battery_readings = []  # (at, level) of the node's last three hours (GET /api/telemetry)
         # The LoRa back cover, when this phone has one: drawn as Android's Bluetooth card is (its
         # ConnectionStatusRow, InfoRows 8 dp apart, the node rows and a bodySmall button).
         self.cover = self.card("The LoRa back cover")
@@ -158,6 +161,28 @@ class NodeScreen(Page):
         else:
             self.update_bluetooth(s)
 
+    def on_show(self) -> None:
+        super().on_show()
+        self.every(60, self.load_battery)
+
+    def load_battery(self) -> None:
+        """The node's battery readings of the last three hours, which the Bridge keeps: the time
+        left comes from them, as Android's NodeBattery estimates it from its own."""
+        s = self.app.state
+        node = (s.own_node() or {}).get("user_id") or (s.bridge or {}).get("node_id")
+        if not node:
+            return
+        since = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - nodes_model.WINDOW_S))
+        self.fetch(f"/api/telemetry?node={urllib.parse.quote(node)}&since={since}&limit=1000", self.battery_loaded)
+
+    def battery_loaded(self, answer: api.Answer) -> None:
+        if answer.ok and isinstance(answer.body, dict):
+            self.battery_readings = nodes_model.readings_of(answer.body.get("telemetry") or [])
+            self.update(self.app.state)
+
+    def hours_left(self) -> float | None:
+        return nodes_model.hours_left(self.battery_readings, time.time())
+
     def update_cover(self, s: api.State) -> None:
         clear(self.details)
         if s.mesh_connected():
@@ -211,7 +236,7 @@ class NodeScreen(Page):
         # replace the buttons under a person's finger (or a test's click).
         own = s.own_node() or {}
         key = (status, b.get("firmware_version"), b.get("node_id"), b.get("reboot_count"),
-               nodes_model.describe(own.get("battery_level"), own.get("voltage")),
+               nodes_model.describe(own.get("battery_level"), own.get("voltage"), self.hours_left()),
                tuple(((n.get("long_name") or "").strip() or n.get("user_id", ""), (n.get("short_name") or "").strip()) for n in (s.nodes or [])),
                state == "pairing" or bool(ble.get("pairing_pending")), ble.get("name"), ble.get("address"),
                None if self.devices is None else tuple((d.get("name"), d.get("address")) for d in self.devices))
@@ -223,7 +248,7 @@ class NodeScreen(Page):
         if s.mesh_connected():
             own = s.own_node() or {}
             rows = [("Firmware", b.get("firmware_version", "")), ("Node ID", b.get("node_id", ""))]
-            battery = nodes_model.describe(own.get("battery_level"), own.get("voltage"))
+            battery = nodes_model.describe(own.get("battery_level"), own.get("voltage"), self.hours_left())
             if battery:
                 rows.append(("Battery", battery))
             if b.get("reboot_count"):

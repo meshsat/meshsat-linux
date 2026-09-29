@@ -36,6 +36,11 @@
   </recommends>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="1.0.2" date="2026-09-29">
+      <description>
+        <p>The node's battery with the time it has left, as Android estimates it from the readings the Bridge keeps; Safety and the alarm test's question reach every route that is set up, as Home does; the Hub's password eye as Android draws it.</p>
+      </description>
+    </release>
     <release version="1.0.1" date="2026-09-29">
       <description>
         <p>Closer still to MeshSat Android: the spacing, sizes, chips, rows and colours a side-by-side comparison of every screen found different. The satellite modem of a MeshSat node over Bluetooth: the Satellite page's "Satellite modem on the node" with "Use the node's modem", and the node's health report.</p>
