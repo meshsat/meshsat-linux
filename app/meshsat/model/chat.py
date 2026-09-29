@@ -82,3 +82,19 @@ def search(messages: list, query: str) -> list:
     if not q:
         return list(messages)
     return [m for m in messages if q in (m.get("decoded_text") or "").lower()]
+
+
+# New message (MessagesScreen.kt:1085-1172): a phone number is an SMS chat
+NUMBER_LABEL = "Or a phone number, e.g. +31612345678"
+TEXT_NUMBER = "Text this number"
+
+
+def number_ok(value: str) -> bool:
+    """At least 6 characters, only digits, "+" and spaces (NewMessageDialog's numberOk)."""
+    n = (value or "").strip()
+    return len(n) >= 6 and all(c.isdigit() or c in "+ " for c in n)
+
+
+def number_of(value: str) -> str:
+    """The number as the chat keeps it: trimmed, spaces out."""
+    return (value or "").strip().replace(" ", "")

@@ -15,7 +15,7 @@
 #   $BACKPLATE                   a checkout of meshsat-lora-backplate at the pinned commit
 set -eu
 
-VERSION=0.11.2
+VERSION=0.12.0
 ARCH=arm64
 INPUTS=$HOME/build/meshsat-linux/inputs
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -23,7 +23,7 @@ BACKPLATE=${MESHSAT_BACKPLATE_DIR:-$HERE/../meshsat-lora-backplate}
 BACKPLATE_COMMIT=f80fa16
 # The Bridge's container image this package takes its binary from (fetch-bridge.sh <tag>):
 # the first 8 characters of the meshsat commit the image was built from.
-BRIDGE_TAG=7d406a6f
+BRIDGE_TAG=0c884a00
 WEB_VERSION=v2.7.2
 WEB_SHA256=62657b85b4c24af4d44da2932b64143abdbf6e65a79fcb51fd0801d9540616e2
 DAEMON_SHA256=96b02d077d99b1f4d9a44e9882f571bf66cd3f9128550394989298dc24b7b1d4
@@ -141,6 +141,8 @@ fi
 install -d "$ROOT/usr/share/fonts/truetype/meshsat"
 install -m 0644 "$HERE"/package/fonts/*.ttf "$ROOT/usr/share/fonts/truetype/meshsat/"
 install -D -m 0644 "$HERE/package/fonts/LICENSE.txt" "$ROOT/usr/share/doc/meshsat/IBM-Plex-LICENSE.txt"
+# Material Icons, the apps' icons (Apache License 2.0)
+install -D -m 0644 "$HERE/package/icons/LICENSE-Material-Icons.txt" "$ROOT/usr/share/doc/meshsat/Material-Icons-LICENSE.txt"
 
 # Documentation
 install -D -m 0644 "$HERE/LICENSE" "$ROOT/usr/share/doc/meshsat/copyright"

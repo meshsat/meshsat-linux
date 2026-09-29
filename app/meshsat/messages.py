@@ -8,9 +8,9 @@ from gi.repository import GLib, Gtk
 
 from . import api, theme
 from .model import chat as chat_words
-from .model import words
+from .model import chatkeys, words
 from .screen import Screen
-from .widgets import Card, Chip, PickerDialog, SubHeader, Tag, clear, hscroll, icon, icon_button, name_widget, page, scroller, spacer, state_tag, text, tone_colour, when, when_date
+from .widgets import Card, Chip, SubHeader, Tag, clear, hscroll, icon, icon_button, name_widget, page, scroller, spacer, state_tag, text, tone_colour, when, when_date
 
 EVERYONE = "!ffffffff"
 SATELLITE = "satellite"
@@ -36,7 +36,8 @@ def sms_as_messages(s: api.State) -> list:
     for m in s.sms:
         rx = m.get("direction") == "rx"
         out.append({"id": m.get("id"), "from_node": m.get("phone") if rx else me, "to_node": me if rx else m.get("phone"), "portnum_name": "TEXT_MESSAGE_APP",
-                    "decoded_text": m.get("text", ""), "rx_time": m.get("timestamp") or 0, "direction": "rx" if rx else "tx", "transport": "sms", "delivery_status": m.get("status", "")})
+                    "decoded_text": m.get("text", ""), "rx_time": m.get("timestamp") or 0, "direction": "rx" if rx else "tx", "transport": "sms", "delivery_status": m.get("status", ""),
+                    "encrypted": bool(m.get("encrypted"))})
     for m in s.messages:
         if m.get("transport") == "sms" and m.get("local") and not any(o.get("direction") == "tx" and o["decoded_text"] == m.get("decoded_text") and abs((o.get("rx_time") or 0) - (m.get("rx_time") or 0)) < 120 for o in out):
             out.append(m)
@@ -240,11 +241,15 @@ class ChatScreen(Screen):
         self.route = "chat/" + key
         self._key = None
         self.sending = False
-        # No per-chat key on this phone yet (0.12.0): Android's open lock, muted.
-        lock = icon_button("outlined-lock-open", lambda: app.toast("Encryption keys are managed by the Bridge."), 24, theme.TEXT_MUTED, tooltip="Encryption key")
+        # The lock: this chat's own key, kept by the Bridge (Android's KeyManagementSection).
+        self.chat_key = None
+        self.lock = icon_button("filled-lock-open", self.toggle_key, 24, theme.TEXT_MUTED, tooltip=chatkeys.LOCK)
         # Under the name, as the Android header: the node's id, the channel, or the transport.
         subtitle = detail_of(key) or {"sms": "SMS"}.get(lane, "Mesh")
-        self.append(SubHeader(title, app.pop, orange=True, subtitle=subtitle, subtitle_colour=theme.lane_colour(lane), trailing=lock, plain=True))
+        self.append(SubHeader(title, app.pop, orange=True, subtitle=subtitle, subtitle_colour=theme.lane_colour(lane), trailing=self.lock, plain=True))
+        self.key_section = ChatKeySection(self)
+        self.key_section.set_visible(False)
+        self.append(self.key_section)
         self.bubbles = page(spacing=4, padded=False)
         self.bubbles.set_margin_start(theme.dp(16))
         self.bubbles.set_margin_end(theme.dp(16))
@@ -280,6 +285,27 @@ class ChatScreen(Screen):
         self.append(composer)
         self.composer_changed()
         self.update(app.state)
+
+    # The chat's key
+    def on_show(self) -> None:
+        self.fetch(chatkeys.path(self.key), self.key_loaded)
+        self.paint_lock()
+
+    def key_loaded(self, answer: api.Answer) -> None:
+        if answer.ok and isinstance(answer.body, dict) and chatkeys.valid(str(answer.body.get("key") or "")):
+            self.chat_key = answer.body["key"]
+            self.key_section.show_key(self.chat_key)
+        elif answer.status == 404:
+            self.chat_key = None
+            self.key_section.show_key(None)
+        self.paint_lock()
+
+    def paint_lock(self) -> None:
+        on = chatkeys.lock_on(self.chat_key, self.app.prefs.get("messaging_key", ""))
+        self.lock.set_child(icon("filled-lock" if on else "filled-lock-open", 24, theme.AMBER if on else theme.TEXT_MUTED))
+
+    def toggle_key(self) -> None:
+        self.key_section.set_visible(not self.key_section.get_visible())
 
     def composer_changed(self) -> None:
         """The hint and the send button follow what is typed and what is connected."""
@@ -353,6 +379,12 @@ class ChatScreen(Screen):
         # The header: labelSmall (12 sp, medium), 20 dp tall with the copy button.
         top = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(4))
         top.append(text(BADGE.get(lane, lane.upper()), "label-medium", theme.lane_colour(lane)))
+        if m.get("encrypted"):
+            # It went or came sealed, and the Bridge opened it: Android's amber lock, "Decrypted"
+            lock = icon("filled-lock", 12, theme.AMBER)
+            lock.set_valign(Gtk.Align.CENTER)
+            name_widget(lock, "Decrypted")
+            top.append(lock)
         if m.get("forwarded") and not mine:
             top.append(text("Forwarded", "label-medium", theme.TEXT_MUTED))
         top.append(spacer())
@@ -400,48 +432,176 @@ def detail_of(key: str) -> str | None:
 
 
 def new_message(app) -> None:
-    """New message, as the Android dialog: Satellite, everyone on the mesh, then the twenty
-    nodes heard most recently ("Node !id" until one has told its name), then a phone number.
-    A node opens that node's chat: its texts go to it and nowhere else."""
+    """NewMessageDialog (MessagesScreen.kt:1085-1172): the satellite, everyone on the mesh, the
+    twenty nodes heard most recently ("Node !id" until one has told its name), each a row with
+    its lane's dot, then a phone number and "Text this number". A node opens that node's chat:
+    its texts go to it and nowhere else."""
+    from .widgets import Field, Sheet  # noqa: PLC0415
+
     s = app.state
-    nodes = sorted(s.others(), key=lambda n: -(n.get("last_heard") or 0))[:20]
-    choices = [("satellite", "Satellite", "Through Rock7 to the Hub, from anywhere with a view of the sky"),
-               ("mesh", "Everyone on the mesh", "Every node on your channel")]
-    choices += [("node:" + n["user_id"], name_of(n["user_id"], s), f"On the mesh, {n['user_id']}") for n in nodes if n.get("user_id")]
-    choices.append(("sms", "SMS", "A text from this phone's SIM, to a phone number"))
+    sheet = Sheet(app, "New message", width=340)
+    rows = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(4))
 
-    def picked(key: str) -> None:
-        if key == "satellite":
-            app.open_route("chat/satellite")
-        elif key == "mesh":
-            app.open_route("chat/" + EVERYONE)
-        elif key.startswith("node:"):
-            app.open_route("chat/" + key[5:])
-        else:
-            ask_number(app)
+    def row(title: str, detail: str, lane: str, route: str) -> None:
+        button = Gtk.Button()
+        button.add_css_class("flat")
+        button.add_css_class("new-row")
+        inner = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(12))
+        dot = Gtk.Box()
+        dot.add_css_class("new-dot")
+        dot.add_css_class({"satellite": "bg-iridium", "mesh": "bg-mesh"}.get(lane, "bg-mesh"))
+        dot.set_valign(Gtk.Align.CENTER)
+        inner.append(dot)
+        texts = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        texts.set_hexpand(True)
+        texts.set_valign(Gtk.Align.CENTER)
+        texts.append(text(title, "title-medium", ellipsize=True))
+        texts.append(text(detail, "body-small", theme.TEXT_SECONDARY, wrap=True))
+        inner.append(texts)
+        button.set_child(inner)
+        button.connect("clicked", lambda *_: (sheet.close(), app.open_route(route)))
+        rows.append(button)
 
-    PickerDialog(app, "New message", choices, "mesh", picked).present()
+    row("Satellite", "Through Rock7 to the Hub, from anywhere with a view of the sky", "satellite", "chat/satellite")
+    row("Everyone on the mesh", "Every node on your channel", "mesh", "chat/" + EVERYONE)
+    for n in sorted(s.others(), key=lambda n: -(n.get("last_heard") or 0))[:20]:
+        if n.get("user_id"):
+            row(name_of(n["user_id"], s), f"On the mesh, {n['user_id']}", "mesh", "chat/" + n["user_id"])
+    number = Field(chat_words.NUMBER_LABEL, purpose=Gtk.InputPurpose.PHONE)
+    number.set_margin_top(theme.dp(8))
+    rows.append(number)
+    scroll = Gtk.ScrolledWindow(propagate_natural_height=True, max_content_height=theme.dp(420), hscrollbar_policy=Gtk.PolicyType.NEVER)
+    scroll.set_child(rows)
+    sheet.body.append(scroll)
 
+    def text_it() -> None:
+        if chat_words.number_ok(number.text):
+            sheet.close()
+            app.open_route("chat/sms:" + chat_words.number_of(number.text))
 
-def ask_number(app) -> None:
-    """The phone number for a text by SMS."""
-    from .widgets import Sheet  # noqa: PLC0415
-
-    sheet = Sheet(app, "Text a phone number")
-    entry = Gtk.Entry(placeholder_text="Phone number, with country code", input_purpose=Gtk.InputPurpose.PHONE)
-    entry.add_css_class("field")
-    entry.update_property([Gtk.AccessibleProperty.LABEL], ["Phone number"])
-    sheet.body.append(entry)
-
-    def go() -> None:
-        number = "".join(ch for ch in entry.get_text() if ch.isdigit() or ch == "+")
-        if not number.startswith("+") or len(number) < 8:
-            app.toast("A phone number with its country code, like +31612345678.")
-            return
-        sheet.close()
-        app.open_route("chat/sms:" + number)
-
-    entry.connect("activate", lambda *_: go())
-    sheet.button("Cancel", sheet.close)
-    sheet.button("Write", go)
+    cancel = sheet.button("Cancel", sheet.close)
+    cancel.add_css_class("muted-text")
+    go = sheet.button(chat_words.TEXT_NUMBER, text_it)
+    go.set_sensitive(False)
+    number.on_change = lambda value: go.set_sensitive(chat_words.number_ok(value))
+    number.entry.connect("activate", lambda *_: text_it())
     sheet.present()
+
+
+class ChatKeySection(Gtk.Box):
+    """KeyManagementSection (MessagesScreen.kt:854-969), between the chat's header and its
+    bubbles: the title, what the key does, the key (hidden until Show), Show/Generate/Save and
+    Copy/Paste/Remove. Save, Remove and the key itself go to the Bridge's keystore (B21); Generate
+    and Paste only fill the field, as on Android."""
+
+    def __init__(self, chat: "ChatScreen"):
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(8))
+        self.chat = chat
+        self.add_css_class("card")
+        self.add_css_class("card-pad")
+        for side in ("start", "end"):
+            getattr(self, f"set_margin_{side}")(theme.dp(16))
+        self.set_margin_bottom(theme.dp(8))
+        self.append(text(chatkeys.TITLE, "title-small"))
+        self.append(text(chatkeys.NOTE, "body-small", theme.TEXT_MUTED, wrap=True))
+        self.append(text(chatkeys.FIELD, "body-small", theme.TEXT_SECONDARY))
+        self.entry = Gtk.Entry()
+        self.entry.add_css_class("field")
+        self.entry.add_css_class("mono")
+        self.entry.add_css_class("label-medium")
+        self.entry.set_visibility(False)
+        self.entry.set_input_purpose(Gtk.InputPurpose.PASSWORD)
+        self.entry.update_property([Gtk.AccessibleProperty.LABEL], [chatkeys.FIELD])
+        self.append(self.entry)
+        row1 = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8), homogeneous=True)
+        self.show_button = key_button(chatkeys.SHOW, self.toggle_show, "tonal-surface")
+        row1.append(self.show_button)
+        row1.append(key_button(chatkeys.GENERATE, self.generate, "amber-fill"))
+        row1.append(key_button(chatkeys.SAVE, self.save, ""))
+        self.append(row1)
+        row2 = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8), homogeneous=True)
+        row2.append(key_button(chatkeys.COPY, self.copy, "tonal-surface"))
+        row2.append(key_button(chatkeys.PASTE, self.paste, "tonal-surface"))
+        self.remove_button = key_button(chatkeys.REMOVE, self.remove, "tonal-surface")
+        self.remove_button.set_visible(False)
+        row2.append(self.remove_button)
+        self.append(row2)
+
+    def show_key(self, key: str | None) -> None:
+        """The chat's key as the Bridge has it: in the field (hidden), and Remove offered."""
+        self.entry.set_text(key or "")
+        self.remove_button.set_visible(bool(key))
+
+    def toggle_show(self) -> None:
+        showing = not self.entry.get_visibility()
+        self.entry.set_visibility(showing)
+        self.show_button.set_label(chatkeys.HIDE if showing else chatkeys.SHOW)
+
+    def generate(self) -> None:
+        self.entry.set_text(chatkeys.generate())
+
+    def save(self) -> None:
+        typed = self.entry.get_text()
+        app = self.chat.app
+        if not chatkeys.valid(typed):
+            app.toast(chatkeys.INVALID)
+            return
+
+        def saved(answer: api.Answer) -> None:
+            if not answer.ok:
+                app.toast(answer.error or "The Bridge did not take the key.")
+                return
+            self.chat.chat_key = typed.lower()
+            self.remove_button.set_visible(True)
+            self.chat.paint_lock()
+            app.toast(chatkeys.SAVED)
+
+        self.chat.call(chatkeys.path(self.chat.key), saved, body={"key": typed}, method="PUT")
+
+    def copy(self) -> None:
+        typed = self.entry.get_text()
+        if typed.strip():
+            self.chat.app.window.get_clipboard().set(typed)
+            self.chat.app.toast(chatkeys.COPIED)
+
+    def paste(self) -> None:
+        clipboard = self.chat.app.window.get_clipboard()
+
+        def read(board, result) -> None:
+            try:
+                clip = board.read_text_finish(result) or ""
+            except GLib.Error:
+                clip = ""
+            if chatkeys.valid(clip):
+                self.entry.set_text(clip)
+                self.chat.app.toast(chatkeys.PASTED)
+            else:
+                self.chat.app.toast(chatkeys.NOT_A_KEY)
+
+        clipboard.read_text_async(None, read)
+
+    def remove(self) -> None:
+        app = self.chat.app
+
+        def removed(answer: api.Answer) -> None:
+            if not answer.ok and answer.status != 404:
+                app.toast(answer.error or "The Bridge did not remove the key.")
+                return
+            self.chat.chat_key = None
+            self.show_key(None)
+            self.chat.paint_lock()
+            app.toast(chatkeys.REMOVED)
+
+        self.chat.call(chatkeys.path(self.chat.key), removed, method="DELETE")
+
+
+def key_button(label: str, on_click, style: str) -> Gtk.Button:
+    """Android's Button(... weight(1f)) with bodySmall text, in its colour."""
+    from .widgets import filled_button  # noqa: PLC0415
+
+    button = filled_button(label, on_click)
+    button.add_css_class("small-text")
+    if style:
+        button.add_css_class(style)
+    return button
+

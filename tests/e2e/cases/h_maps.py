@@ -124,7 +124,7 @@ def case_f_offline_the_detailed_map_serves(ctx):
     ctx.bridge.scenario("one-node")
     ctx.app.refresh()
     ctx.app.tab("people")
-    ctx.tree.wait_text("Your node is listening.", timeout=10)
+    ctx.tree.wait_text("0 nodes heard, 0 in the last 15 min", timeout=10)
     ctx.app.tab("map")
     facts = ctx.app.wait_map(lambda f: f["detailed"] == "e2e Utrecht" and round(f["zoom"]) == 3, what="the detailed map chosen, at zoom 3")
     assert facts["note"] == ONLINE and not facts["offline"], facts

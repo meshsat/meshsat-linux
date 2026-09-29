@@ -17,6 +17,11 @@ R=$B/run
 rm -rf "$R"; mkdir -p "$R"; chmod 700 "$R"
 export XDG_RUNTIME_DIR=$R
 export LC_ALL=C.UTF-8 TZ=${TZ:-UTC} GTK_A11Y=atspi GSK_RENDERER=cairo
+# Settings stay in memory. The app under test reads its settings from its own directories, but a
+# write through dconf reaches the person's real settings: the session bus's dconf service writes
+# to ~/.config. The test notifier's offer of Phosh's plugins would otherwise replace the owner's
+# own plugin lists.
+export GSETTINGS_BACKEND=memory
 unset WAYLAND_DISPLAY DISPLAY DBUS_SESSION_BUS_ADDRESS
 cat > "$B/inside.sh" <<IN
 #!/bin/bash

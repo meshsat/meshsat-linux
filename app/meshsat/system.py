@@ -120,3 +120,36 @@ def journal(unit: str, lines: int = 80, timeout: float = 5.0) -> str:
     if run.returncode != 0 and not run.stdout:
         return run.stderr.strip() or "Cannot read the node's log."
     return run.stdout
+
+
+def bluetooth_on() -> None:
+    """NodeLinkBanner's "Tap to switch it on": what Phosh's own Bluetooth switch does
+    (gnome-settings-daemon lifts the rfkill block), then BlueZ's adapter power; when neither
+    answers, the Settings page for Bluetooth, as Android falls back to its Bluetooth settings.
+    Not waited for."""
+    trace.event("command", command=["bluetooth", "on"])
+    if TEST:
+        return
+    import threading  # noqa: PLC0415
+
+    def run() -> None:
+        lifted = False
+        try:
+            lifted = subprocess.run(["gdbus", "call", "--session", "--dest", "org.gnome.SettingsDaemon.Rfkill", "--object-path", "/org/gnome/SettingsDaemon/Rfkill",
+                                     "--method", "org.freedesktop.DBus.Properties.Set", "org.gnome.SettingsDaemon.Rfkill", "BluetoothAirplaneMode", "<false>"],
+                                    capture_output=True, timeout=5).returncode == 0
+        except (OSError, subprocess.SubprocessError):
+            pass
+        powered = False
+        try:
+            powered = subprocess.run(["busctl", "--system", "set-property", "org.bluez", "/org/bluez/hci0", "org.bluez.Adapter1", "Powered", "b", "true"],
+                                     capture_output=True, timeout=5).returncode == 0
+        except (OSError, subprocess.SubprocessError):
+            pass
+        if not lifted and not powered:
+            try:
+                subprocess.Popen(["gnome-control-center", "bluetooth"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except OSError:
+                pass
+
+    threading.Thread(target=run, daemon=True).start()

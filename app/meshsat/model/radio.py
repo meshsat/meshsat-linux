@@ -262,8 +262,8 @@ def region_warning(code: int, iso) -> str | None:
     if expected is None or code in expected:
         return None
     names = " or ".join(REGION_NAMES[c] for c in expected)
-    return (f"Your phone is set to {COUNTRIES.get(iso, iso)}, where radios use {names}. Check the region matches where you are: the wrong one can be illegal "
-            "there, and you will not hear nearby nodes.")
+    return (f"Your phone is set to {COUNTRIES.get(iso, iso)}, where radios use {names}. Check the region "
+            "matches where you are: the wrong one can be illegal there, and you will not hear nearby nodes.")  # split as RegionCheck.kt:68-69
 
 
 # ── Channels ─────────────────────────────────────────────────────────────────────────────────

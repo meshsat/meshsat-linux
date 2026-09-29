@@ -75,10 +75,28 @@ class LanesTest(unittest.TestCase):
         self.assertEqual(home.hub_lane(s)[0], "off")
 
     def test_messages_on_the_way(self):
-        s = state(bridge=CONNECTED, nodes=[NODE], messages=[{"delivery_status": "queued"}, {"delivery_status": "sending"}])
-        self.assertEqual(home.sentence(home.lanes(s), s)[1], "2 messages on the way.")
-        s.messages = [{"delivery_status": "queued"}]
-        self.assertEqual(home.sentence(home.lanes(s), s)[1], "1 message on the way.")
+        """HomeLanes.kt:246-251: the three lanes' queues together, from the delivery stats."""
+        s = state(bridge=CONNECTED, nodes=[NODE])
+        stats = [{"channel": "mesh_0", "status": "queued", "count": 1}, {"channel": "iridium_0", "status": "sending", "count": 1},
+                 {"channel": "cellular_0", "status": "failed", "count": 5}]
+        self.assertEqual(home.sentence(home.lanes(s, stats), s, stats)[1], "2 messages on the way.")
+        stats = [{"channel": "iridium_imt_0", "status": "retry", "count": 1}]
+        self.assertEqual(home.sentence(home.lanes(s, stats), s, stats)[1], "1 message on the way.")
+
+    def test_the_nodes_modem_out_of_reach_comes_before_ready(self):
+        """HomeLanes.kt:170-174: a pipe that takes no writes is said first, even with the modem connected."""
+        s = state(bridge=CONNECTED, nodes=[NODE], modem={"connected": True, "port": "ble"}, signal={"bars": 3},
+                  hardware={"node": "bluetooth"}, ble={"address": "E0:72:A1:B3:C2:ED", "satellite_link_broken": True})
+        stats = [{"channel": "iridium_0", "status": "queued", "count": 1}]
+        self.assertEqual(home.lanes(s, stats)["satellite"], ("failed", "1 message waiting to go out. The phone cannot reach the node's modem. Getting the link back.", ""))
+
+    def test_satellite_lane_quotes_the_queue_and_the_high_pass(self):
+        """HomeLanes.kt:156-172: the queue first, then the pass line, else "Modem ready."."""
+        s = state(bridge=CONNECTED, nodes=[NODE], modem={"connected": True, "port": "/dev/ttyUSB0"}, signal={"bars": 3})
+        self.assertEqual(home.satellite_lane(s), ("working", "Modem ready.", "3/5"))
+        self.assertEqual(home.satellite_lane(s, 0, "A satellite is high overhead now."), ("working", "A satellite is high overhead now.", "3/5"))
+        stats = [{"channel": "iridium_0", "status": "queued", "count": 2}]
+        self.assertEqual(home.lanes(s, stats, "Next high pass in 12 min.")["satellite"][1], "2 messages waiting to go out. Next high pass in 12 min.")
 
     def test_bluetooth_mode_words(self):
         s = state(bridge=CONNECTED | {"connected": False}, hardware={"node": "bluetooth"}, ble={"mode": "connecting", "address": "E0:72"})

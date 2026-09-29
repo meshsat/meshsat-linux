@@ -16,8 +16,8 @@ HEX = set("0123456789abcdef")
 
 # ── Words ────────────────────────────────────────────────────────────────────────────────────
 WAITING_TITLE = "Getting the Hub's settings"
-WAITING_TEXT = ("The Hub gives this phone its new password once all its servers accept it. That usually takes about a minute. "
-                "You can leave this screen; the phone keeps asking.")
+WAITING_TEXT = ("The Hub gives this phone its new password once all its servers accept it. "
+                "That usually takes about a minute. You can leave this screen; the phone keeps asking.")  # split as ProvisionClaimHost.kt:78-79
 HIDE = "Hide"
 CANCEL = "Cancel"
 READY_TITLE = "Use these Hub settings?"

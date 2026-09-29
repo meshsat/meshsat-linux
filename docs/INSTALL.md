@@ -7,8 +7,8 @@ For a Linux phone running Mobian (Debian 13, arm64): a PinePhone or PinePhone Pr
 Download the package from the [releases](https://github.com/meshsat/meshsat-linux/releases) (the release page lists its sha256), then, on the phone:
 
 ```
-wget https://github.com/meshsat/meshsat-linux/releases/download/v0.11.2/meshsat_0.11.2_arm64.deb
-sudo apt install ./meshsat_0.11.2_arm64.deb
+wget https://github.com/meshsat/meshsat-linux/releases/download/v0.12.0/meshsat_0.12.0_arm64.deb
+sudo apt install ./meshsat_0.12.0_arm64.deb
 ```
 
 That is all. The package installs the Meshtastic daemon for the back cover, its configuration (0 dBm, the one power the radio is qualified at), Meshtastic's web client, the radio watchdog, the MeshSat Bridge and the MeshSat app, and starts the services. The **MeshSat** icon is in the app grid; tap it and the app opens: the same screens as MeshSat Android and iOS, Home, Messages, Map, People and Setup, with this phone's node, a satellite modem on USB-C and the MeshSat Hub. The moon on Home is night mode. A banner at the top says when the Bridge or the node cannot be reached, and what to do.
@@ -44,7 +44,7 @@ The first run makes a private Python environment for the Meshtastic client libra
 | | |
 |---|---|
 | Receives | Everything on its channels, at any length. |
-| Sends | At 0 dBm, 1 mW: a house or a street, not the kilometres of a real node. Above that the radio's plain crystal drifts and long frames arrive damaged; the cap is `SX126X_MAX_POWER` in `/etc/meshtasticd/config.d/lora-pinedio-backcover.yaml`. |
+| Sends | At 0 dBm, 1 mW. Range was not measured: expect a house or a street, not the kilometres of an ordinary node. Above that, long frames arrived damaged on the bench (the suspected cause, not proven: the radio's plain crystal drifting as the amplifier heats); the cap is `SX126X_MAX_POWER` in `/etc/meshtasticd/config.d/lora-pinedio-backcover.yaml`. |
 | After sending | Deaf for 5 to 28 seconds, so every broadcast goes out three times and the ack of a direct message is usually missed. |
 | Direct messages | To nodes whose announcement the phone has heard. |
 | A radio that stops answering | Only a hand resets it: take the cover off and press it back on until it clicks. The app's banner and `journalctl -u meshsat-radio-watch` say so; the node starts again by itself once the radio answers. |

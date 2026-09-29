@@ -9,6 +9,111 @@
  "app/src/main/java/net/meshsat/android/ui/screens/SettingsScreen.kt": {
   "Connect to APRSDroid's KISS TCP server for local RF APRS via AIOC + handheld radio.": "APRSDroid is an Android app; a Linux phone's KISS TCP server is Direwolf's (the Bridge's link is 'APRS (Direwolf)'), so the sentence says Direwolf",
   "No APRSDroid or radio needed. Use passcode -1 for receive-only, or Auto to calculate from callsign.": "the same: 'No Direwolf or radio needed.' on Linux, the rest of the sentence as Android's",
-  "Callsign format: PREFIX-XXXX (last 4 hex of device ID). Restart service after changing prefix.": "the Bridge applies a Save at once, so the last sentence (about Android's service) is left out; the first sentence is carried"
+  "Callsign format: PREFIX-XXXX (last 4 hex of device ID). Restart service after changing prefix.": "the Bridge applies a Save at once, so the last sentence (about Android's service) is left out; the first sentence is carried",
+  "All settings": "Android's unreachable page (approved exclusion)",
+  "Bluetooth permissions required for BLE scan": "Android's permission flow (approved exclusion: Linux asks no permission; the welcome names what it uses)",
+  "MissingPermission": "a @Suppress argument, not a word",
+  "MeshSat Key": "the label Android gives a clipboard item; a Linux clipboard item has none",
+  "MeshSat Encryption Key": "the label Android gives a clipboard item; a Linux clipboard item has none",
+  "Share encryption key": "the share sheet (approved exclusion: the key is saved to a file)",
+  "Open MeshSat settings": "Android's permission flow (approved exclusion: Linux asks no permission; the welcome names what it uses)",
+  "Enable local telemetry": "Android's local telemetry server (approved exclusion, ledger row setup.diagnostics.telemetry)",
+  "Captures crashes, heap samples, and health heartbeats locally on this device.": "Android's local telemetry server (approved exclusion)",
+  "Android gives it your position only once you open the app.": "about Android's background location; the Linux Bridge is a system service",
+  "%.1f MB": "a Kotlin format string; the Linux app writes the same text, half-up rounded (model/maps.py: 'x.x MB, zoom a to b')",
+  "Using a RockBLOCK 9704 on an HC-05 instead? Set it up": "the 9704 on an HC-05 (approved exclusion spp-9704): 'Using a RockBLOCK 9704 instead? Set it up', a USB card",
+  "Initializing JSPR...": "a state of Android's HC-05 driver; the Bridge reports a 9704 connecting, ready or gone",
+  "Connected (init pending)": "a state of Android's HC-05 driver; the Bridge reports a 9704 connecting, ready or gone",
+  "Kit's bridge ID": "'Reach a kit through the Hub' (excluded in 0.11.1, ledger row setup.hub.relay)",
+  "Hub API URL (optional)": "'Reach a kit through the Hub' (excluded in 0.11.1, ledger row setup.hub.relay)",
+  "derived from MQTT URL": "'Reach a kit through the Hub' (excluded in 0.11.1, ledger row setup.hub.relay)",
+  "MQTT (Hub)": "the Hub link has no transform chain on this edition's Messaging page (model/messaging.py)",
+  "out as typed, because a mesh channel is shared with other radios. Compressed": "the receive chains this page writes carry no decompression step, so the sentence would promise what this edition does not do; the note ends before it (model/messaging.py:COMPRESSION_NOTE)",
+  "messages coming in are always read, whatever is set here.": "the receive chains this page writes carry no decompression step, so the sentence would promise what this edition does not do; the note ends before it (model/messaging.py:COMPRESSION_NOTE)"
+ },
+ "app/src/main/java/net/meshsat/android/ui/screens/DashboardScreen.kt": {
+  "%.5f, %.5f": "a Kotlin format string: the Linux app writes the same text with Python's formatting and Kotlin's half-up rounding (model/dashboard.py:half_up)",
+  "moving %.1f km/h": "a Kotlin format string: the Linux app writes the same text with Python's formatting and Kotlin's half-up rounding (model/dashboard.py:half_up)",
+  "Mesh signal strength, last 6 hours": "Android's chart of the Bluetooth RSSI between phone and node; this edition cannot read it (ledger row home.card.mesh-chart)"
+ },
+ "app/src/main/java/net/meshsat/android/ui/components/NodeDetailSheet.kt": {
+  "%.1f dB": "a Kotlin format string: the Linux app writes the same text with Python's formatting and Kotlin's half-up rounding (model/dashboard.py:half_up)",
+  "Heard directly. SNR %.1f dB": "a Kotlin format string: the Linux app writes the same text with Python's formatting and Kotlin's half-up rounding (model/dashboard.py:half_up)",
+  "%.5f, %.5f, %s": "a Kotlin format string: the Linux app writes the same text with Python's formatting and Kotlin's half-up rounding (model/dashboard.py:half_up)"
+ },
+ "app/src/main/java/net/meshsat/android/ui/screens/Onboarding.kt": {
+  "Your position for an SOS and the map. Android also asks for it before an app may look for Bluetooth radios.": "the sentence's second half is about Android's permissions; Linux keeps the first (ledger row welcome)",
+  "Asked for only when you set up SMS or emergency contacts.": "'SMS, later': Linux asks for nothing to send an SMS (ledger row welcome)",
+  "You can change any of these later in Android's settings for MeshSat.": "names Android's settings; Linux says the phone's (ledger row welcome)"
+ },
+ "app/src/main/java/net/meshsat/android/sos/SosMessages.kt": {
+  "%.5f, %.5f": "a Kotlin format string: the Linux app writes the same text with Python's formatting and Kotlin's half-up rounding (model/dashboard.py:half_up)"
+ },
+ "app/src/main/java/net/meshsat/android/ui/screens/PassPredictorScreen.kt": {
+  "No orbit data. Tap Refresh TLEs when online.": "Android names a button it does not have (its button says Update); the Linux app says \"Tap Update\"",
+  "Fused": "Android's fused location provider; geoclue's fix is GPS or Network here"
+ },
+ "app/src/main/java/net/meshsat/android/ui/Peers.kt": {
+  "Sent from this phone": "Android's messages of old versions stored under the peer 'self'; the Linux app never had them"
+ },
+ "app/src/main/java/net/meshsat/android/ui/screens/AboutScreen.kt": {
+  "Bluetooth SPP via HC-05/HC-06": "an About row that names Android's machinery; this edition names its own (ledger row about, Linux words by design)",
+  "Native Android SMS": "an About row that names Android's machinery; this edition names its own (ledger row about, Linux words by design)",
+  "Full (F-Droid, GitHub)": "an About row that names Android's machinery; this edition names its own (ledger row about, Linux words by design)",
+  "Google Play, without SMS": "an About row that names Android's machinery; this edition names its own (ledger row about, Linux words by design)",
+  "Min SDK": "an About row that names Android's machinery; this edition names its own (ledger row about, Linux words by design)",
+  "26 (Android 8.0)": "an About row that names Android's machinery; this edition names its own (ledger row about, Linux words by design)",
+  "Target SDK": "an About row that names Android's machinery; this edition names its own (ledger row about, Linux words by design)"
+ },
+ "app/src/main/java/net/meshsat/android/ui/screens/AuditScreen.kt": {
+  "d MMM HH:mm:ss": "a Kotlin format string; the Linux app writes the same text (checked in its code) (model/words.py:local_stamp)",
+  "MeshSat signing key": "the label Android gives a clipboard item; a Linux clipboard item has none"
+ },
+ "app/src/main/java/net/meshsat/android/ui/screens/MessagesScreen.kt": {
+  "SMS disabled": "Android's permission flow (approved exclusion: Linux asks no permission; the welcome names what it uses)",
+  "Grant SMS permission to send and receive SMS messages through MeshSat.": "Android's permission flow (approved exclusion: Linux asks no permission; the welcome names what it uses)",
+  "MM/dd HH:mm": "a Kotlin format string; the Linux app writes the same text (checked in its code) (widgets.when_date)",
+  "MeshSat Message": "the label Android gives a clipboard item; a Linux clipboard item has none",
+  "MeshSat Key": "the label Android gives a clipboard item; a Linux clipboard item has none",
+  "Encrypted (locked)": "the Bridge keeps an SMS it could not open as it came, so no bubble is 'locked' (ledger row chat.bubble.lock)"
+ },
+ "app/src/main/java/net/meshsat/android/ui/components/PermissionAsk.kt": {
+  "Android did not show the question. When MeshSat was installed from a downloaded file,": "Android's permission flow (approved exclusion: Linux asks no permission; the welcome names what it uses)",
+  "stays blocked until you allow it: tap Open MeshSat settings, then the three dots at the top": "Android's permission flow (approved exclusion: Linux asks no permission; the welcome names what it uses)",
+  "right, Allow restricted settings, and then Permissions,": "Android's permission flow (approved exclusion: Linux asks no permission; the welcome names what it uses)",
+  ", Allow.": "Android's permission flow (approved exclusion: Linux asks no permission; the welcome names what it uses)"
+ },
+ "app/src/main/java/net/meshsat/android/sos/SosController.kt": {
+  "SMS: not part of the Google Play edition.": "the Google Play edition (approved exclusion)",
+  "An SOS or test is already running (": "a line in Android's log, not shown",
+  "), not starting another": "a line in Android's log, not shown",
+  "The message queue is not running, so nothing could be queued. Restart the app.": "Android's in-app queue; the Linux app's queue is the Bridge's, and a Bridge that does not answer is said as such",
+  "; skipped": "a line in Android's log, not shown",
+  "SMS is not allowed yet: allow it in Setup, SMS, and the messages go out.": "Android's permission flow (approved exclusion: Linux asks no permission for SMS; a SIM that cannot send is said in the SMS lane's words)",
+  "Satellite: could not be queued.": "Android queues each leg itself and lists a refused one as skipped; the Linux app queues through the Bridge after planning, so a refused leg stays on its route as SosRun.kt's 'Could not be queued'",
+  "Mesh: could not be queued.": "Android queues each leg itself and lists a refused one as skipped; the Linux app queues through the Bridge after planning, so a refused leg stays on its route as SosRun.kt's 'Could not be queued'"
+ },
+ "app/src/main/java/net/meshsat/android/ui/screens/GeofenceScreen.kt": {
+  "%.1f km": "a Kotlin format string; the Linux app writes the same text, half-up rounded (model/geofence.py:format_distance)"
+ },
+ "app/src/main/java/net/meshsat/android/ui/screens/MapScreen.kt": {
+  "%.5f, %.5f": "a Kotlin format string; the Linux app writes the same text, half-up rounded (model/tracks.py, the map's rows)",
+  "Could not read tracks:": "a line in Android's log, not shown"
+ },
+ "app/src/main/java/net/meshsat/android/ui/screens/TopologyScreen.kt": {
+  "%.1f dB": "a Kotlin format string; the Linux app writes the same text, half-up rounded (model/topology.py)",
+  "SNR %.1f dB": "a Kotlin format string; the Linux app writes the same text, half-up rounded (model/topology.py)",
+  "Heard directly, SNR %.1f dB": "a Kotlin format string; the Linux app writes the same text, half-up rounded (model/topology.py)",
+  "Bluetooth to phone": "the Bluetooth RSSI between phone and node, which BlueZ gives no unprivileged process for a connected LE link (as home.card.mesh-chart)"
+ },
+ "app/src/main/java/net/meshsat/android/ui/screens/CredentialsScreen.kt": {
+  "X.509": "a name passed to Java's CertificateFactory, not shown"
+ },
+ "app/src/main/java/net/meshsat/android/ui/screens/InterfacesScreen.kt": {
+  "The phone stops using the satellite modem and stops reconnecting to it. Nothing goes out": "untrue of the Bridge, which keeps a switched-off modem connected and still reads what comes in: every link gets Android's other sentence (model/links.py:switch_off_dialog, MESHSAT-1401)",
+  "or comes in by satellite until you switch it back on. Messages waiting for it stay in the queue.": "untrue of the Bridge, which keeps a switched-off modem connected and still reads what comes in: every link gets Android's other sentence (model/links.py:switch_off_dialog, MESHSAT-1401)"
+ },
+ "app/src/main/java/net/meshsat/android/ui/screens/SosScreens.kt": {
+  "SMS is not allowed yet: allow it in Setup, SMS.": "Android's permission flow (approved exclusion: Linux asks no permission for SMS; a SIM that cannot send is said in the SMS lane's words)"
  }
 }

@@ -27,12 +27,12 @@
    "id": "shell.banner.node",
    "kind": "banner",
    "android": "ui/components/NodeLinkBanner.kt",
-   "linux": "__main__.py:on_state",
+   "linux": "__main__.py:show_node_banner, model/dashboard.py:node_link_banner_text",
    "modes": "both",
-   "state": "built",
-   "test": "",
-   "capture": "",
-   "note": "the 'Bluetooth is off' state waits for Bridge change B13"
+   "state": "verified",
+   "test": "h_banner::bluetooth_off_is_said_first_and_a_tap_switches_it_on",
+   "capture": "bluetooth-off",
+   "note": "Bluetooth off first (a tap asks the system to switch it on: Phosh's own rfkill switch, then BlueZ, else Settings), the lost link or the node's modem since when, a tap opens Setup, hidden while an SOS or a test runs (NodeLinkBannerTextTest ported); this edition's own two banners (the Bridge stopped, the cover's radio) stay"
   },
   {
    "id": "shell.banner.sos",
@@ -73,10 +73,10 @@
    "android": "ui/screens/DashboardScreen.kt",
    "linux": "home.py:HomeScreen",
    "modes": "both",
-   "state": "partial",
-   "test": "",
+   "state": "verified",
+   "test": "h_home_cards::b_cards_follow_the_bridge",
    "capture": "home",
-   "note": "the mailbox, position and chart cards and Arrange Home are still to come (0.12.0)"
+   "note": "the header, the sentence 4 dp over its second line, the lanes, Getting started, then the six cards in the order Arrange Home keeps (0.12.0)"
   },
   {
    "id": "home.sentence",
@@ -92,13 +92,13 @@
   {
    "id": "home.lane.satellite",
    "kind": "card",
-   "android": "ui/screens/HomeLanes.kt:150-180",
+   "android": "ui/screens/HomeLanes.kt:150-186",
    "linux": "model/home.py:satellite_lane",
    "modes": "both",
-   "state": "partial",
-   "test": "h_home::sentence_and_lanes_follow_the_bridge",
+   "state": "verified",
+   "test": "h_home_cards::e_the_satellite_lane_quotes_the_high_pass",
    "capture": "home",
-   "note": "the pass line and the node's modem states wait for B9 (0.12.0)"
+   "note": "the queue from the delivery stats (iridium_0 and iridium_imt_0: both modems are the one satellite lane here), the pass line from Home's passes (40° and up), the node's modem out of reach said first; the node's own modem states (silent, the node holding it, asking for it) read the Bridge's fields, which it sends with B9 (0.13.0). A USB modem is checked before Bluetooth (it needs none)"
   },
   {
    "id": "home.lane.mesh",
@@ -136,24 +136,24 @@
   {
    "id": "home.lane.taps",
    "kind": "behaviour",
-   "android": "ui/screens/HomeLanes.kt:261,272",
+   "android": "ui/screens/HomeLanes.kt:261,272,285,297",
    "linux": "__main__.py:open_lane",
    "modes": "both",
-   "state": "built",
-   "test": "",
-   "capture": "",
+   "state": "verified",
+   "test": "h_home_cards::d_lanes_open_androids_pages",
+   "capture": "home",
    "note": ""
   },
   {
    "id": "home.checklist",
    "kind": "card",
-   "android": "ui/screens/Onboarding.kt:133-195",
-   "linux": "model/home.py:checklist",
+   "android": "ui/screens/Onboarding.kt:128-195",
+   "linux": "home.py:checklist_row, model/home.py:checklist",
    "modes": "both",
-   "state": "partial",
-   "test": "",
+   "state": "verified",
+   "test": "h_home_cards::a_getting_started_steps_hide_and_open_their_pages",
    "capture": "home",
-   "note": "'Hide' is still to come"
+   "note": "Android's rows, rules, icons and Hide (kept in the preferences, checklist_dismissed); in cover mode the first step is this edition's own ('Start your MeshSat node' / 'The radio: the LoRa back cover', done while the node runs); 'Allow SMS' shows with a modem and is done when the SIM can send (Linux asks no permission)"
   },
   {
    "id": "home.sos-card",
@@ -200,70 +200,59 @@
    "note": ""
   },
   {
-   "id": "home.signal-history",
-   "kind": "card",
-   "android": "ui/screens/DashboardScreen.kt:signal",
-   "linux": "home.py:draw_chart",
-   "modes": "both",
-   "state": "built",
-   "test": "",
-   "capture": "home",
-   "note": ""
-  },
-  {
    "id": "home.recent",
    "kind": "card",
-   "android": "ui/screens/DashboardScreen.kt:recent",
-   "linux": "home.py:update",
+   "android": "ui/screens/DashboardScreen.kt:341-368, 632-689",
+   "linux": "home.py:activity_row, model/dashboard.py:recent",
    "modes": "both",
-   "state": "built",
-   "test": "",
+   "state": "verified",
+   "test": "h_home_cards::b_cards_follow_the_bridge",
    "capture": "home",
-   "note": ""
+   "note": "the 20 newest texts of every transport, SMS included, in Android's sizes"
   },
   {
    "id": "home.arrange",
    "kind": "dialog",
-   "android": "ui/screens/DashboardScreen.kt:ReorderDialog",
-   "linux": "",
+   "android": "ui/screens/DashboardScreen.kt:ReorderDialog (695-805), ui/screens/HomeLanes.kt:92-94",
+   "linux": "home.py:ArrangeDialog, model/dashboard.py:home_order",
    "modes": "both",
-   "state": "missing",
-   "test": "",
-   "capture": "",
-   "note": "0.12.0"
+   "state": "verified",
+   "test": "h_home_cards::f_arranged_order_persists",
+   "capture": "arrange",
+   "note": "Android's labels, ▲/▼ per row off at the ends, Apply saves dashboard_card_order in Android's string, Cancel keeps the order, an old saved order cleaned as homeOrder does; the arrows carry names ('Move SOS up') for a screen reader"
   },
   {
    "id": "home.card.mailbox",
    "kind": "card",
-   "android": "ui/screens/DashboardScreen.kt:229-260",
-   "linux": "",
+   "android": "ui/screens/DashboardScreen.kt:230-239, ui/components/CheckMailboxButton.kt",
+   "linux": "mailbox.py:MailboxButton, model/dashboard.py:mailbox_text",
    "modes": "both",
-   "state": "missing",
-   "test": "",
-   "capture": "",
-   "note": "0.12.0"
+   "state": "verified",
+   "test": "h_home_cards::c_the_mailbox_check_asks_first_and_says_how_it_went",
+   "capture": "home",
+   "note": "only with the modem connected; the confirmation, 'Checking mailbox...', and every outcome in Android's words from the Bridge's kept outcome (B22, MESHSAT-1423), the same on the Satellite page. No satellite session was opened by any test"
   },
   {
    "id": "home.card.position",
    "kind": "card",
-   "android": "ui/screens/DashboardScreen.kt:275-310",
-   "linux": "",
+   "android": "ui/screens/DashboardScreen.kt:157-175, 275-315",
+   "linux": "home.py:render_position, model/dashboard.py:position_lines",
    "modes": "both",
-   "state": "missing",
-   "test": "",
-   "capture": "",
-   "note": "0.12.0"
+   "state": "verified",
+   "test": "h_home_cards::b_cards_follow_the_bridge",
+   "capture": "home",
+   "note": "the phone's own fix only (geoclue: accuracy, height, speed, heading, the fix's own time); Kotlin's half-up rounding"
   },
   {
    "id": "home.card.charts",
    "kind": "card",
-   "android": "ui/screens/DashboardScreen.kt:311-372",
-   "linux": "",
+   "android": "ui/screens/DashboardScreen.kt:240-270, 433-571",
+   "linux": "home.py:SignalChart",
    "modes": "both",
-   "state": "missing",
-   "test": "",
-   "capture": "",
-   "note": "0.12.0"
+   "state": "verified",
+   "test": "h_home_cards::b_cards_follow_the_bridge",
+   "capture": "home",
+   "note": "'Mobile signal, last 6 hours' from the Bridge's cellular history (its dBm are worked out from the bars ModemManager gives). The mesh chart is its own row (home.card.mesh-chart)"
   },
   {
    "id": "messages",
@@ -279,13 +268,13 @@
   {
    "id": "messages.new-message",
    "kind": "dialog",
-   "android": "ui/screens/MessagesScreen.kt:NewMessageDialog",
-   "linux": "messages.py:new_message",
+   "android": "ui/screens/MessagesScreen.kt:1085-1172",
+   "linux": "messages.py:new_message, model/chat.py:number_ok",
    "modes": "both",
    "state": "verified",
-   "test": "h_messages::new_message_to_a_node_opens_that_node",
-   "capture": "messages",
-   "note": ""
+   "test": "h_messages::new_message_to_a_typed_number",
+   "capture": "new-message-number",
+   "note": "Android's rows (the lane's dot, title, detail), the 20 nodes heard most recently, and the phone number in the same dialog with 'Text this number' only for a number (0.12.0; the second sheet of 0.5.1 is gone)"
   },
   {
    "id": "messages.search",
@@ -356,13 +345,13 @@
   {
    "id": "chat.key",
    "kind": "sheet",
-   "android": "ui/screens/SettingsScreen.kt:KeyManagementSection",
-   "linux": "",
+   "android": "ui/screens/MessagesScreen.kt:854-969 (the section), 465-548 (the header's lock)",
+   "linux": "messages.py:ChatKeySection, model/chatkeys.py",
    "modes": "both",
-   "state": "missing",
-   "test": "",
-   "capture": "",
-   "note": "0.12.0"
+   "state": "verified",
+   "test": "h_chatkey::a_generate_save_and_the_lock",
+   "capture": "chat-key",
+   "note": "Android's section, words, toasts and lock (amber with the chat's key or Messaging's); the key kept by the Bridge (B21, MESHSAT-1425): an SMS chat's key seals and opens that number's SMS; a mesh or satellite chat keeps a key that changes nothing on the air, as on Android. Real keystore: s_chatkey::a_chat_key_is_kept_by_the_bridge. Not proven here: a sealed SMS on the air (no SIM)"
   },
   {
    "id": "map",
@@ -414,10 +403,10 @@
    "android": "ui/screens/PeersScreen.kt",
    "linux": "people.py:PeopleScreen",
    "modes": "both",
-   "state": "partial",
-   "test": "h_names::a_name_heard_once_survives_a_bridge_restart",
+   "state": "verified",
+   "test": "h_people::your_node_is_in_the_table",
    "capture": "people",
-   "note": "'(you)' and the second empty text come with 0.12.0; the cards are their own rows (people.cards)"
+   "note": "Android's table (weights 0.44/0.18/0.16/0.22, 56 dp rows, the header strip), sizes and colours; the sorts as Android's; the cards are their own rows (people.cards)"
   },
   {
    "id": "people.names",
@@ -433,13 +422,13 @@
   {
    "id": "people.empty",
    "kind": "strings",
-   "android": "ui/screens/PeersScreen.kt:155-165",
+   "android": "ui/screens/PeersScreen.kt:142-173",
    "linux": "people.py:update",
    "modes": "both",
-   "state": "built",
-   "test": "",
+   "state": "verified",
+   "test": "h_people::no_node_at_all_says_so",
    "capture": "people",
-   "note": ""
+   "note": "only with no node at all, your own included"
   },
   {
    "id": "people.cards",
@@ -521,24 +510,24 @@
   {
    "id": "setup.satellite",
    "kind": "screen",
-   "android": "ui/screens/SettingsScreen.kt:529-735",
-   "linux": "setup.py:SatelliteScreen",
+   "android": "ui/screens/SettingsScreen.kt:528-733",
+   "linux": "setup.py:SatelliteScreen, model/satellite.py",
    "modes": "both",
-   "state": "partial",
-   "test": "",
+   "state": "verified",
+   "test": "h_satellite::the_usb_modem_in_androids_words",
    "capture": "setup-satellite",
-   "note": "the node's modem section and the 9704 card come with 0.12.0"
+   "note": "the RockBLOCK 9603 on USB-C in Android's card words (Status, Manufacturer, Model, IMEI, a fresh Poll Signal, the mailbox); the card of the node's own modem is its own row (setup.satellite.node-modem)"
   },
   {
    "id": "setup.satellite.mailbox",
    "kind": "dialog",
    "android": "ui/components/CheckMailboxButton.kt",
-   "linux": "setup.py:SatelliteScreen.check_mailbox",
+   "linux": "mailbox.py:MailboxButton",
    "modes": "both",
-   "state": "partial",
-   "test": "",
-   "capture": "",
-   "note": "the confirmation in Android's words and Check offered only with a modem (0.11.1, h_mailbox::the_mailbox_check_asks_first); the result words wait for the Bridge's mailbox outcome (B22, 0.12.0)"
+   "state": "verified",
+   "test": "h_mailbox::the_mailbox_check_asks_first",
+   "capture": "mailbox-asks",
+   "note": "asked first, Check offered only with the modem, the outcome in Android's words from the Bridge (B22)"
   },
   {
    "id": "passes",
@@ -830,23 +819,23 @@
    "id": "about",
    "kind": "screen",
    "android": "ui/screens/AboutScreen.kt",
-   "linux": "setup.py:AboutScreen",
+   "linux": "pages/about.py:AboutScreen, model/about.py",
    "modes": "both",
-   "state": "partial",
-   "test": "",
+   "state": "verified",
+   "test": "h_about::the_sections_in_androids_words",
    "capture": "setup-about",
-   "note": "Android's sections come with 0.12.0"
+   "note": "Android's order, sections and styles; the rows that name Android's machinery name this edition's (the cover or Bluetooth, the RockBLOCK on USB-C, the SIM through ModemManager; Bridge and Toolkit in place of the two SDK rows): Linux words by design"
   },
   {
    "id": "welcome",
    "kind": "screen",
-   "android": "ui/screens/Onboarding.kt:90-149",
-   "linux": "",
+   "android": "ui/screens/Onboarding.kt:64-126, MainActivity.kt:59-83",
+   "linux": "pages/welcome.py:WelcomeScreen, model/welcome.py",
    "modes": "both",
-   "state": "missing",
-   "test": "",
-   "capture": "",
-   "note": "0.12.0"
+   "state": "verified",
+   "test": "h_welcome::shown_at_the_first_start_only",
+   "capture": "welcome",
+   "note": "the window's only content at the first start, then never again (Android: at every start while a permission is missing); Android's headline, body, section title and Continue word for word; the reasons name what Linux uses (Bluetooth, Location without Android's sentence about Bluetooth scans, Notifications; no 'SMS, later': Linux asks nothing for SMS) and the footer the phone's settings: Linux words by design. geoclue's question follows Continue, as Android's permission requests do"
   },
   {
    "id": "notification.message",
@@ -1592,6 +1581,105 @@
    "test": "h_integrations::k_reticulum_made_switched_and_saved",
    "capture": "setup-integrations",
    "note": "the tcp_rns_0 interface (MESHSAT-1421): HDLC over TCP, TLS verified (Android skips hostname verification), the Hub's client certificate presented, port 443 always TLS; online against a loopback node on the phone (s_integrations). Not proven here: the Hub's own Reticulum endpoint (a live write not named e2e-…)",
+   "state": "verified"
+  },
+  {
+   "id": "home.card.mesh-chart",
+   "kind": "card",
+   "android": "ui/screens/DashboardScreen.kt:245-256",
+   "linux": "",
+   "modes": "both",
+   "state": "excluded",
+   "test": "",
+   "capture": "",
+   "note": "Android draws the Bluetooth RSSI between the phone and its node (GatewayService.kt:2690-2700); the cover has no such link, and BlueZ gives an unprivileged process no RSSI of a connected LE link"
+  },
+  {
+   "id": "home.card.queue",
+   "kind": "card",
+   "android": "ui/screens/DashboardScreen.kt:316-340, 573-630",
+   "linux": "home.py:QueueBar, StatBadge, model/dashboard.py:queue_counts",
+   "modes": "both",
+   "test": "h_home_cards::b_cards_follow_the_bridge",
+   "capture": "home",
+   "note": "the three bars and four counts from GET /api/deliveries/stats (real shape: s_satellite::delivery_stats_are_the_list_home_reads), Open the queue",
+   "state": "verified"
+  },
+  {
+   "id": "home.card.sky",
+   "kind": "card",
+   "android": "ui/screens/DashboardScreen.kt:243, 380-416, ui/components/SkyChart.kt",
+   "linux": "passes.py:SkyChart(compact), sky_legend",
+   "modes": "both",
+   "test": "h_home_cards::b_cards_follow_the_bridge",
+   "capture": "home",
+   "note": "SkyChart's compact form (SkyGeometryTest ported, tests/test_sky.py), gone without a reading or a pass near now, a tap opens the passes; passes for the phone's position, else the node's or the one typed in (a desktop has no GPS)",
+   "state": "verified"
+  },
+  {
+   "id": "people.you",
+   "kind": "behaviour",
+   "android": "ui/screens/PeersScreen.kt:219-229, 305-311",
+   "linux": "people.py:peer_row",
+   "modes": "both",
+   "test": "h_people::your_node_is_in_the_table",
+   "capture": "people",
+   "note": "'(you)', the white dot, '-' for signal and last heard, your sheet without Message",
+   "state": "verified"
+  },
+  {
+   "id": "people.sheet.live-signal",
+   "kind": "strings",
+   "android": "ui/components/NodeDetailSheet.kt:48-84",
+   "linux": "model/nodes.py:node_signal, live_packet",
+   "modes": "both",
+   "test": "h_people::the_signal_says_how_the_node_was_heard",
+   "capture": "people",
+   "note": "the newest packet heard over the air from that node (the Bridge's packet feed with hop_start, B23), else the node list; Kotlin's half-up rounding",
+   "state": "verified"
+  },
+  {
+   "id": "setup.satellite.9704",
+   "kind": "card",
+   "android": "ui/screens/SettingsScreen.kt:631-733",
+   "linux": "setup.py:SatelliteScreen",
+   "modes": "both",
+   "test": "h_satellite::the_9704_folds_away_until_there",
+   "capture": "setup-satellite",
+   "note": "folded away until a 9704 is there; Android's title and status words, its own Poll Signal (the Bridge reads each modem on its own since B24) and Disconnect; this edition's words for the fold and a missing 9704 (a USB card, excluded.spp-9704)",
+   "state": "verified"
+  },
+  {
+   "id": "setup.satellite.node-modem",
+   "kind": "card",
+   "android": "ui/screens/SettingsScreen.kt:528-592",
+   "linux": "",
+   "modes": "bluetooth",
+   "state": "blocked",
+   "test": "",
+   "capture": "",
+   "note": "'Satellite modem on the node' and 'Use the node's modem': Bridge change B9 (MESHSAT-1391), release 0.13.0; its live proof needs the T-Beam with the RockBLOCK in Bluetooth range"
+  },
+  {
+   "id": "setup.satellite.node-health",
+   "kind": "card",
+   "android": "ui/screens/SettingsScreen.kt:594-629, ble/NodeStatsText.kt",
+   "linux": "",
+   "modes": "bluetooth",
+   "state": "blocked",
+   "test": "",
+   "capture": "",
+   "note": "the node's STATS: Bridge change B9 (MESHSAT-1391), release 0.13.0"
+  },
+  {
+   "id": "chat.bubble.lock",
+   "kind": "strings",
+   "android": "ui/screens/MessagesScreen.kt:805-811, 847",
+   "linux": "messages.py:ChatScreen.bubble",
+   "modes": "both",
+   "test": "h_chatkey::c_a_sealed_sms_carries_the_lock",
+   "capture": "sealed-bubble",
+   "note": "the amber lock, 'Decrypted', on an SMS that went or came sealed (the Bridge's `encrypted`, B21); Android's red 'Encrypted (locked)' has no counterpart: the Bridge keeps an SMS it could not open as it came",
    "state": "verified"
   }
  ]

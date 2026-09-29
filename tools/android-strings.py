@@ -38,6 +38,8 @@ def readable(fragment: str) -> bool:
 
 def fragments(literal: str) -> list:
     literal = literal.replace('\\"', '"').replace("\\'", "'")
+    # Kotlin's \uXXXX escapes are the characters a person reads (\u00B0 is the degree sign)
+    literal = re.sub(r"\\u([0-9A-Fa-f]{4})", lambda m: chr(int(m.group(1), 16)), literal)
     parts = TEMPLATE.split(literal)
     return [p.strip() for p in parts if readable(p)]
 

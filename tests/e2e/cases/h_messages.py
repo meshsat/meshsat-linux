@@ -60,3 +60,19 @@ def case_search_filters_all_messages(ctx):
     ctx.tree.click("Clear")
     ctx.tree.click("Chats")
     ctx.tree.wait_text("Everyone on the mesh")
+
+
+def case_new_message_to_a_typed_number(ctx):
+    """A phone number in the same dialog: "Text this number" only for a number, then its SMS chat."""
+    ctx.app.open("messages")
+    ctx.tree.click("New message")
+    ctx.tree.wait_text("Or a phone number, e.g. +31612345678")
+    assert not ctx.tree.find("button", name="Text this number").sensitive, "offered with no number"
+    ctx.tree.set_text("Or a phone number, e.g. +31612345678", "12345")
+    assert not ctx.tree.find("button", name="Text this number").sensitive, "offered for five digits"
+    ctx.tree.set_text("Or a phone number, e.g. +31612345678", "+31 6 1234 5678")
+    ctx.shot("new-message-number")
+    ctx.tree.click_in_dialog("Text this number")
+    ctx.tree.wait_text("+31612345678", timeout=8)
+    ctx.app.open("messages")
+

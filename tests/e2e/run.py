@@ -89,7 +89,7 @@ def run_module(path: str, args, report: Report) -> None:
         if tier == "h":
             bridge = Scripted(getattr(module, "SCENARIO", "mesh-only"))
         elif tier == "s":
-            bridge = Scratch(work)
+            bridge = Scratch(work, settings=getattr(module, "BRIDGE_ENV", None))
         elif getattr(module, "BLE_NODE", None):
             # A live case against a node over Bluetooth: a scratch Bridge adopts it, so the live
             # Bridge and the phone's own node are never touched.
@@ -103,7 +103,8 @@ def run_module(path: str, args, report: Report) -> None:
         # client on 127.0.0.1 together (MESHSAT_API_RATE_LIMIT, 600 a minute), the person's own
         # app and the notifier included.
         app = App(work, url, app_dir=args.app_dir, hardware=hardware, units=units, poll=getattr(module, "POLL", 4.0 if tier == "l" else 2.0),
-                  env={k: str(v).replace("{bridge}", url).replace("{work}", work) for k, v in (getattr(module, "ENV", None) or {}).items()}).start()
+                  env={k: str(v).replace("{bridge}", url).replace("{work}", work) for k, v in (getattr(module, "ENV", None) or {}).items()},
+                  prefs=getattr(module, "PREFS", None)).start()
         if getattr(module, "NOTIFIER", False):
             from driver.notifications import NotificationDaemon  # noqa: PLC0415
 

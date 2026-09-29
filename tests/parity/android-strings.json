@@ -1,7 +1,7 @@
 {
  "android": "v2.19.4",
  "files": 40,
- "strings": 1407,
+ "strings": 1406,
  "by_file": {
   "app/src/main/java/net/meshsat/android/ui/MeshSatUI.kt": [
    "Home",
@@ -635,9 +635,8 @@
    "Working out the passes",
    "No position yet. Allow location, or wait for a fix.",
    "No passes above",
-   "\\u00B0 in this window.",
+   "° in this window.",
    "Your surroundings",
-   "\\u00B0.",
    "Every pass in the window (",
    "Hide the passes",
    "Show the passes",

@@ -104,7 +104,9 @@ class Flow:
         api.fetch("/api/messages/send", done, method="POST", body=body)
 
     def _text_contacts(self, s, text: str, cancel: bool) -> None:
-        """The SMS legs, one per emergency contact, through the Bridge's SMS gateway."""
+        """The SMS legs, one per emergency contact, through the Bridge's SMS gateway, as the words
+        themselves: `plain` keeps the SMS link's encryption and a chat key off them (a contact
+        must read an SOS on any phone, as Android sends it through SmsManager; MESHSAT-1424)."""
         if not s.sms_ready() or not s.contacts:
             return
         me = (s.bridge or {}).get("node_id")
@@ -129,7 +131,7 @@ class Flow:
                     self._set(key, state, detail)
                     self._settle_test()
 
-            api.fetch("/api/messages/send", done, method="POST", body={"text": text, "gateway": "cellular", "to": contact["phone"]})
+            api.fetch("/api/messages/send", done, method="POST", body={"text": text, "gateway": "cellular", "to": contact["phone"], "plain": True})
 
     def _tell_hub(self, text: str, fix) -> None:
         body = {"message": text}
