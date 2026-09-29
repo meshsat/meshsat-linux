@@ -203,6 +203,8 @@ toast label {{ color: {TEXT_PRIMARY}; font-size: {px(14)}; }}
 .filled.tonal-surface {{ background-color: {SURFACE}; border: 1px solid {BORDER}; }}
 .filled.tonal-surface label {{ color: {TEXT_PRIMARY}; }}
 .filled.amber-fill {{ background-color: {AMBER}; }}
+.filled.red-fill {{ background-color: {RED}; }}
+.filled.red-fill label {{ color: {SPACE_BLACK}; }}
 .outlined.red-outline {{ border-color: alpha({RED}, 0.6); }}
 .outlined.red-outline label {{ color: {RED}; }}
 .dot {{ border-radius: {px(4)}; min-width: {px(8)}; min-height: {px(8)}; }}

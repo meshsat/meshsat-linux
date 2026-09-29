@@ -6,6 +6,10 @@ driven with the meshtastic Python package. One process owns the port at a time.
   e2e-farend.py send --port /dev/ttyACM0 --text "e2e 4f2a"
   e2e-farend.py listen --port /dev/ttyACM0 --out heard.jsonl --seconds 120
   e2e-farend.py nodes --port /dev/ttyACM0
+  e2e-farend.py config --port /dev/ttyACM0 --get lora.hop_limit [--set 3]
+
+`config` reads one setting of the radio itself over USB (the independent check of a change the
+app made over Bluetooth) and, with --set, writes it back and reads it again.
 
 `listen` writes every text it hears as one JSON line ({"t", "from", "text"}) until the
 seconds are up or the process is ended; the runner (tools/e2e-run.sh) starts it before a
@@ -18,11 +22,13 @@ import time
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=("send", "listen", "nodes"))
+    parser.add_argument("command", choices=("send", "listen", "nodes", "config"))
     parser.add_argument("--port", default="/dev/ttyACM0")
     parser.add_argument("--text", default="")
     parser.add_argument("--out", default="heard.jsonl")
     parser.add_argument("--seconds", type=int, default=120)
+    parser.add_argument("--get", default="")
+    parser.add_argument("--set", default=None)
     args = parser.parse_args()
     try:
         import meshtastic.serial_interface  # noqa: PLC0415
@@ -36,6 +42,22 @@ def main() -> int:
             iface.sendText(args.text)
             time.sleep(2)
             print(f"sent {args.text!r} from {iface.myInfo.my_node_num:08x}")
+            return 0
+        if args.command == "config":
+            section, _, field = args.get.partition(".")
+            if not section or not field:
+                print("--get is section.field, e.g. lora.hop_limit", file=sys.stderr)
+                return 2
+            node = iface.localNode
+            print(json.dumps({"key": args.get, "value": getattr(getattr(node.localConfig, section), field), "node": f"!{iface.myInfo.my_node_num:08x}"}))
+            if args.set is not None:
+                current = getattr(getattr(node.localConfig, section), field)
+                setattr(getattr(node.localConfig, section), field, type(current)(args.set))
+                node.writeConfig(section)
+                time.sleep(3)
+                node.requestConfig(node.localConfig.DESCRIPTOR.fields_by_name[section])
+                time.sleep(3)
+                print(json.dumps({"key": args.get, "value": getattr(getattr(node.localConfig, section), field), "written": args.set}))
             return 0
         if args.command == "nodes":
             for num, node in (iface.nodes or {}).items():

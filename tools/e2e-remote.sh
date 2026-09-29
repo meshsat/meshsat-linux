@@ -11,7 +11,7 @@ cd tree || exit 2
 APPDIR=(); [ "$INSTALLED" = 1 ] || APPDIR=(--app-dir "$B/tree/app")
 CASES=(); [ $# -eq 0 ] || CASES=(--cases "$@")
 LIVE=(); [ "$INBOUND" = "-" ] || LIVE=(--inbound "$INBOUND" --expect-file "$B/out/farend-expect.txt")
-timeout 1500 bash tests/e2e/headless.sh --tiers "$TIERS" --out "$B/out" "${APPDIR[@]}" "${CASES[@]}" "${LIVE[@]}" > "$B/run.log" 2>&1
+timeout 3000 bash tests/e2e/headless.sh --tiers "$TIERS" --out "$B/out" "${APPDIR[@]}" "${CASES[@]}" "${LIVE[@]}" > "$B/run.log" 2>&1
 STATUS=$?
 grep -v "dbus-daemon\|xdg-desktop-portal\|SpiRegistry\|^$" "$B/run.log" | tail -60
 echo "run exit: $STATUS"

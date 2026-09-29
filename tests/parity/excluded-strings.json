@@ -1,5 +1,9 @@
 {
  "*": {
   "MeshSat": "the brand name, drawn as the wordmark"
+ },
+ "app/src/main/java/net/meshsat/android/ui/screens/NodeLogScreen.kt": {
+  "MeshSat node log": "the clipboard label and the share subject of Android's share sheet, the approved exclusion (Share copies and saves a file here)",
+  "Share the node log": "the share sheet's title, the approved exclusion (Share copies and saves a file here)"
  }
 }

@@ -50,6 +50,10 @@ class Scripted:
     def event(self, event: dict) -> None:
         self.fake.push(event)
 
+    def log(self, lines: list) -> None:
+        """Lines of the node's log, as a node over Bluetooth would send them (the scripted Bridge)."""
+        self.fake.control("POST", "/__fake__/log", {"lines": lines})
+
     def delay(self, seconds: float) -> None:
         self.fake.control("POST", "/__fake__/delay", {"seconds": seconds})
 
@@ -109,7 +113,7 @@ class Scratch(Live):
 
     BINARY = os.environ.get("MESHSAT_E2E_BRIDGE", "/usr/bin/meshsat")
 
-    def __init__(self, work: str, timeout: float = 40.0):
+    def __init__(self, work: str, timeout: float = 40.0, ble: str | None = None):
         import glob  # noqa: PLC0415
         import socket  # noqa: PLC0415
         import subprocess  # noqa: PLC0415
@@ -132,8 +136,16 @@ class Scratch(Live):
             "MESHSAT_CELLULAR_PORT": "/nonexistent/e2e-cellular", "MESHSAT_ZIGBEE_PORT": "/nonexistent/e2e-zigbee", "MESHSAT_TCP_LISTEN": "none",
             "MESHSAT_SERIAL_SKIP_PORTS": ",".join(serial), "HUB_API_KEY": "", "MESHSAT_BRIDGE_NAME": "e2e-scratch",
         })
+        command = [self.BINARY]
+        if ble:
+            # A node over Bluetooth (a T-Deck the phone is bonded with): the Bridge talks to BlueZ
+            # on the system bus, which takes root; its state (the chosen node) stays in its own
+            # directory beside its database, never the live Bridge's.
+            env["MESHSAT_MESHTASTIC_PORT"] = f"ble:{ble}"
+            pairs = [f"{k}={v}" for k, v in env.items() if k.startswith("MESHSAT_") or k in ("HUB_API_KEY", "PATH", "HOME")]
+            command = ["sudo", "-n", "env", *pairs, self.BINARY]
         self.log_path = os.path.join(self.work, "bridge.log")
-        self.process = subprocess.Popen([self.BINARY], env=env, cwd=self.work, stdout=open(self.log_path, "w", encoding="utf-8"), stderr=subprocess.STDOUT)
+        self.process = subprocess.Popen(command, env=env, cwd=self.work, stdout=open(self.log_path, "w", encoding="utf-8"), stderr=subprocess.STDOUT)
         deadline = time.time() + timeout
         while time.time() < deadline:
             if self.process.poll() is not None:

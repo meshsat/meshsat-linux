@@ -2,21 +2,23 @@
 """Node log (ui/screens/NodeLogScreen.kt): the node's own log, newest at the bottom, 2000 lines
 kept, Pause/Resume, Clear, Share. With the LoRa back cover the node is meshtasticd on this
 phone and its log is the service's journal, followed while the page is open. A node adopted
-over Bluetooth streams its log over the link (MeshSat Android's switch) once the Bridge relays
-it, which comes with the Bridge's node settings (the plan's B11 with B1)."""
+over Bluetooth streams its log over the link while its switch is on, as on Android: the switch
+sets the node's security.debug_log_api_enabled through the Bridge (which keeps the node's keys,
+MESHSAT-1405), and the Bridge follows the node's LogRadio while this page asks for it
+(MESHSAT-1406)."""
 import threading
+import time
 
 from gi.repository import GLib, Gtk
 
-from .. import files, system, theme
+from .. import api, files, system, theme
 from ..model import nodelog as model
 from ..screen import SubScreen
-from ..widgets import clear, outlined_button, text, tone_colour
+from ..widgets import SwitchRow, clear, outlined_button, text, tone_colour
 
 UNIT = "meshtasticd.service"
 NOT_READABLE = ("This phone's account cannot read the node's service log yet: the package adds it to the journal's readers, which takes effect at the next "
                 "login.")
-BLUETOOTH = "This node is over Bluetooth, and the Bridge does not relay its log yet."
 
 
 class NodeLogScreen(SubScreen):
@@ -29,14 +31,27 @@ class NodeLogScreen(SubScreen):
         self._shown = 0
         self.column.set_margin_start(theme.dp(16))
         self.column.set_margin_end(theme.dp(16))
+        # Bluetooth mode: the node's debug log switch, as Android's row above the note.
+        self.seq = 0
+        self.streaming = False
+        self.setting_until = 0.0
+        self.follow_warned = False
+        self.switch = SwitchRow(model.SWITCH, self.set_streaming)
+        self.switch.set_margin_top(theme.dp(8))
+        self.switch.set_visible(False)
+        self.column.append(self.switch)
         self.note = text("", "body-small", theme.TEXT_MUTED, wrap=True)
         self.note.set_margin_top(theme.dp(8))
         self.column.append(self.note)
-        # The lines in their own scroller, so the page's buttons stay under the thumb.
+        # The switch and the note stand still (a scroller would show only their first row); the
+        # lines scroll on their own, so the page's buttons stay under the thumb.
         scroll = self.get_last_child()
         self.remove(scroll)
-        self.append(scroll)
-        scroll.set_vexpand(False)
+        holder = scroll.get_child()
+        scroll.set_child(None)
+        if holder is not self.column:
+            holder.set_child(None)  # the viewport GTK put around the column
+        self.append(self.column)
         self.lines = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         self.lines.add_css_class("log-view")
         self.lines_scroll = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER)
@@ -57,14 +72,24 @@ class NodeLogScreen(SubScreen):
         self.append(row)
 
     def on_show(self) -> None:
-        self.every(3, self.read)
+        self.follow_warned = False
+        self.every(2, self.read)
 
     def update(self, s) -> None:
-        self.note.set_text(model.COVER_NOTE if s.node_mode() == "cover" else BLUETOOTH)
+        cover = s.node_mode() == "cover"
+        self.switch.set_visible(not cover)
+        if cover:
+            self.note.set_text(model.COVER_NOTE)
+            return
+        connected = s.mesh_connected()
+        self.switch.switch.set_sensitive(connected and time.time() >= self.setting_until)
+        self.note.set_text(model.NOT_CONNECTED if not connected else model.STREAMING_NOTE if self.streaming else model.OFF_NOTE)
 
     def read(self) -> None:
-        if self.app.state.node_mode() != "cover" or self.reading:
-            self.update(self.app.state)
+        if self.reading:
+            return
+        if self.app.state.node_mode() != "cover":
+            self.read_bluetooth()
             return
         self.reading = True
 
@@ -83,13 +108,61 @@ class NodeLogScreen(SubScreen):
             self.note.set_text(NOT_READABLE)
             return
         self.update(self.app.state)
-        import time  # noqa: PLC0415
-
         now = time.time()
         parsed = [p for p in (model.parse_daemon(l, now) for l in lines) if p]
         if parsed:
             self.buffer.add(parsed)
             self.render()
+
+    # A node over Bluetooth: the Bridge's radio log, read after the last line this page has.
+    def read_bluetooth(self) -> None:
+        connected = self.app.state.mesh_connected()
+        follow = "&follow=1" if connected and self.streaming else ""
+        self.reading = True
+        self.fetch(f"/api/mesh/radio-log?after={self.seq}{follow}", lambda a: self.got_bluetooth(a, bool(follow)))
+
+    def got_bluetooth(self, answer: api.Answer, asked: bool) -> None:
+        self.reading = False
+        if not answer.ok or not isinstance(answer.body, dict):
+            self.update(self.app.state)
+            return
+        body = answer.body
+        if time.time() >= self.setting_until and body.get("debug_log_api_enabled") is not None:
+            self.streaming = bool(body.get("debug_log_api_enabled"))
+            self.switch.set_active(self.streaming)
+        if asked and body.get("available") and not body.get("following") and not self.follow_warned:
+            self.follow_warned = True
+            self.app.toast(model.FOLLOW_FAILED)
+        now = time.time()
+        lines = body.get("lines") or []
+        if lines:
+            self.seq = max(self.seq, max(int(l.get("seq") or 0) for l in lines))
+            self.buffer.add([model.parse_record(l, now) for l in lines if l.get("message")])
+            self.render()
+        self.update(self.app.state)
+
+    def set_streaming(self, on: bool) -> None:
+        """Android's switch: the node's own security settings with that one flag changed; the
+        node restarts once to apply it, and the link comes back by itself."""
+        if not self.app.state.mesh_connected():
+            self.switch.set_active(self.streaming)
+            self.app.toast(model.NODE_GONE)
+            return
+
+        def done(answer: api.Answer) -> None:
+            if answer.ok:
+                self.streaming = on
+                self.follow_warned = False
+            else:
+                self.setting_until = 0.0
+                self.switch.set_active(self.streaming)
+                self.app.toast(model.NO_SECURITY if answer.status == 409 else model.NODE_GONE if answer.status in (0, 503) else answer.error or model.NODE_GONE)
+            self.update(self.app.state)
+
+        self.setting_until = time.time() + 1.5
+        self.switch.switch.set_sensitive(False)
+        self.after(1600, lambda: self.update(self.app.state))
+        self.call("/api/config/radio", done, body={"section": "security", "config": {"debug_log_api_enabled": bool(on)}})
 
     def render(self) -> None:
         kept = self.buffer.kept

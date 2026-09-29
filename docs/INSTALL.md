@@ -7,8 +7,8 @@ For a Linux phone running Mobian (Debian 13, arm64): a PinePhone or PinePhone Pr
 Download the package from the [releases](https://github.com/meshsat/meshsat-linux/releases) (the release page lists its sha256), then, on the phone:
 
 ```
-wget https://github.com/meshsat/meshsat-linux/releases/download/v0.8.0/meshsat_0.8.0_arm64.deb
-sudo apt install ./meshsat_0.8.0_arm64.deb
+wget https://github.com/meshsat/meshsat-linux/releases/download/v0.9.0/meshsat_0.9.0_arm64.deb
+sudo apt install ./meshsat_0.9.0_arm64.deb
 ```
 
 That is all. The package installs the Meshtastic daemon for the back cover, its configuration (0 dBm, the one power the radio is qualified at), Meshtastic's web client, the radio watchdog, the MeshSat Bridge and the MeshSat app, and starts the services. The **MeshSat** icon is in the app grid; tap it and the app opens: the same screens as MeshSat Android and iOS, Home, Messages, Map, People and Setup, with this phone's node, a satellite modem on USB-C and the MeshSat Hub. The moon on Home is night mode. A banner at the top says when the Bridge or the node cannot be reached, and what to do.

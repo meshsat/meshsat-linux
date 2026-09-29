@@ -62,6 +62,41 @@ def status(connected: bool = True, **more) -> dict:
     return out
 
 
+def settings(node_id: str = None, long_name: str = "meshsat-pinephone-pro", short_name: str = "MSPP", hw_model: int = 37, firmware: str = "2.7.3.dev",
+             wifi: bool = False, bluetooth: bool = False, can_shutdown: bool = False, debug_log: bool = False) -> dict:
+    """The node's settings as the Bridge's GET /api/config?format=names gives them (MESHSAT-1405):
+    named sections with every field (protojson, enums as numbers), channels with their key as
+    a word, no private key. Defaults: the phone's LoRa back cover (meshtasticd, portduino)."""
+    node_id = node_id or ME
+    lora = {"use_preset": True, "modem_preset": 0, "bandwidth": 0, "spread_factor": 0, "coding_rate": 0, "frequency_offset": 0, "region": 3, "hop_limit": 3,
+            "tx_enabled": True, "tx_power": 0, "channel_num": 0, "override_duty_cycle": False, "sx126x_rx_boosted_gain": False, "override_frequency": 0,
+            "pa_fan_disabled": False, "ignore_incoming": [], "ignore_mqtt": False, "config_ok_to_mqtt": False}
+    position = {"position_broadcast_secs": 900, "position_broadcast_smart_enabled": True, "fixed_position": False, "gps_enabled": False, "gps_update_interval": 120,
+                "gps_attempt_time": 0, "position_flags": 811, "rx_gpio": 0, "tx_gpio": 0, "broadcast_smart_minimum_distance": 100,
+                "broadcast_smart_minimum_interval_secs": 30, "gps_en_gpio": 0, "gps_mode": 0}
+    security = {"public_key": "", "admin_key": [], "is_managed": False, "serial_enabled": True, "debug_log_api_enabled": debug_log, "admin_channel_enabled": False,
+                "private_key_set": True}
+    channels = [{"index": 0, "role": 1, "name": "msat-ttc-01", "key": "private", "uplink_enabled": False, "downlink_enabled": False, "position_precision": 13},
+                {"index": 1, "role": 2, "name": "i9603", "key": "private", "uplink_enabled": False, "downlink_enabled": False, "position_precision": 0}]
+    channels += [{"index": i, "role": 0, "name": "", "key": "none", "uplink_enabled": False, "downlink_enabled": False} for i in range(2, 8)]
+    return {
+        "loaded": True, "node_num": int(node_id[1:], 16), "node_id": node_id, "firmware_version": firmware,
+        "owner": {"long_name": long_name, "short_name": short_name, "is_licensed": False, "hw_model": hw_model},
+        "metadata": {"firmware_version": firmware, "device_state_version": 24, "hw_model": hw_model, "role": 0, "position_flags": 811, "can_shutdown": can_shutdown,
+                     "has_wifi": wifi, "has_bluetooth": bluetooth, "has_ethernet": False, "has_remote_hardware": False, "has_pkc": True},
+        "config": {"lora": lora, "position": position, "security": security,
+                   "bluetooth": {"enabled": bluetooth, "mode": 0, "fixed_pin": 123456},
+                   "network": {"wifi_enabled": False, "wifi_ssid": "", "wifi_psk": "", "ntp_server": "meshtastic.pool.ntp.org", "eth_enabled": False, "address_mode": 0,
+                               "rsyslog_server": "", "enabled_protocols": 0, "ipv6_enabled": False},
+                   "device": {"role": 0, "serial_enabled": False, "button_gpio": 0, "buzzer_gpio": 0, "rebroadcast_mode": 0, "node_info_broadcast_secs": 10800,
+                              "double_tap_as_button_press": False, "is_managed": False, "disable_triple_click": False, "tzdef": "", "led_heartbeat_disabled": False,
+                              "buzzer_mode": 0}},
+        "module": {"mqtt": {"enabled": False, "address": "", "username": "", "password": "", "encryption_enabled": True, "json_enabled": False, "tls_enabled": False,
+                            "root": "msh", "proxy_to_client_enabled": False, "map_reporting_enabled": False}},
+        "channels": channels,
+    }
+
+
 def base() -> dict:
     """The bench phone in cover mode: the node up, one other node heard and named, a few
     texts, no modem, no SIM, no Hub."""
@@ -103,6 +138,8 @@ def base() -> dict:
         "GET /api/audit/signer": rec("audit_signer", {"signer_id": "082d35bc64aa838a5cb8dd189b75c94ae2cdcaebe8855731203ffb01c761483c"}),
         "_audit": [],
         "_credentials": [],
+        "_settings": settings(),
+        "_radio_log": [],
     }
 
 
@@ -179,9 +216,17 @@ def bluetooth_pairing() -> dict:
 
 
 def bluetooth_connected() -> dict:
+    """A T-Deck adopted over Bluetooth: its own settings (WiFi and Bluetooth, it can switch
+    itself off), its debug log off, a few lines of its log held by the Bridge."""
     routes = base()
     routes["GET /api/status"] = status(address="E0:72:A1:B3:C2:ED", transport="ble", node_id=OTHER, node_name="MSPA")
     routes["GET /api/mesh/ble/status"] = {"mode": "ready", "address": "E0:72:A1:B3:C2:ED", "name": "MSPA_c2ec", "connected": True, "pairing_pending": False, "satellite_pipe": False}
+    routes["_settings"] = settings(OTHER, "MSPA", "MSPA", hw_model=50, firmware="2.7.26.a1b2c3d", wifi=True, bluetooth=True, can_shutdown=True)
+    routes["_radio_log"] = [
+        {"seq": 1, "received_at": "2026-09-29T00:10:01.5Z", "radio_time": 0, "level": "INFO", "source": "Router", "message": "Received text msg from=0x52cb81e7"},
+        {"seq": 2, "received_at": "2026-09-29T00:10:02.0Z", "radio_time": 0, "level": "WARNING", "source": "IridiumPipe", "message": "modem did not answer"},
+    ]
+    routes["_log_available"] = True
     return routes
 
 
