@@ -27,7 +27,7 @@ ROUTES = {
     "setup/messaging": ("setup", "pages.messaging", "MessagingScreen"),
     "setup/maps": ("setup", "pages.maps", "MapsScreen"),
     "geofence": ("setup", "pages.zones", "ZonesScreen"),
-    "setup/integrations": ("setup", "setup", "IntegrationsScreen"),
+    "setup/integrations": ("setup", "pages.integrations", "IntegrationsScreen"),
     "setup/advanced": ("setup", "setup", "AdvancedScreen"),
     "setup/about": ("setup", "setup", "AboutScreen"),
     "radio-config": ("setup", "pages.radio", "RadioConfigScreen"),

@@ -697,13 +697,13 @@
   {
    "id": "setup.integrations",
    "kind": "screen",
-   "android": "ui/screens/SettingsScreen.kt:integrations",
-   "linux": "setup.py:IntegrationsScreen",
+   "android": "ui/screens/SettingsScreen.kt:1180-1623",
+   "linux": "pages/integrations.py:IntegrationsScreen, model/integrations.py",
    "modes": "both",
-   "state": "partial",
-   "test": "",
+   "state": "verified",
+   "test": "h_integrations::a_the_three_cards_in_androids_words",
    "capture": "setup-integrations",
-   "note": "read only until 0.9.1"
+   "note": "the three cards in Android's words and order; the Bridge holds each setting (the aprs and tak gateways, the tcp_rns_0 interface, MESHSAT-1421); a switch waits in the app's preferences until a record can exist; a toast says saved only once the Bridge took it, else the Bridge's words. Two sentences changed (APRSDroid → Direwolf; 'Restart service after changing prefix.' left out: the Bridge applies a Save at once)"
   },
   {
    "id": "radio-config",
@@ -1559,6 +1559,39 @@
    "test": "h_hub::c_the_setup_row_and_the_home_lane",
    "capture": "setup",
    "note": "Not set up. Scan the Hub's QR code. / Connected / Connecting / Cannot reach the Hub / Not connected, in Android's colours; not the switch",
+   "state": "verified"
+  },
+  {
+   "id": "setup.integrations.aprs",
+   "kind": "card",
+   "android": "ui/screens/SettingsScreen.kt:1181-1453",
+   "linux": "pages/integrations.py, model/integrations.py",
+   "modes": "both",
+   "test": "h_integrations::b_aprs_save_always_sends_enabled",
+   "capture": "setup-integrations",
+   "note": "KISS TNC through an external Direwolf (never the package's), APRS-IS Direct with Android's login and the passcode from the callsign (AprsIsPasscodeTest ported), the position beacon to APRS-IS only (never over the radio: Android beacons over RF from a switch its KISS screen hides), every write with `enabled` and the stored config; proven against loopback TNC and APRS-IS servers on the phone (s_integrations). Blocked on the bench: anything over the air (no licence, no radio)",
+   "state": "verified"
+  },
+  {
+   "id": "setup.integrations.tak",
+   "kind": "card",
+   "android": "ui/screens/SettingsScreen.kt:1458-1530",
+   "linux": "pages/integrations.py",
+   "modes": "both",
+   "test": "h_integrations::j_tak_switches_and_save",
+   "capture": "setup-integrations",
+   "note": "TAK without a TAK server: ATAK Broadcast as SA multicast (239.2.3.1:6969, TTL 1), MQTT Export to the Hub (meshsat/<id>/tak/cot/out), the own PLI, SOS, dead man and chat with Android's callsign (MESHSAT-1421). Android's card does nothing on a fresh install (TakIntegration needs mqtt_enabled, which nothing writes); this one does. Not proven here: a real ATAK receiving it, the Hub reading tak/cot/out (it has no reader yet)",
+   "state": "verified"
+  },
+  {
+   "id": "setup.integrations.rns",
+   "kind": "card",
+   "android": "ui/screens/SettingsScreen.kt:1535-1622",
+   "linux": "pages/integrations.py",
+   "modes": "both",
+   "test": "h_integrations::k_reticulum_made_switched_and_saved",
+   "capture": "setup-integrations",
+   "note": "the tcp_rns_0 interface (MESHSAT-1421): HDLC over TCP, TLS verified (Android skips hostname verification), the Hub's client certificate presented, port 443 always TLS; online against a loopback node on the phone (s_integrations). Not proven here: the Hub's own Reticulum endpoint (a live write not named e2e-…)",
    "state": "verified"
   }
  ]

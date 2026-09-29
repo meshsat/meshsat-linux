@@ -42,6 +42,26 @@ def load_scenario(name: str) -> dict:
     return module.build(name)
 
 
+# The Bridge's gateway defaults the GET fills in (aprs_config.go, tak_config.go after batch 3b)
+GATEWAY_DEFAULTS = {
+    "aprs": {"mode": "kiss", "kiss_host": "127.0.0.1", "kiss_port": 8001, "ssid": 10, "aprs_is_server": "rotate.aprs2.net:14580", "aprs_is_passcode": "",
+             "aprs_is_filter_km": 100, "position_beacon": False, "position_beacon_min": 10, "external_direwolf": False, "frequency_mhz": 144.8},
+    "tak": {"tak_port": 8087, "callsign_prefix": "MESHSAT", "cot_stale_seconds": 300, "coalesce_seconds": 30, "multicast": False, "hub_export": False},
+}
+
+
+def gateway_refusal(kind: str, config: dict) -> str:
+    """What the Bridge's Validate refuses, in its words."""
+    if kind == "aprs":
+        if not str(config.get("callsign") or "").strip():
+            return "callsign is required for APRS"
+        if not 0 <= int(config.get("ssid", 10) or 0) <= 15:
+            return "ssid must be 0-15"
+        if (config.get("mode") or "kiss") not in ("kiss", "is"):
+            return "mode must be kiss or is"
+    return ""
+
+
 class FakeBridge:
     def __init__(self, scenario: dict | None = None, port: int = 0):
         self.routes = {}
@@ -61,6 +81,7 @@ class FakeBridge:
         self.credentials = None  # the credential store (`_credentials`): upload, delete
         self.settings = None  # the node's settings as GET /api/config?format=names gives them (`_settings`)
         self.gateways = None  # gateway configs by type (`_gateways`): GET and PUT /api/gateways/{type}
+        self.ifaces = None  # the dynamic Reticulum interfaces (`_ifaces`): /api/routing/ifaces
         self.msvqsc = False  # MSVQ-SC can encode (`_msvqsc`)
         self.radio_log = None  # the radio log lines (`_radio_log`), and whether the node offers it over Bluetooth
         self.log_available = False
@@ -167,6 +188,8 @@ class FakeBridge:
         self.settings = json.loads(json.dumps(settings)) if settings is not None else None
         gateways = routes.pop("_gateways", None)
         self.gateways = json.loads(json.dumps(gateways)) if gateways is not None else None
+        ifaces = routes.pop("_ifaces", None)
+        self.ifaces = json.loads(json.dumps(ifaces)) if ifaces is not None else None
         self.msvqsc = bool(routes.pop("_msvqsc", False))
         log = routes.pop("_radio_log", None)
         self.radio_log = [dict(line) for line in log] if log is not None else None
@@ -363,15 +386,63 @@ class FakeBridge:
             kind = path.rsplit("/", 1)[1]
             if method == "GET":
                 gw = self.gateways.get(kind)
-                return (200, json.loads(json.dumps(gw))) if gw is not None else (404, {"error": f"gateway {kind} not configured"})
+                if gw is None:
+                    return 404, {"error": f"gateway {kind} not configured"}
+                shown = json.loads(json.dumps(gw))
+                shown["config"] = dict(GATEWAY_DEFAULTS.get(kind, {}), **shown.get("config", {}))
+                for secret in ("aprs_is_passcode", "password", "enroll_password"):
+                    if shown["config"].get(secret):
+                        shown["config"][secret] = "****"
+                return 200, shown
             if method == "PUT":
+                # As manager.go: a missing `enabled` is false; "****" is the stored secret; the
+                # config is checked (the Bridge's words) and replaces the stored one whole.
                 config = (body or {}).get("config") or {}
                 stored = (self.gateways.get(kind) or {}).get("config") or {}
                 for k, v in list(config.items()):
                     if v == "****" and k in stored:
                         config[k] = stored[k]
+                refused = gateway_refusal(kind, config)
+                if refused:
+                    return 400, {"error": f"invalid config: {refused}"}
                 self.gateways[kind] = {"type": kind, "instance_id": kind + "_0", "enabled": bool((body or {}).get("enabled")), "config": config}
                 return 200, {"status": "ok"}
+        # The dynamic Reticulum interfaces, as routing_ifaces.go: POST {type, enabled?, config}
+        # gives <type>_<n> (201); PUT keeps what it leaves out; tcp_rns needs a host. The Bridge
+        # always has the manager: a scenario that names none lists no interface.
+        if self.ifaces is None and path == "/api/routing/ifaces" and method == "GET":
+            return 200, []
+        if self.ifaces is not None and path.startswith("/api/routing/ifaces"):
+            parts = path.strip("/").split("/")
+            if method == "GET" and len(parts) == 3:
+                return 200, json.loads(json.dumps(self.ifaces))
+            if method == "POST" and len(parts) == 3:
+                kind = (body or {}).get("type") or ""
+                config = dict((body or {}).get("config") or {})
+                if kind == "tcp_rns" and not config.get("host"):
+                    return 400, {"error": "tcp_rns: host required"}
+                iid = f"{kind}_{sum(1 for i in self.ifaces if i.get('type') == kind)}"
+                row = {"id": iid, "type": kind, "enabled": bool((body or {}).get("enabled", True)), "running": False, "online": False,
+                       "config": dict({"port": 4242, "tls": False}, **config), "last_error": "", "summary": ""}
+                row["running"] = row["enabled"]
+                self.ifaces.append(row)
+                return 201, row
+            if len(parts) == 4:
+                row = next((i for i in self.ifaces if i.get("id") == parts[3]), None)
+                if row is None:
+                    return 404, {"error": "interface not found"}
+                if method == "GET":
+                    return 200, json.loads(json.dumps(row))
+                if method == "PUT":
+                    if "enabled" in (body or {}):
+                        row["enabled"] = bool(body["enabled"])
+                        row["running"] = row["enabled"]
+                        row["online"] = row["online"] and row["enabled"]
+                    if "config" in (body or {}):
+                        if row["type"] == "tcp_rns" and not (body["config"] or {}).get("host"):
+                            return 400, {"error": "tcp_rns: host required"}
+                        row["config"] = dict(body["config"])
+                    return 200, row
         # The node's settings, as the Bridge's node_config.go (MESHSAT-1405): a write names only
         # the fields it changes and is laid over the node's own; 400 for what cannot stand, 409
         # while the node has not sent the section.

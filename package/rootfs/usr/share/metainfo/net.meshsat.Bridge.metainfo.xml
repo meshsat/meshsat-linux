@@ -36,6 +36,11 @@
   </recommends>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.11.2" date="2026-09-29">
+      <description>
+        <p>Ham radio, TAK and Reticulum, as MeshSat Android's. APRS through a KISS TNC or directly over APRS-IS, with the passcode worked out from the callsign and a position beacon to APRS-IS only; TAK without a TAK server, to ATAK nearby and to the Hub; Reticulum over TCP, with TLS. The Bridge carries each of them.</p>
+      </description>
+    </release>
     <release version="0.11.1" date="2026-09-29">
       <description>
         <p>The Hub page, as MeshSat Android's: where the link to the Hub stands, in Android's words, with the reason when it fails; Use the Hub; Test the connection; the connection details for setting it up by hand; and the Hub's QR code scanned from the page itself. The Setup row and the Home lane follow the link as the Bridge reports it.</p>

@@ -5,5 +5,10 @@
  "app/src/main/java/net/meshsat/android/ui/screens/NodeLogScreen.kt": {
   "MeshSat node log": "the clipboard label and the share subject of Android's share sheet, the approved exclusion (Share copies and saves a file here)",
   "Share the node log": "the share sheet's title, the approved exclusion (Share copies and saves a file here)"
+ },
+ "app/src/main/java/net/meshsat/android/ui/screens/SettingsScreen.kt": {
+  "Connect to APRSDroid's KISS TCP server for local RF APRS via AIOC + handheld radio.": "APRSDroid is an Android app; a Linux phone's KISS TCP server is Direwolf's (the Bridge's link is 'APRS (Direwolf)'), so the sentence says Direwolf",
+  "No APRSDroid or radio needed. Use passcode -1 for receive-only, or Auto to calculate from callsign.": "the same: 'No Direwolf or radio needed.' on Linux, the rest of the sentence as Android's",
+  "Callsign format: PREFIX-XXXX (last 4 hex of device ID). Restart service after changing prefix.": "the Bridge applies a Save at once, so the last sentence (about Android's service) is left out; the first sentence is carried"
  }
 }
