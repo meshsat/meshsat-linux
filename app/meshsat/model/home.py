@@ -3,24 +3,30 @@
 way out with its state and its words, the sentence above them, and the SOS card's reach
 sentence (SosScreens.kt). Pure functions of the polled state, so the tests can hold every
 state up against Android's words."""
-from . import hub, words
+from . import dashboard, hub, words
 
 
-def queued(s) -> int:
-    return sum(1 for m in s.messages if m.get("delivery_status") in ("queued", "pending", "sending"))
+def depths(stats: list | None) -> dict:
+    """Each lane's queue as Android counts it (MessageDeliveryDao.queueDepth): the deliveries on
+    its channels that are queued, retrying, held or sending (GET /api/deliveries/stats)."""
+    return {lane: dashboard.lane_depth(stats or [], lane) for lane in ("satellite", "mesh", "sms")}
 
 
-def satellite_lane(s) -> tuple:
+def satellite_lane(s, depth: int = 0, pass_line: str | None = None) -> tuple:
     """(state, detail, figure). This edition's modem is a RockBLOCK on USB-C, or the modem of
-    a node adopted over Bluetooth (its pipe, once the Bridge reads it)."""
+    a node adopted over Bluetooth (its pipe, once the Bridge reads it). `depth`: the satellite
+    queue; `pass_line`: dashboard.pass_line() of Home's passes."""
     modem = s.modem or {}
-    waiting = queued(s)
-    queue_line = f"{words.count(waiting, 'message')} waiting to go out. " if waiting else ""
+    queue_line = dashboard.queue_prefix(depth)
     if not s.bridge:
         return "off", "Connect a MeshSat node to use its satellite modem.", ""
+    ble = s.ble or {}
+    if s.node_mode() == "bluetooth" and ble.get("satellite_link_broken"):
+        # HomeLanes.kt:170-174: the pipe to the node takes no writes; the satellite is not the problem
+        return "failed", (queue_line + "The phone cannot reach the node's modem. Getting the link back.").strip(), ""
     if s.modem_connected():
         bars = (s.signal or {}).get("bars", 0)
-        return "working", (queue_line + "Modem ready.").strip(), f"{bars}/5"
+        return "working", (queue_line + (pass_line or "Modem ready.")).strip(), f"{bars}/5"
     if modem.get("port") not in ("", "supervisor", None):
         if modem.get("silent"):
             return "failed", "The node's modem does not answer. Check its power and cable.", ""
@@ -71,11 +77,10 @@ def mesh_lane(s) -> tuple:
     return "off", "Connect a MeshSat node or a Meshtastic radio.", ""
 
 
-def sms_lane(s) -> tuple:
+def sms_lane(s, depth: int = 0) -> tuple:
     if s.sms_ready():
-        waiting = sum(1 for m in s.messages if m.get("transport") == "sms" and m.get("delivery_status") in ("queued", "pending", "sending"))
-        if waiting:
-            return "working", f"{words.count(waiting, 'message')} waiting to go out.", f"{s.sms_today()} today"
+        if depth:
+            return "working", f"{words.count(depth, 'message')} waiting to go out.", f"{s.sms_today()} today"
         return "working", "Ready.", f"{s.sms_today()} today"
     return "off", s.sms_reason() or "Allow SMS to send and receive texts.", ""
 
@@ -86,12 +91,13 @@ def hub_lane(s) -> tuple:
     return state, sentence, ""
 
 
-def lanes(s) -> dict:
-    return {"satellite": satellite_lane(s), "mesh": mesh_lane(s), "sms": sms_lane(s), "hub": hub_lane(s)}
+def lanes(s, stats: list | None = None, pass_line: str | None = None) -> dict:
+    depth = depths(stats)
+    return {"satellite": satellite_lane(s, depth["satellite"], pass_line), "mesh": mesh_lane(s), "sms": sms_lane(s, depth["sms"]), "hub": hub_lane(s)}
 
 
-def sentence(lane_states: dict, s) -> tuple:
-    """(the sentence, the line under it or None)."""
+def sentence(lane_states: dict, s, stats: list | None = None) -> tuple:
+    """(the sentence, the line under it or None); the line counts the three queues together."""
     ways = []
     if lane_states["satellite"][0] == "working":
         ways.append("satellite")
@@ -102,7 +108,7 @@ def sentence(lane_states: dict, s) -> tuple:
     if lane_states["hub"][0] == "working":
         ways.append("the Hub")
     first = "Nothing can send yet." if not ways else f"Messages can go out by {words.join_and(ways)}."
-    waiting = queued(s)
+    waiting = sum(depths(stats).values())
     if waiting:
         second = f"{words.count(waiting, 'message')} on the way."
     elif not ways:
@@ -141,12 +147,17 @@ def contacts_button(s) -> str:
     return "Emergency contacts"
 
 
-def checklist(s, lane_states: dict) -> list:
-    """Onboarding.kt's four steps as (title, detail, done): the node, the Hub, the modem, and
-    the emergency contacts."""
+def checklist(s, lane_states: dict | None = None) -> list:
+    """Onboarding.kt's steps as (title, detail, done, route): the node, the Hub, and with a
+    modem in the phone SMS and the emergency contacts. In cover mode the first step is this
+    edition's own (the node is the LoRa back cover, started, not paired)."""
     bluetooth = s.node_mode() == "bluetooth"
-    node_done = s.mesh_connected() or (bluetooth and bool((s.ble or {}).get("address")))
-    return [("Pair your MeshSat node" if bluetooth else "Start your MeshSat node", "The radios: mesh and satellite" if bluetooth else "The radio: the LoRa back cover", node_done),
-            ("Paste the Hub's key", "Optional: the control room", lane_states["hub"][0] in ("working", "trying")),
-            ("Plug the satellite modem", "A RockBLOCK on USB-C", s.modem_connected()),
-            ("Add emergency contacts", "Who an SOS goes to by SMS", bool(s.contacts))]
+    if bluetooth:
+        first = ("Pair your MeshSat node", "The radios: mesh and satellite", bool((s.ble or {}).get("address")), "setup/node")
+    else:
+        first = ("Start your MeshSat node", "The radio: the LoRa back cover", bool(s.node_service) or s.mesh_connected(), "setup/node")
+    steps = [first, ("Scan the Hub's QR code", "Optional: the control room", s.hub_configured(), "setup/hub")]
+    if (s.cellular or {}).get("connected"):
+        steps += [("Allow SMS", "Messages and SOS by the phone's own SIM", s.sms_ready(), "setup/sms"),
+                  ("Add emergency contacts", "Who an SOS goes to by SMS", bool(s.contacts), "setup/safety")]
+    return steps

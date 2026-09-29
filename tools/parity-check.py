@@ -34,10 +34,23 @@ def load(path: str, default):
 
 
 def linux_sources() -> str:
+    """The app's sources, and every string they hold as Python reads it: adjacent literals joined
+    (a sentence written over two lines is one string) and an f-string's fixed parts, split at
+    its fields as the Android words are split at Kotlin's templates."""
+    import ast  # noqa: PLC0415
+
     text = []
     for path in glob.glob(os.path.join(ROOT, "app", "meshsat", "**", "*.py"), recursive=True):
         with open(path, encoding="utf-8") as handle:
-            text.append(handle.read())
+            source = handle.read()
+        text.append(source)
+        try:
+            tree = ast.parse(source)
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                text.append(node.value)
     return "\n".join(text)
 
 

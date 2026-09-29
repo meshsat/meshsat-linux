@@ -128,7 +128,7 @@ class Scratch(Live):
 
     BINARY = os.environ.get("MESHSAT_E2E_BRIDGE", "/usr/bin/meshsat")
 
-    def __init__(self, work: str, timeout: float = 40.0, ble: str | None = None):
+    def __init__(self, work: str, timeout: float = 40.0, ble: str | None = None, settings: dict | None = None):
         import glob  # noqa: PLC0415
         import socket  # noqa: PLC0415
         import subprocess  # noqa: PLC0415
@@ -151,6 +151,9 @@ class Scratch(Live):
             "MESHSAT_CELLULAR_PORT": "/nonexistent/e2e-cellular", "MESHSAT_ZIGBEE_PORT": "/nonexistent/e2e-zigbee", "MESHSAT_TCP_LISTEN": "none",
             "MESHSAT_SERIAL_SKIP_PORTS": ",".join(serial), "HUB_API_KEY": "", "MESHSAT_BRIDGE_NAME": "e2e-scratch",
         })
+        # A module's own settings (BRIDGE_ENV), say "auto" for a modem port as the phone's Bridge
+        # has it: every serial port present stays in the skip list above either way.
+        env.update({k: str(v) for k, v in (settings or {}).items()})
         command = [self.BINARY]
         if ble:
             # A node over Bluetooth (a T-Deck the phone is bonded with): the Bridge talks to BlueZ

@@ -9,7 +9,8 @@ def case_a_name_heard_once_survives_a_bridge_restart(ctx):
     # The Bridge restarts: its node table comes back without the name, and a new node appears.
     ctx.bridge.scenario("nameless-node")
     ctx.app.refresh()
-    ctx.tree.wait_text("Node !b1b3c2ed", timeout=10)
+    # PeerRow: a node without a name is its id alone (Android's table)
+    ctx.tree.wait_text("!b1b3c2ed", timeout=10)
     assert ctx.tree.has_text("MSPA"), "the name heard before the restart is gone"
     ctx.tree.wait_text("2 nodes heard")
     ctx.shot("people-after-restart")

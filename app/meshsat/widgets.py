@@ -2,6 +2,7 @@
 """The pieces every screen is built from, each the Android counterpart by name and measure
 (the iOS app draws the same ones by hand): the status strip, the banners, the wordmark, the
 lane rows, cards, NavRows, chips, the bottom navigation, sub-screen headers, buttons."""
+import os
 import time
 
 import gi
@@ -13,6 +14,8 @@ from gi.repository import Adw, Gdk, GdkPixbuf, GLib, Graphene, Gtk, Pango, Pango
 
 from . import theme  # noqa: E402
 from .model import words  # noqa: E402
+
+BRAND_ICON = os.path.join(os.path.dirname(os.path.abspath(__file__)), "brand", "app-icon-1024.png")
 
 
 def paint(widget: Gtk.Widget, colour: str, background: bool = False) -> Gtk.Widget:
@@ -164,13 +167,14 @@ class StatusStrip(Gtk.Box):
 
 
 class Banner(Gtk.Button):
-    """Full width above the content on every screen. Amber: the node cannot be reached. Red:
-    an SOS is on (it outranks the node banner)."""
+    """Full width above the content on every screen, bodyMedium in SpaceBlack, 16 x 10 dp
+    (NodeLinkBanner.kt, SosBanner). Amber: the node cannot be reached. Red: an SOS is on (it
+    outranks the node banner)."""
 
     def __init__(self, on_tap):
         super().__init__()
         self.add_css_class("banner")
-        self.label = text("", "body-large", wrap=True)
+        self.label = text("", "body-medium", wrap=True)
         self.set_child(self.label)
         self.connect("clicked", lambda *_: on_tap(self.kind))
         self.kind = None
@@ -227,7 +231,8 @@ class Filtered(Gtk.Widget):
 
 
 class Wordmark(Gtk.Widget):
-    """The brand lockup, 26 dp high, as the Home header shows it. The apps' lockup bitmap is
+    """The brand lockup, 26 dp high as the Home header shows it (32 dp on the welcome screen,
+    Onboarding.kt:80-86). The apps' lockup bitmap is
     600x122 and looked soft on a 2x screen, so this draws it itself: the mark cut from the
     1024 px app icon, scaled once to the screen's exact pixels (the icon's black is the
     page's black), and the name set live in IBM Plex Sans Bold, "Mesh" in off-white and
@@ -241,9 +246,10 @@ class Wordmark(Gtk.Widget):
     TRACKING = -0.03  # of the height, between letters
     BASELINE = 0.91  # of the height
 
-    def __init__(self, icon_path: str):
+    def __init__(self, icon_path: str | None = None, height: float = 26):
         super().__init__()
-        self.icon_path = icon_path
+        self.icon_path = icon_path or BRAND_ICON
+        self.HEIGHT = theme.dp(height)
         self.mark_width = round(self.HEIGHT * self.MARK_BOX[2] / self.MARK_BOX[3])
         self.texture = None
         self.texture_scale = 0
@@ -346,6 +352,9 @@ class LaneRow(Gtk.Button):
     def set_state(self, state: str, detail: str, figure: str = "", in_flight: bool = False) -> None:
         self.state = state
         self.detail.set_text(detail)
+        # LaneLine's description (Lane.kt:133-138), for a screen reader
+        described = {"working": "working", "trying": "trying", "off": "not available", "failed": "not working"}.get(state, state)
+        self.update_property([Gtk.AccessibleProperty.DESCRIPTION], [described + (", a message is on its way" if in_flight else "")])
         self.figure.set_text(figure)
         paint(self.icon, {"working": theme.lane_colour(self.lane), "trying": theme.AMBER, "failed": theme.RED}.get(state, theme.TEXT_MUTED))
         self.in_flight = in_flight
@@ -964,8 +973,9 @@ class HoldButton(Gtk.Button):
             cr.set_source_rgba(colour.red, colour.green, colour.blue, 0.55)
             cr.rectangle(0, 0, width * self.progress, height)
             cr.fill()
-        layout = self.create_pango_layout(self.label_text if not self._pressed else f"Keep holding ({max(1, int(self.seconds - (time.monotonic() - self._started) + 0.999))})")
-        layout.set_font_description(Pango.FontDescription.from_string(f"{theme.FONT} Semi-Bold {theme.px(18)}"))
+        # HoldToSend.kt: "Keep holding: N" while held (N the whole seconds left), in titleMedium
+        layout = self.create_pango_layout(self.label_text if not self._pressed else f"Keep holding: {max(1, int(self.seconds - (time.monotonic() - self._started) + 0.999))}")
+        layout.set_font_description(Pango.FontDescription.from_string(f"{theme.FONT} Medium {theme.px(16)}"))
         w, h = layout.get_pixel_size()
         cr.set_source_rgba(colour.red, colour.green, colour.blue, 1.0)
         cr.move_to((width - w) / 2, (height - h) / 2)

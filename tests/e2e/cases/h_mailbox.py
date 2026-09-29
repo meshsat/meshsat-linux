@@ -15,10 +15,9 @@ def checks(ctx, since: int) -> list:
 
 def case_the_mailbox_check_asks_first(ctx):
     ctx.bridge.scenario("satellite-3-bars")
-    ctx.bridge.set("POST /api/iridium/mailbox/check", {"status": "mailbox check triggered"})
     ctx.app.refresh()
     ctx.app.open("setup/satellite")
-    ctx.tree.wait_text("Modem ready", timeout=15)
+    ctx.tree.wait_text("Connected (Signal: 3/5)", timeout=15)
     before = ctx.bridge.count()
     ctx.tree.click("Check Mailbox")
     ctx.tree.wait_text("Check the satellite mailbox?", timeout=10)
@@ -40,4 +39,4 @@ def case_no_modem_no_check(ctx):
     ctx.app.refresh()
     ctx.app.open("setup/satellite")
     ctx.tree.wait_text("No modem on this radio", timeout=15)
-    assert not ctx.tree.find("button", name="Check Mailbox").sensitive
+    assert not ctx.tree.find_all("button", name="Check Mailbox"), "the check is offered without a modem"

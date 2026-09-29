@@ -18,9 +18,10 @@ from . import __version__, api, flows, maptiles, routes, sosflow, store, theme, 
 from .home import HomeScreen  # noqa: E402
 from .mapview import MapScreen  # noqa: E402
 from .messages import ChatScreen, MessagesScreen, name_of  # noqa: E402
-from .model import words  # noqa: E402
+from .model import dashboard, words  # noqa: E402
 from .people import PeopleScreen  # noqa: E402
 from .setup import SetupScreen  # noqa: E402
+from .system import bluetooth_on  # noqa: E402
 from .widgets import Banner, Filtered, NavBar, StatusStrip, filled_button, outlined_button, text  # noqa: E402
 
 # The application id is the package's; a test instance takes its own so the two never meet.
@@ -51,6 +52,7 @@ class MeshSatApp(Adw.Application):
         # card and the result screen read it.
         self.sos = sosflow.Flow(self.prefs, lambda: GLib.idle_add(self.on_sos_change))
         self._test_notified = None
+        self._down_since = None  # when this app first saw the node's link go (NodeLinkBanner)
         self.night = False
         self.tabs = {}
         self.current = "home"
@@ -95,7 +97,29 @@ class MeshSatApp(Adw.Application):
         if isinstance(contacts, list):
             self.state.contacts = [c for c in contacts if isinstance(c, dict) and c.get("phone")]
         self.state.sos_name = str(self.prefs.get("sos_name", ""))
-        self.locate()
+        if self.fix_from_env():
+            return
+        # geoclue asks for the phone's position after the welcome has said why (Android asks
+        # for its permissions after Continue).
+        if self.prefs.get("welcome_done", False):
+            self.locate()
+
+    def fix_from_env(self) -> bool:
+        """Tests only: MESHSAT_APP_FIX="lat,lon,accuracy,altitude,speed,heading,age_s" stands in
+        for geoclue's fix (an empty field is unknown)."""
+        seam = os.environ.get("MESHSAT_APP_FIX", "")
+        if not TEST or not seam:
+            return False
+        parts = (seam.split(",") + [""] * 7)[:7]
+
+        def number(v):
+            return float(v) if v.strip() else None
+
+        lat, lon, accuracy, altitude, speed, heading, age = (number(v) for v in parts)
+        at = time.time() - (age or 0)
+        self.state.phone = (lat, lon, accuracy, at)
+        self.state.fix = {"latitude": lat, "longitude": lon, "accuracy": accuracy, "altitude": altitude, "speed": speed, "heading": heading, "at": at}
+        return True
 
     def set_contacts(self, contacts: list) -> None:
         self.state.contacts = contacts
@@ -139,7 +163,22 @@ class MeshSatApp(Adw.Application):
         lat, lon = location.get_property("latitude"), location.get_property("longitude")
         if lat == 0 and lon == 0:
             return
-        self.state.phone = (lat, lon, location.get_property("accuracy"), time.time())
+        accuracy = location.get_property("accuracy")
+        at = time.time()
+        try:  # geoclue's own time of the fix, (seconds, microseconds)
+            stamp = location.get_property("timestamp")
+            if stamp is not None:
+                seconds, micro = stamp.unpack()
+                at = seconds + micro / 1e6 if seconds else at
+        except (TypeError, ValueError, AttributeError):
+            pass
+
+        def known(value, floor):
+            return value if value is not None and value > floor else None
+
+        self.state.phone = (lat, lon, accuracy, time.time())
+        self.state.fix = {"latitude": lat, "longitude": lon, "accuracy": known(accuracy, 0), "altitude": known(location.get_property("altitude"), -1e9),
+                          "speed": known(location.get_property("speed"), -0.5), "heading": known(location.get_property("heading"), -0.5), "at": at}
         self.state.location_hint = ""
         if self.window is not None:
             self.on_state(self.state)
@@ -219,10 +258,28 @@ class MeshSatApp(Adw.Application):
         self.filter.on = self.night
         self.toasts = Adw.ToastOverlay()
         self.toasts.set_child(self.filter)
-        self.window.set_content(self.toasts)
+        if self.prefs.get("welcome_done", False):
+            self.window.set_content(self.toasts)
+        else:
+            # The first start (Onboarding.kt): the welcome is the window's only content.
+            from .pages.welcome import WelcomeScreen  # noqa: PLC0415
+
+            self.window.set_content(WelcomeScreen(self.welcomed))
+            trace.event("route", route="welcome")
         self.select_tab("home")
         if os.environ.get("MESHSAT_APP_DEBUG"):
             GLib.timeout_add_seconds(5, lambda: self.inspect("") or True)
+
+    def welcomed(self) -> None:
+        """Continue: the app itself, then geoclue's question about the position."""
+        self.prefs.set(welcome_done=True)
+        self.window.set_content(self.toasts)
+        trace.event("route", route="home")
+        if self.state.polled_at:
+            self.visible_screen().update(self.state)
+        if not os.environ.get("MESHSAT_APP_FIX"):
+            trace.event("locate")
+            self.locate()
 
     def inspect(self, path: str) -> bool:
         """Every widget on view, with its class, CSS classes, allocation and minimum width, as
@@ -388,7 +445,8 @@ class MeshSatApp(Adw.Application):
         head.append(text(sheet.title(node, mine), "title-large", wrap=True))
         head.append(text(sheet.subtitle(node), "body-medium", theme.TEXT_MUTED, mono=True))
         box.append(head)
-        for label, value, mono in sheet.rows(node, mine, time.time()):
+        live = sheet.live_packet(self.state.packets, sheet.node_id(node))
+        for label, value, mono in sheet.rows(node, mine, time.time(), live):
             row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=0)
             key = text(label, "body-medium", theme.TEXT_MUTED)
             key.set_size_request(theme.dp(96), -1)
@@ -430,8 +488,17 @@ class MeshSatApp(Adw.Application):
             screen.focus(node_id)
 
     def on_banner(self, kind: str) -> None:
-        """The SOS banner opens the SOS screen, the node banner the node's page (NodeLinkBanner.kt)."""
-        self.open_route("sos" if kind == "sos" else "setup/node")
+        """The SOS banner opens the SOS screen; the node banner switches Bluetooth on when it is
+        off, else opens Setup (NodeLinkBanner.kt, MeshSatUI.kt:160-162); this edition's own
+        banners (the Bridge stopped, the cover's radio) open the node's page."""
+        if kind == "sos":
+            self.open_route("sos")
+        elif kind == "bluetooth":
+            bluetooth_on()
+        elif kind == "link":
+            self.open_route("setup")
+        else:
+            self.open_route("setup/node")
 
     # The SOS and the alarm test (SosController): the app's own record, and the Bridge's status.
     def stop_test(self) -> None:
@@ -462,6 +529,35 @@ class MeshSatApp(Adw.Application):
                 self.withdraw_notification("alarm-test")
                 self._test_notified = None
         return False
+
+    def show_node_banner(self, s: api.State) -> None:
+        """NodeLinkBanner: once a node was ever chosen, while the mesh is down or the node's
+        modem cannot be reached, which link and since when; never while an SOS or a test runs
+        (one banner at a time). This edition's own two come first: the Bridge stopped, and the
+        cover's radio not answering."""
+        down = link_down(s)
+        if not down:
+            self._down_since = None
+        elif self._down_since is None:
+            self._down_since = time.time()
+        run = self.sos.active()
+        if run is not None or (s.sos or {}).get("active"):
+            self.node_banner.show(None)
+            return
+        verdict = s.watchdog.get("radio")
+        bluetooth = s.node_mode() == "bluetooth"
+        if s.bridge is None and not s.bridge_service:
+            self.node_banner.show("bridge", "The Bridge is not running on this phone. Tap to start it.")
+        elif verdict in ("radio-not-answering", "cover-unreachable"):
+            self.node_banner.show("watchdog", s.watchdog.get("message") or "The radio in the back cover stopped answering. Re-seat the cover.")
+        elif down and (not bluetooth or (s.ble or {}).get("address")):
+            since = self._down_since
+            bluetooth_off = bluetooth and (s.ble or {}).get("adapter_powered") is False
+            message = dashboard.node_link_banner_text(bluetooth_off, s.mesh_connected(), time.strftime("%H:%M", time.localtime(since)),
+                                                      max(0, int((time.time() - since) // 60)))
+            self.node_banner.show("bluetooth" if bluetooth_off else "link", message)
+        else:
+            self.node_banner.show(None)
 
     def show_sos_banner(self, s: api.State) -> None:
         """SosBanner: a strip on every screen while an SOS or a test is on."""
@@ -510,19 +606,7 @@ class MeshSatApp(Adw.Application):
 
         self.sos.follow(s)
         self.show_sos_banner(s)
-        verdict = s.watchdog.get("radio")
-        if s.bridge is None and not s.bridge_service:
-            self.node_banner.show("node", "The Bridge is not running on this phone. Tap to start it.")
-        elif verdict in ("radio-not-answering", "cover-unreachable"):
-            self.node_banner.show("node", s.watchdog.get("message") or "The radio in the back cover stopped answering. Re-seat the cover.")
-        elif not s.mesh_connected() and s.unreachable_since and s.polled_at - s.unreachable_since > 12 and (s.node_mode() != "bluetooth" or (s.ble or {}).get("address")):
-            # NodeLinkBanner.kt: "Cannot reach your MeshSat node[ since HH:mm][ (N min)]. Nothing
-            # goes out by mesh or satellite. Tap to see." (shown once a node has ever been chosen)
-            since = time.strftime("%H:%M", time.localtime(s.unreachable_since))
-            minutes = int((s.polled_at - s.unreachable_since) // 60)
-            self.node_banner.show("node", f"Cannot reach your MeshSat node since {since}" + (f" ({minutes} min)" if minutes >= 1 else "") + ". Nothing goes out by mesh or satellite. Tap to see.")
-        else:
-            self.node_banner.show(None)
+        self.show_node_banner(s)
 
         screen = self.visible_screen()
         if screen is not None:
@@ -530,6 +614,11 @@ class MeshSatApp(Adw.Application):
         if not getattr(self, "_opened", True):
             GLib.idle_add(self.open_window)
         return False
+
+
+def link_down(s: api.State) -> bool:
+    """NodeLinkBanner's `down`: the mesh is not up, or the node's modem takes no writes."""
+    return not s.mesh_connected() or bool((s.ble or {}).get("satellite_link_broken"))
 
 
 def hub_lane(s: api.State) -> tuple:

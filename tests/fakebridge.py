@@ -177,6 +177,13 @@ class FakeBridge:
         self.deadman = dict(deadman) if deadman else {"enabled": False, "timeout_min": 240, "last_activity": "", "triggered": False}
         deliveries = routes.pop("_deliveries", None)
         self.deliveries = [dict(d) for d in deliveries] if deliveries is not None else None
+        # The mailbox check a person asks for (Bridge change B22): what GET /api/iridium/mailbox
+        # answers, the checks started, and what the next one ends with (`_mailbox_next`).
+        self.mailbox = dict(routes.pop("_mailbox", None) or {"running": False, "result": None, "finished_at": None})
+        self.mailbox_checks = 0
+        self.mailbox_next = routes.pop("_mailbox_next", None)
+        # The chats' own keys (Bridge change B21): "type:address" -> 64 hex
+        self.chat_keys = dict(routes.pop("_chat_keys", None) or {})
         rules = routes.pop("_rules", None)
         self.rules = [dict(r) for r in rules] if rules is not None else None
         audit = routes.pop("_audit", None)
@@ -279,6 +286,42 @@ class FakeBridge:
             return 200, {"status": "sent", "id": len(self.sent)}
         if path == "/api/nodes/request-info" and method == "POST":
             return 200, {"status": "nodeinfo request sent"}
+        if path == "/api/deliveries/stats" and method == "GET" and self.deliveries is not None:
+            # As the Bridge's GetDeliveryStats: a row per channel and status, with the count.
+            counts = {}
+            for d in self.deliveries:
+                key = (d.get("channel"), d.get("status"))
+                counts[key] = counts.get(key, 0) + 1
+            return 200, [{"channel": c, "status": st, "count": n} for (c, st), n in sorted(counts.items())]
+        if path == "/api/iridium/signal/history" and method == "GET" and isinstance(self.routes.get("_signal_history"), dict):
+            # The readings of one source (iridium, gss, ...), as the Bridge's signal history.
+            source = urllib.parse.parse_qs(urllib.parse.urlparse(full_path).query).get("source", ["iridium"])[0]
+            return 200, list(self.routes["_signal_history"].get(source, []))
+        if path == "/api/iridium/mailbox" and method == "GET":
+            return 200, dict(self.mailbox)
+        parts = path.split("/")
+        if len(parts) == 5 and parts[1:3] == ["api", "keys"] and parts[3] in ("sms", "cellular", "mesh", "iridium"):
+            # B21: a chat's key, by channel type and address (escaped or not), as the Bridge
+            kind = "sms" if parts[3] == "cellular" else parts[3]
+            where = urllib.parse.unquote(parts[4])
+            name = f"{kind}:{where}"
+            if method == "GET":
+                if name not in self.chat_keys:
+                    return 404, {"error": f"no key for {name}"}
+                return 200, {"key": self.chat_keys[name].lower(), "version": 1, "label": ""}
+            if method == "PUT":
+                key = str((body or {}).get("key") or "")
+                if len(key) != 64 or any(c not in "0123456789abcdefABCDEF" for c in key):
+                    return 400, {"error": "key must be 64 hexadecimal characters (AES-256)"}
+                status = "unchanged" if self.chat_keys.get(name, "").lower() == key.lower() else "saved"
+                self.chat_keys[name] = key.lower()
+                return 200, {"status": status, "channel_type": kind, "address": where, "version": 1, "label": ""}
+            if method == "DELETE":
+                if self.chat_keys.pop(name, None) is None:
+                    return 404, {"error": f"no key for {name}"}
+                return 200, {"status": "revoked"}
+        if path == "/api/iridium/mailbox/check" and method == "POST":
+            return self.mailbox_check()
         # The queue, as the Bridge's deliveries.go: cancel only what is queued or waiting for a
         # retry, retry only what failed or gave up; anything else is a 500 with the Bridge's words.
         if self.deliveries is not None and path.startswith("/api/deliveries"):
@@ -664,6 +707,31 @@ class FakeBridge:
                 return 200, {"status": order + " sent"}
         return None
 
+    def mailbox_check(self) -> tuple:
+        """B22's POST /api/iridium/mailbox/check: 503 without a modem (the outcome becomes
+        not_connected), 409 while one runs, else a check that ends 1.5 s later with the
+        scenario's next outcome (a check with nothing waiting by default)."""
+        stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        modem = self.routes.get("GET /api/iridium/modem") or {}
+        if not (isinstance(modem, dict) and modem.get("connected")):
+            self.mailbox = {"running": False, "result": {"kind": "not_connected", "seconds": 0, "mo_status": 0, "received": 0, "still_queued": 0}, "finished_at": stamp}
+            return 503, {"error": "iridium gateway not running"}
+        if self.mailbox.get("running"):
+            return 409, {"error": "a mailbox check is already running"}
+        self.mailbox_checks += 1
+        self.mailbox = {"running": True, "result": None, "finished_at": None}
+        outcome = dict(self.routes.get("_mailbox_next") or self.mailbox_next or {"kind": "checked", "received": 0, "still_queued": 0})
+        outcome = {"seconds": 0, "mo_status": 0, "received": 0, "still_queued": 0, **outcome}
+
+        def finish() -> None:
+            with self.lock:
+                self.mailbox = {"running": False, "result": outcome, "finished_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+
+        timer = threading.Timer(1.5, finish)
+        timer.daemon = True
+        timer.start()
+        return 200, {"status": "mailbox check started"}
+
     # Orders from the test
     def control(self, method: str, path: str, body) -> tuple:
         order = path[len("/__fake__/"):].split("?", 1)[0]
@@ -726,6 +794,7 @@ class FakeBridge:
                              "follows": self.follows, "gateways": self.gateways, "zones": self.zones, "zone_events": self.zone_events,
                              "tiles_down": self.tiles_down, "tile_requests": self.tile_requests,
                              "key_imports": self.key_imports, "hub": self.hub, "claims": self.claims,
+                             "mailbox": self.mailbox, "mailbox_checks": self.mailbox_checks, "chat_keys": self.chat_keys,
                              "interfaces": self.routes.get("GET /api/interfaces")}
         if order == "event":
             self.push(body)

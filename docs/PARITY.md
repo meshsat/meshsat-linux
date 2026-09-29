@@ -2,9 +2,9 @@
 
 MeshSat Android is the reference, pinned at `v2.19.4`. One row per screen, tab, card, dialog, banner and notification of the Android app; a row is done when the Linux app has it, in Android's words, and a test proves it. Kept by `tools/parity-check.py` from `tests/parity/ledger.json`; the words by `tools/android-strings.py`.
 
-**Rows:** 145: 6 missing, 7 partial, 19 built, 101 verified, 10 excluded, 2 blocked.
+**Rows:** 153: 0 missing, 0 partial, 14 built, 124 verified, 11 excluded, 4 blocked.
 
-**Words:** 1240 of 1407 readable strings of Android's `ui/` and `sos/` are in the Linux sources, 5 excluded with a reason, 162 still to port.
+**Words:** 1325 of 1406 readable strings of Android's `ui/` and `sos/` are in the Linux sources, 75 excluded with a reason, 6 still to port.
 
 States: `missing` (not there), `partial` (some of it), `built` (there, untested), `verified` (there, in Android's words, with a test that ran green on the phone), `excluded` (not ported, with the reason), `blocked` (built and tested against the scripted Bridge, waiting for hardware the bench lacks).
 
@@ -12,44 +12,43 @@ States: `missing` (not there), `partial` (some of it), `built` (there, untested)
 |---|---|---|---|---|---|---|---|
 | shell.strip | banner | `ui/MeshSatUI.kt:330-352` | `widgets.py:StatusStrip` | both | verified | h_home::sentence_and_lanes_follow_the_bridge | the five items with Android's descriptions |
 | shell.navbar | banner | `ui/MeshSatUI.kt:Tab` | `widgets.py:NavBar` | both | verified | h_shell::every_route_opens_and_fits_the_screen |  |
-| shell.banner.node | banner | `ui/components/NodeLinkBanner.kt` | `__main__.py:on_state` | both | built |  | the 'Bluetooth is off' state waits for Bridge change B13 |
+| shell.banner.node | banner | `ui/components/NodeLinkBanner.kt` | `__main__.py:show_node_banner, model/dashboard.py:node_link_banner_text` | both | verified | h_banner::bluetooth_off_is_said_first_and_a_tap_switches_it_on | Bluetooth off first (a tap asks the system to switch it on: Phosh's own rfkill switch, then BlueZ, else Settings), the lost link or the node's modem since when, a tap opens Setup, hidden while an SOS or a test runs (NodeLinkBannerTextTest ported); this edition's own two banners (the Bridge stopped, the cover's radio) stay |
 | shell.banner.sos | banner | `ui/screens/SosScreens.kt` | `__main__.py:on_state` | both | verified | h_sos::sos_screen_shows_where_it_went_and_the_cancellation | SOS and alarm test words |
 | shell.night | behaviour | `ui/theme/NightMode.kt` | `widgets.py:Filtered` | both | verified | h_shell::night_mode_toggles_and_is_remembered |  |
 | shell.routes | behaviour | `ui/MeshSatUI.kt:tabOf` | `routes.py` | both | verified | RoutesTest.test_android_routes_have_their_tab |  |
-| home | screen | `ui/screens/DashboardScreen.kt` | `home.py:HomeScreen` | both | partial |  | the mailbox, position and chart cards and Arrange Home are still to come (0.12.0) |
+| home | screen | `ui/screens/DashboardScreen.kt` | `home.py:HomeScreen` | both | verified | h_home_cards::b_cards_follow_the_bridge | the header, the sentence 4 dp over its second line, the lanes, Getting started, then the six cards in the order Arrange Home keeps (0.12.0) |
 | home.sentence | card | `ui/screens/HomeLanes.kt:223-240` | `model/home.py:sentence` | both | verified | h_home::sentence_and_lanes_follow_the_bridge |  |
-| home.lane.satellite | card | `ui/screens/HomeLanes.kt:150-180` | `model/home.py:satellite_lane` | both | partial | h_home::sentence_and_lanes_follow_the_bridge | the pass line and the node's modem states wait for B9 (0.12.0) |
+| home.lane.satellite | card | `ui/screens/HomeLanes.kt:150-186` | `model/home.py:satellite_lane` | both | verified | h_home_cards::e_the_satellite_lane_quotes_the_high_pass | the queue from the delivery stats (iridium_0 and iridium_imt_0: both modems are the one satellite lane here), the pass line from Home's passes (40° and up), the node's modem out of reach said first; the node's own modem states (silent, the node holding it, asking for it) read the Bridge's fields, which it sends with B9 (0.13.0). A USB modem is checked before Bluetooth (it needs none) |
 | home.lane.mesh | card | `ui/screens/HomeLanes.kt:183-198` | `model/home.py:mesh_lane` | both | verified | h_home::sentence_and_lanes_follow_the_bridge |  |
 | home.lane.sms | card | `ui/screens/HomeLanes.kt:200-208` | `model/home.py:sms_lane` | both | verified | h_home::sentence_and_lanes_follow_the_bridge |  |
 | home.lane.hub | card | `ui/screens/HomeLanes.kt:215-223` | `model/hub.py:lane, model/home.py:hub_lane` | both | verified | h_hub::c_the_setup_row_and_the_home_lane | Off, Working, Trying, Failed with Android's sentences, from the Bridge's state of the link (MESHSAT-1417) |
-| home.lane.taps | behaviour | `ui/screens/HomeLanes.kt:261,272` | `__main__.py:open_lane` | both | built |  |  |
-| home.checklist | card | `ui/screens/Onboarding.kt:133-195` | `model/home.py:checklist` | both | partial |  | 'Hide' is still to come |
+| home.lane.taps | behaviour | `ui/screens/HomeLanes.kt:261,272,285,297` | `__main__.py:open_lane` | both | verified | h_home_cards::d_lanes_open_androids_pages |  |
+| home.checklist | card | `ui/screens/Onboarding.kt:128-195` | `home.py:checklist_row, model/home.py:checklist` | both | verified | h_home_cards::a_getting_started_steps_hide_and_open_their_pages | Android's rows, rules, icons and Hide (kept in the preferences, checklist_dismissed); in cover mode the first step is this edition's own ('Start your MeshSat node' / 'The radio: the LoRa back cover', done while the node runs); 'Allow SMS' shows with a modem and is done when the SIM can send (Linux asks no permission) |
 | home.sos-card | card | `ui/screens/SosScreens.kt:SosCard` | `home.py:HomeScreen.update_sos_card` | both | verified | h_sos::alarm_test_goes_route_by_route_and_settles |  |
 | home.sos.hold | behaviour | `ui/components/HoldToSend.kt` | `widgets.py:HoldButton` | both | verified | h_home::sos_hold_bar_asks_before_sending_when_activated_by_name | the accessible activation asks first, as Android's |
 | home.sos.send-dialog | dialog | `ui/screens/SosScreens.kt:389-399` | `home.py:sos_activate` | both | verified | h_home::sos_hold_bar_asks_before_sending_when_activated_by_name |  |
 | home.sos.cancel-dialog | dialog | `ui/screens/SosScreens.kt:403-411` | `home.py:sos_cancel_asked` | both | verified | h_home::sos_confirmed_activates_and_can_be_cancelled |  |
-| home.signal-history | card | `ui/screens/DashboardScreen.kt:signal` | `home.py:draw_chart` | both | built |  |  |
-| home.recent | card | `ui/screens/DashboardScreen.kt:recent` | `home.py:update` | both | built |  |  |
-| home.arrange | dialog | `ui/screens/DashboardScreen.kt:ReorderDialog` | `` | both | missing |  | 0.12.0 |
-| home.card.mailbox | card | `ui/screens/DashboardScreen.kt:229-260` | `` | both | missing |  | 0.12.0 |
-| home.card.position | card | `ui/screens/DashboardScreen.kt:275-310` | `` | both | missing |  | 0.12.0 |
-| home.card.charts | card | `ui/screens/DashboardScreen.kt:311-372` | `` | both | missing |  | 0.12.0 |
+| home.recent | card | `ui/screens/DashboardScreen.kt:341-368, 632-689` | `home.py:activity_row, model/dashboard.py:recent` | both | verified | h_home_cards::b_cards_follow_the_bridge | the 20 newest texts of every transport, SMS included, in Android's sizes |
+| home.arrange | dialog | `ui/screens/DashboardScreen.kt:ReorderDialog (695-805), ui/screens/HomeLanes.kt:92-94` | `home.py:ArrangeDialog, model/dashboard.py:home_order` | both | verified | h_home_cards::f_arranged_order_persists | Android's labels, ▲/▼ per row off at the ends, Apply saves dashboard_card_order in Android's string, Cancel keeps the order, an old saved order cleaned as homeOrder does; the arrows carry names ('Move SOS up') for a screen reader |
+| home.card.mailbox | card | `ui/screens/DashboardScreen.kt:230-239, ui/components/CheckMailboxButton.kt` | `mailbox.py:MailboxButton, model/dashboard.py:mailbox_text` | both | verified | h_home_cards::c_the_mailbox_check_asks_first_and_says_how_it_went | only with the modem connected; the confirmation, 'Checking mailbox...', and every outcome in Android's words from the Bridge's kept outcome (B22, MESHSAT-1423), the same on the Satellite page. No satellite session was opened by any test |
+| home.card.position | card | `ui/screens/DashboardScreen.kt:157-175, 275-315` | `home.py:render_position, model/dashboard.py:position_lines` | both | verified | h_home_cards::b_cards_follow_the_bridge | the phone's own fix only (geoclue: accuracy, height, speed, heading, the fix's own time); Kotlin's half-up rounding |
+| home.card.charts | card | `ui/screens/DashboardScreen.kt:240-270, 433-571` | `home.py:SignalChart` | both | verified | h_home_cards::b_cards_follow_the_bridge | 'Mobile signal, last 6 hours' from the Bridge's cellular history (its dBm are worked out from the bars ModemManager gives). The mesh chart is its own row (home.card.mesh-chart) |
 | messages | screen | `ui/screens/MessagesScreen.kt` | `messages.py:MessagesScreen` | both | verified | h_messages::search_filters_all_messages | search and the MessageCard rows of All Messages since 0.7.0 |
-| messages.new-message | dialog | `ui/screens/MessagesScreen.kt:NewMessageDialog` | `messages.py:new_message` | both | verified | h_messages::new_message_to_a_node_opens_that_node |  |
+| messages.new-message | dialog | `ui/screens/MessagesScreen.kt:1085-1172` | `messages.py:new_message, model/chat.py:number_ok` | both | verified | h_messages::new_message_to_a_typed_number | Android's rows (the lane's dot, title, detail), the 20 nodes heard most recently, and the phone number in the same dialog with 'Text this number' only for a number (0.12.0; the second sheet of 0.5.1 is gone) |
 | messages.search | behaviour | `ui/screens/MessagesScreen.kt:308-331` | `messages.py:MessagesScreen.query_changed` | both | verified | h_messages::search_filters_all_messages | in All Messages only, as Android; the rows are Android's MessageCard |
 | chat | screen | `ui/screens/MessagesScreen.kt:ChatScreen` | `messages.py:ChatScreen` | both | verified | h_chat::own_bubbles_carry_a_delivery_mark | the bubble audit (MESHSAT-1399), measured on the bench phone's captures (720x1440, scale 2; 1 dp = 0.9 px): Android's ChatBubble is 80 % of the column, 10 dp inside, a 20 dp header (the transport in labelSmall, the time, the delivery mark, a 20 dp copy button with a 12 dp icon), the text in bodyMedium 4 dp below, 4 dp between bubbles, one line 64 dp tall. 0.6.0 drew a bubble at least 220 dp wide, 12 dp inside, a 40 dp header (the copy button's 12 dp padding) and the text in bodyLarge: one line 180 px (100 dp) tall, 12 dp apart. 0.7.0: 532 of 662 px wide (80 %), one line 114 px (63 dp) tall, 4 dp apart; the header inside the screen's 16 dp padding without a divider, the subtitle in bodySmall, the open lock muted ("Encryption key"); per-chat keys come with 0.12.0 |
 | chat.send | behaviour | `ui/screens/MessagesScreen.kt:send` | `messages.py:ChatScreen.send` | both | verified | h_chat::send_posts_once_and_shows_the_bubble |  |
 | chat.failed-send | behaviour | `ui/screens/MessagesScreen.kt:send` | `messages.py:ChatScreen.send` | both | verified | h_chat::a_failed_send_keeps_the_text_and_says_why |  |
 | chat.composer-words | strings | `ui/screens/MessagesScreen.kt:586-647` | `model/chat.py` | both | verified | h_chat::the_composer_says_how_the_message_goes | the four placeholders, the six footer lines, the bytes and credits, the 340-byte limit that disables Send; the node-down toast (h_chat::the_mesh_down_refuses_the_send) |
 | chat.ticks | behaviour | `ui/screens/MessagesScreen.kt:DeliveryMark` | `messages.py:ChatScreen.bubble` | both | verified | h_chat::own_bubbles_carry_a_delivery_mark | a clock, one check, a question mark, a red mark, two checks; from the Bridge's delivery_status; the Hub's receipt and the carrier's report are not in the Bridge's feed yet (one check for them) |
-| chat.key | sheet | `ui/screens/SettingsScreen.kt:KeyManagementSection` | `` | both | missing |  | 0.12.0 |
+| chat.key | sheet | `ui/screens/MessagesScreen.kt:854-969 (the section), 465-548 (the header's lock)` | `messages.py:ChatKeySection, model/chatkeys.py` | both | verified | h_chatkey::a_generate_save_and_the_lock | Android's section, words, toasts and lock (amber with the chat's key or Messaging's); the key kept by the Bridge (B21, MESHSAT-1425): an SMS chat's key seals and opens that number's SMS; a mesh or satellite chat keeps a key that changes nothing on the air, as on Android. Real keystore: s_chatkey::a_chat_key_is_kept_by_the_bridge. Not proven here: a sealed SMS on the air (no SIM) |
 | map | screen | `ui/screens/MapScreen.kt:345-415` | `mapview.py:MapScreen, mapwidget.py:MeshMap` | both | verified | h_tracks::a_the_map_and_its_panel | one map for the app's life, as Android's (layers, hidden nodes and camera kept); the camera rules (the first node positions fit everyone once, before them the phone's first fix at 14); Centre on me (the phone layer on, zoom max(current, 15)), Show everyone (showPoints), the three toasts; the markers drawn above the dark filter: sand diamonds 22 dp faded after 15 min with their names on a pill, this phone an 18 dp orange dot with its accuracy circle; bubbles on markers and tracks (osmdroid's info window: title and snippet), a marker tap pans to it. In cover mode the node that is the phone's own radio is the orange dot, not a diamond; a node over Bluetooth is a device of its own and a diamond |
 | map.chrome | card | `ui/components/MapChrome.kt:107-194` | `mapwidget.py:MeshMap` | both | verified | h_maps::f_offline_the_detailed_map_serves | the round 48 dp buttons (Zoom in, Zoom out and the screen's own), the note in the corner: the OpenStreetMap credit online, 'Offline map: <name>. Outside it, the world overview.' or the world overview's sentence offline; offline after three failed downloads in a row, back with one that works (shared by both maps); the Map tab zooms out to 5 offline with only the world overview |
 | map.panel | card | `ui/screens/MapScreen.kt:418-620` | `mapview.py:MapScreen.fill_panel` | both | verified | h_tracks::b_a_hidden_node_loses_marker_and_track | Layers and nodes: the summary, the three layers with their dots, this phone's row with its accuracy, Show all and Hide all, the node rows newest first (a check box hides the marker and the track; the row centres the map on the node at zoom max(current, 14)); the list at most half the map area's height; the hidden nodes are kept, so a node heard later shows |
 | map.tracks | behaviour | `map/MapTracks.kt, ui/screens/MapScreen.kt:101-233` | `model/tracks.py:group, mapview.py` | both | verified | h_tracks::a_the_map_and_its_panel | the positions of the last 24 hours from the Bridge (GET /api/positions, 5,000 newest, all nodes together), re-read every 30 s while on view; a dashed sand line per node (75 %, 3 dp, 8 on 5 off, round caps), joined to its marker, two points at least; 'Track of <name>'; stations only the position log knows (APRS, TAK) are markers and tracks too |
-| people | screen | `ui/screens/PeersScreen.kt` | `people.py:PeopleScreen` | both | partial | h_names::a_name_heard_once_survives_a_bridge_restart | '(you)' and the second empty text come with 0.12.0; the cards are their own rows (people.cards) |
+| people | screen | `ui/screens/PeersScreen.kt` | `people.py:PeopleScreen` | both | verified | h_people::your_node_is_in_the_table | Android's table (weights 0.44/0.18/0.16/0.22, 56 dp rows, the header strip), sizes and colours; the sorts as Android's; the cards are their own rows (people.cards) |
 | people.names | behaviour | `ui/Peers.kt:displayName` | `messages.py:name_of` | both | verified | h_names::a_name_heard_once_survives_a_bridge_restart |  |
-| people.empty | strings | `ui/screens/PeersScreen.kt:155-165` | `people.py:update` | both | built |  |  |
+| people.empty | strings | `ui/screens/PeersScreen.kt:142-173` | `people.py:update` | both | verified | h_people::no_node_at_all_says_so | only with no node at all, your own included |
 | people.cards | card | `ui/screens/ContactCards.kt:83-150` | `pages/cards.py:CardsSection, model/cards.py` | both | verified | h_cards::d_a_pasted_card_is_added_as_imported | People you carry: My card, Scan a card, Paste a card instead, the list sorted as SQLite's NOCASE with 'Scanned in person' / 'Imported as text' and the node and bridge ids, Forget at once; the cards kept in cards.json on this phone, as Android's Room table; the card format and its checks ported case for case (ContactQRTest), with the fixed vector the Bridge's Go test holds too |
 | people.sheet | sheet | `ui/components/NodeDetailSheet.kt` | `__main__.py:node_sheet, model/nodes.py` | both | verified | h_tracks::g_the_node_sheet_and_show_on_map | the title (' (your node)'), the short name and id two spaces apart, the rows with their 96 dp labels (Last heard and Signal not for your own node, Hardware when known, Position '%.5f, %.5f, ago' or 'Not shared yet...'), Message (not for your own node) and Show on map (only with a position); the signal words from the node list (the Bridge keeps no last-packet signal per node: 'as your node last measured it'); battery: the Bridge's 0 is Android's -1, 'Not reported' |
 | setup | screen | `ui/screens/SetupScreen.kt` | `setup.py:SetupScreen` | both | built |  |  |
@@ -57,8 +56,8 @@ States: `missing` (not there), `partial` (some of it), `built` (there, untested)
 | setup.node.cover | linux-only | `-` | `setup.py:NodeScreen.update_cover` | cover | built |  | the PinePhone's LoRa back cover as the node |
 | setup.node.pin | linux-only | `-` | `setup.py:NodeScreen.ask_pin` | bluetooth | built |  | Android's system shows the PIN dialog; here the app does |
 | setup.node.device | linux-only | `-` | `setup.py:NodeScreen` | both | built |  | which node this device has, and the look-again button |
-| setup.satellite | screen | `ui/screens/SettingsScreen.kt:529-735` | `setup.py:SatelliteScreen` | both | partial |  | the node's modem section and the 9704 card come with 0.12.0 |
-| setup.satellite.mailbox | dialog | `ui/components/CheckMailboxButton.kt` | `setup.py:SatelliteScreen.check_mailbox` | both | partial |  | the confirmation in Android's words and Check offered only with a modem (0.11.1, h_mailbox::the_mailbox_check_asks_first); the result words wait for the Bridge's mailbox outcome (B22, 0.12.0) |
+| setup.satellite | screen | `ui/screens/SettingsScreen.kt:528-733` | `setup.py:SatelliteScreen, model/satellite.py` | both | verified | h_satellite::the_usb_modem_in_androids_words | the RockBLOCK 9603 on USB-C in Android's card words (Status, Manufacturer, Model, IMEI, a fresh Poll Signal, the mailbox); the card of the node's own modem is its own row (setup.satellite.node-modem) |
+| setup.satellite.mailbox | dialog | `ui/components/CheckMailboxButton.kt` | `mailbox.py:MailboxButton` | both | verified | h_mailbox::the_mailbox_check_asks_first | asked first, Check offered only with the modem, the outcome in Android's words from the Bridge (B22) |
 | passes | screen | `ui/screens/PassPredictorScreen.kt` | `passes.py:PassesScreen` | both | built |  |  |
 | passes.position | linux-only | `-` | `passes.py:PositionDialog` | both | built |  | a position typed in, for a phone without a fix |
 | setup.hub | screen | `ui/screens/SettingsScreen.kt:1625-1900` | `pages/hub.py:HubScreen, model/hub.py` | both | verified | h_hub::a_the_card_in_androids_words | Hub connection: the six states with the dot in Android's order (the Bridge reports the link's state and reason since MESHSAT-1417), Use the Hub (the setting only, as Android's: it takes effect when the link next starts), the claim still waiting, Why: …, Scan the Hub's QR code through the Setup router, Test the connection (the broker's acknowledgement timed by the Bridge; 'Not connected' without a link, 'failed: ' and 30 units of the reason), Connection details with Android's fields and rows and the password's eye, Save, the closing paragraph. Differences: the Bridge ID placeholder says 'auto (host name)' (Android: 'auto (Android ID)'), Save restarts the Bridge and says so ('Saved. Restarting the Bridge to use them.'; Android: 'Saved. Restart the app to use them.'), the stored password shows as dots in the placeholder (the Bridge never gives it back) |
@@ -85,8 +84,8 @@ States: `missing` (not there), `partial` (some of it), `built` (there, untested)
 | decrypt | screen | `ui/screens/DecryptScreen.kt` | `pages/decrypt.py:DecryptScreen` | both | verified | h_advanced::decrypt_with_the_links_key | AES-256-GCM (python3-cryptography), the key from the Bridge's encrypt transform (the key Setup > Messaging saves, 0.9.1); a vector made with the Bridge's own construction opens (AesGcmWireFormatTest.test_a_text_the_bridge_encrypted_opens) |
 | setup.diagnostics | screen | `ui/screens/SettingsScreen.kt:1069-1130, 2226-2311` | `pages/diagnostics.py:DiagnosticsScreen` | both | verified | h_advanced::diagnostics_health_and_the_service | Link health and Background service; the restart and the boot switch through polkit (dry under test); "Start after a phone restart" keeps Android's first sentence only (its second is about Android); Crash reports excluded (row setup.diagnostics.telemetry) |
 | nodelog | screen | `ui/screens/NodeLogScreen.kt` | `pages/nodelog.py:NodeLogScreen` | cover | verified | h_advanced::node_log_follows_pauses_clears_and_shares | cover mode: the daemon's journal followed (the package adds the phone's people to systemd-journal), lines as NodeLog.format, 2000 kept, Pause/Resume, Clear, Share = copy and save (the share sheet is the approved exclusion); the Bluetooth node's log: row nodelog.bluetooth |
-| about | screen | `ui/screens/AboutScreen.kt` | `setup.py:AboutScreen` | both | partial |  | Android's sections come with 0.12.0 |
-| welcome | screen | `ui/screens/Onboarding.kt:90-149` | `` | both | missing |  | 0.12.0 |
+| about | screen | `ui/screens/AboutScreen.kt` | `pages/about.py:AboutScreen, model/about.py` | both | verified | h_about::the_sections_in_androids_words | Android's order, sections and styles; the rows that name Android's machinery name this edition's (the cover or Bluetooth, the RockBLOCK on USB-C, the SIM through ModemManager; Bridge and Toolkit in place of the two SDK rows): Linux words by design |
+| welcome | screen | `ui/screens/Onboarding.kt:64-126, MainActivity.kt:59-83` | `pages/welcome.py:WelcomeScreen, model/welcome.py` | both | verified | h_welcome::shown_at_the_first_start_only | the window's only content at the first start, then never again (Android: at every start while a permission is missing); Android's headline, body, section title and Continue word for word; the reasons name what Linux uses (Bluetooth, Location without Android's sentence about Bluetooth scans, Notifications; no 'SMS, later': Linux asks nothing for SMS) and the footer the phone's settings: Linux words by design. geoclue's question follows Continue, as Android's permission requests do |
 | notification.message | notification | `GatewayService message notifications` | `notify.py` | both | verified | h_notify::one_notification_per_text_in_android_words |  |
 | notification.quiet-in-front | behaviour | `GatewayService` | `notify.py:app_in_front` | both | verified | h_notify::no_notification_while_the_app_is_in_front |  |
 | notification.sos | notification | `sos/SosController.kt` | `notify.py` | both | verified | h_notify::sos_notification_offers_cancel |  |
@@ -155,48 +154,57 @@ States: `missing` (not there), `partial` (some of it), `built` (there, untested)
 | setup.integrations.aprs | card | `ui/screens/SettingsScreen.kt:1181-1453` | `pages/integrations.py, model/integrations.py` | both | verified | h_integrations::b_aprs_save_always_sends_enabled | KISS TNC through an external Direwolf (never the package's), APRS-IS Direct with Android's login and the passcode from the callsign (AprsIsPasscodeTest ported), the position beacon to APRS-IS only (never over the radio: Android beacons over RF from a switch its KISS screen hides), every write with `enabled` and the stored config; proven against loopback TNC and APRS-IS servers on the phone (s_integrations). Blocked on the bench: anything over the air (no licence, no radio) |
 | setup.integrations.tak | card | `ui/screens/SettingsScreen.kt:1458-1530` | `pages/integrations.py` | both | verified | h_integrations::j_tak_switches_and_save | TAK without a TAK server: ATAK Broadcast as SA multicast (239.2.3.1:6969, TTL 1), MQTT Export to the Hub (meshsat/<id>/tak/cot/out), the own PLI, SOS, dead man and chat with Android's callsign (MESHSAT-1421). Android's card does nothing on a fresh install (TakIntegration needs mqtt_enabled, which nothing writes); this one does. Not proven here: a real ATAK receiving it, the Hub reading tak/cot/out (it has no reader yet) |
 | setup.integrations.rns | card | `ui/screens/SettingsScreen.kt:1535-1622` | `pages/integrations.py` | both | verified | h_integrations::k_reticulum_made_switched_and_saved | the tcp_rns_0 interface (MESHSAT-1421): HDLC over TCP, TLS verified (Android skips hostname verification), the Hub's client certificate presented, port 443 always TLS; online against a loopback node on the phone (s_integrations). Not proven here: the Hub's own Reticulum endpoint (a live write not named e2e-…) |
+| home.card.mesh-chart | card | `ui/screens/DashboardScreen.kt:245-256` | `` | both | excluded |  | Android draws the Bluetooth RSSI between the phone and its node (GatewayService.kt:2690-2700); the cover has no such link, and BlueZ gives an unprivileged process no RSSI of a connected LE link |
+| home.card.queue | card | `ui/screens/DashboardScreen.kt:316-340, 573-630` | `home.py:QueueBar, StatBadge, model/dashboard.py:queue_counts` | both | verified | h_home_cards::b_cards_follow_the_bridge | the three bars and four counts from GET /api/deliveries/stats (real shape: s_satellite::delivery_stats_are_the_list_home_reads), Open the queue |
+| home.card.sky | card | `ui/screens/DashboardScreen.kt:243, 380-416, ui/components/SkyChart.kt` | `passes.py:SkyChart(compact), sky_legend` | both | verified | h_home_cards::b_cards_follow_the_bridge | SkyChart's compact form (SkyGeometryTest ported, tests/test_sky.py), gone without a reading or a pass near now, a tap opens the passes; passes for the phone's position, else the node's or the one typed in (a desktop has no GPS) |
+| people.you | behaviour | `ui/screens/PeersScreen.kt:219-229, 305-311` | `people.py:peer_row` | both | verified | h_people::your_node_is_in_the_table | '(you)', the white dot, '-' for signal and last heard, your sheet without Message |
+| people.sheet.live-signal | strings | `ui/components/NodeDetailSheet.kt:48-84` | `model/nodes.py:node_signal, live_packet` | both | verified | h_people::the_signal_says_how_the_node_was_heard | the newest packet heard over the air from that node (the Bridge's packet feed with hop_start, B23), else the node list; Kotlin's half-up rounding |
+| setup.satellite.9704 | card | `ui/screens/SettingsScreen.kt:631-733` | `setup.py:SatelliteScreen` | both | verified | h_satellite::the_9704_folds_away_until_there | folded away until a 9704 is there; Android's title and status words, its own Poll Signal (the Bridge reads each modem on its own since B24) and Disconnect; this edition's words for the fold and a missing 9704 (a USB card, excluded.spp-9704) |
+| setup.satellite.node-modem | card | `ui/screens/SettingsScreen.kt:528-592` | `` | bluetooth | blocked |  | 'Satellite modem on the node' and 'Use the node's modem': Bridge change B9 (MESHSAT-1391), release 0.13.0; its live proof needs the T-Beam with the RockBLOCK in Bluetooth range |
+| setup.satellite.node-health | card | `ui/screens/SettingsScreen.kt:594-629, ble/NodeStatsText.kt` | `` | bluetooth | blocked |  | the node's STATS: Bridge change B9 (MESHSAT-1391), release 0.13.0 |
+| chat.bubble.lock | strings | `ui/screens/MessagesScreen.kt:805-811, 847` | `messages.py:ChatScreen.bubble` | both | verified | h_chatkey::c_a_sealed_sms_carries_the_lock | the amber lock, 'Decrypted', on an SMS that went or came sealed (the Bridge's `encrypted`, B21); Android's red 'Encrypted (locked)' has no counterpart: the Bridge keeps an SMS it could not open as it came |
 
 ## Words, per Android file
 
 | file | carried | excluded | missing |
 |---|---|---|---|
-| `ui/screens/SettingsScreen.kt` | 202/244 | 3 | 39 |
-| `ui/screens/AboutScreen.kt` | 16/32 | 0 | 16 |
-| `ui/screens/MessagesScreen.kt` | 59/73 | 0 | 14 |
-| `ui/screens/Onboarding.kt` | 13/27 | 0 | 14 |
-| `ui/screens/DashboardScreen.kt` | 19/31 | 0 | 12 |
-| `ui/components/CheckMailboxButton.kt` | 7/18 | 0 | 11 |
-| `sos/SosController.kt` | 17/26 | 0 | 9 |
-| `ui/screens/PassPredictorScreen.kt` | 32/39 | 0 | 7 |
-| `ui/screens/TopologyScreen.kt` | 25/29 | 0 | 4 |
-| `ui/components/NodeDetailSheet.kt` | 12/16 | 0 | 4 |
-| `ui/components/PermissionAsk.kt` | 0/4 | 0 | 4 |
 | `sos/SosRun.kt` | 12/16 | 0 | 4 |
-| `ui/screens/HomeLanes.kt` | 34/37 | 0 | 3 |
-| `ui/screens/SosScreens.kt` | 69/72 | 0 | 3 |
-| `ui/screens/AuditScreen.kt` | 41/43 | 0 | 2 |
-| `ui/screens/InterfacesScreen.kt` | 57/59 | 0 | 2 |
-| `ui/screens/MapScreen.kt` | 28/30 | 0 | 2 |
-| `sos/SosMessages.kt` | 13/15 | 0 | 2 |
-| `ui/Peers.kt` | 5/6 | 0 | 1 |
-| `ui/screens/CredentialsScreen.kt` | 14/15 | 0 | 1 |
-| `ui/screens/DecryptScreen.kt` | 13/14 | 0 | 1 |
-| `ui/screens/GeofenceScreen.kt` | 45/46 | 0 | 1 |
-| `ui/screens/SetupScreen.kt` | 54/55 | 0 | 1 |
-| `ui/components/HoldToSend.kt` | 0/1 | 0 | 1 |
-| `ui/components/Lane.kt` | 2/3 | 0 | 1 |
-| `ui/components/NodeLinkBanner.kt` | 6/7 | 0 | 1 |
-| `ui/components/ProvisionClaimHost.kt` | 16/17 | 0 | 1 |
-| `ui/components/RegionCheck.kt` | 4/5 | 0 | 1 |
+| `sos/SosController.kt` | 17/26 | 8 | 1 |
+| `sos/SosMessages.kt` | 13/15 | 1 | 1 |
 | `ui/MeshSatUI.kt` | 23/23 | 0 | 0 |
+| `ui/Peers.kt` | 5/6 | 1 | 0 |
 | `ui/Words.kt` | 26/26 | 0 | 0 |
+| `ui/screens/AboutScreen.kt` | 25/32 | 7 | 0 |
+| `ui/screens/AuditScreen.kt` | 41/43 | 2 | 0 |
 | `ui/screens/ContactCards.kt` | 34/34 | 0 | 0 |
+| `ui/screens/CredentialsScreen.kt` | 14/15 | 1 | 0 |
+| `ui/screens/DashboardScreen.kt` | 28/31 | 3 | 0 |
+| `ui/screens/DecryptScreen.kt` | 14/14 | 0 | 0 |
 | `ui/screens/DeliveryScreen.kt` | 69/69 | 0 | 0 |
+| `ui/screens/GeofenceScreen.kt` | 45/46 | 1 | 0 |
+| `ui/screens/HomeLanes.kt` | 37/37 | 0 | 0 |
+| `ui/screens/InterfacesScreen.kt` | 57/59 | 2 | 0 |
+| `ui/screens/MapScreen.kt` | 28/30 | 2 | 0 |
+| `ui/screens/MessagesScreen.kt` | 67/73 | 6 | 0 |
 | `ui/screens/NodeLogScreen.kt` | 11/13 | 2 | 0 |
+| `ui/screens/Onboarding.kt` | 24/27 | 3 | 0 |
+| `ui/screens/PassPredictorScreen.kt` | 37/38 | 1 | 0 |
 | `ui/screens/PeersScreen.kt` | 13/13 | 0 | 0 |
 | `ui/screens/RadioConfigScreen.kt` | 146/146 | 0 | 0 |
 | `ui/screens/RulesScreen.kt` | 83/83 | 0 | 0 |
+| `ui/screens/SettingsScreen.kt` | 221/244 | 23 | 0 |
+| `ui/screens/SetupScreen.kt` | 55/55 | 0 | 0 |
+| `ui/screens/SosScreens.kt` | 71/72 | 1 | 0 |
+| `ui/screens/TopologyScreen.kt` | 25/29 | 4 | 0 |
+| `ui/components/CheckMailboxButton.kt` | 18/18 | 0 | 0 |
 | `ui/components/Chrome.kt` | 1/1 | 0 | 0 |
+| `ui/components/HoldToSend.kt` | 1/1 | 0 | 0 |
+| `ui/components/Lane.kt` | 3/3 | 0 | 0 |
 | `ui/components/MapChrome.kt` | 3/3 | 0 | 0 |
+| `ui/components/NodeDetailSheet.kt` | 13/16 | 3 | 0 |
+| `ui/components/NodeLinkBanner.kt` | 7/7 | 0 | 0 |
+| `ui/components/PermissionAsk.kt` | 0/4 | 4 | 0 |
+| `ui/components/ProvisionClaimHost.kt` | 17/17 | 0 | 0 |
 | `ui/components/ProvisionLinkDialog.kt` | 9/9 | 0 | 0 |
+| `ui/components/RegionCheck.kt` | 5/5 | 0 | 0 |
 | `ui/components/SkyChart.kt` | 7/7 | 0 | 0 |

@@ -419,6 +419,7 @@ class State:
         self.bridge = None  # /api/status, None = Bridge not answering
         self.nodes = []
         self.messages = []
+        self.packets = []  # /api/packets: the frames the Bridge saw, the newest 200 (People's live signal)
         self.message_stats = None
         self.modem = None  # /api/iridium/modem
         self.signal = None  # /api/iridium/signal
@@ -442,6 +443,9 @@ class State:
         # Where this phone is, as Android's LocationFixes: geoclue's fix (lat, lon, accuracy_m, at),
         # a position typed in (lat, lon), and what to tell the user when there is neither.
         self.phone = None
+        # The same fix as Home's "Your position" reads it (DashboardScreen.kt:275-315): latitude,
+        # longitude, accuracy, altitude, speed, heading (None when geoclue does not know) and at.
+        self.fix = None
         self.entered = None
         self.location_hint = ""
 
@@ -566,6 +570,7 @@ def _poll_state(s: "State", names: dict, asker: "NameAsker") -> "State":
         for field in LIVE:
             setattr(s, field, None)
         s.sms = []
+        s.packets = []
     else:
         nodes = (get("/api/nodes") or {}).get("nodes") or []
         if remember_names(nodes, names):
@@ -575,6 +580,7 @@ def _poll_state(s: "State", names: dict, asker: "NameAsker") -> "State":
         me = bridge.get("node_id")
         sent = read_sent()
         packets = (get("/api/packets?limit=200") or {}).get("packets") or []
+        s.packets = packets
         s.messages = merge_messages(stored, sent, packet_texts(packets, me))
         s.last_tx = max(last_transmission(packets, sent), s.last_tx)
         candidates = s.nodes + recent_senders(s.messages, s.nodes, names)

@@ -113,8 +113,8 @@ toast label {{ color: {TEXT_PRIMARY}; font-size: {px(14)}; }}
 .label-medium {{ font-size: {px(12)}; font-weight: 500; }}
 .strip {{ background-color: {SURFACE}; min-height: {px(36)}; padding: 0 {px(16)}; }}
 .strip label {{ font-family: "{MONO}", monospace; font-size: {px(12)}; font-weight: 500; color: {TEXT_SECONDARY}; }}
-.banner {{ background-color: {AMBER}; padding: {px(12)} {px(16)}; border-radius: 0; border: none; box-shadow: none; }}
-.banner label {{ color: {SPACE_BLACK}; font-size: {px(16)}; }}
+.banner {{ background-color: {AMBER}; padding: {px(10)} {px(16)}; border-radius: 0; border: none; box-shadow: none; }}
+.banner label {{ color: {SPACE_BLACK}; font-size: {px(14)}; }}
 .banner.sos {{ background-color: {RED}; }}
 .banner.sos.test {{ background-color: {AMBER}; }}
 .card {{ background-color: {SURFACE}; border: 1px solid {BORDER}; border-radius: {px(8)}; }}
@@ -320,6 +320,28 @@ checkbutton check {{ border-radius: {px(3)}; }}
 checkbutton radio:checked {{ border-color: {SIGNAL_ORANGE}; background: radial-gradient(circle, {SIGNAL_ORANGE} 0%, {SIGNAL_ORANGE} 45%, transparent 50%); }}
 checkbutton check:checked {{ border-color: {SIGNAL_ORANGE}; background-color: {SIGNAL_ORANGE}; }}
 popover > contents {{ background-color: {SURFACE_HIGH}; color: {TEXT_PRIMARY}; border: 1px solid {BORDER}; border-radius: {px(8)}; }}
+.bold {{ font-weight: 700; }}
+.legend flowboxchild {{ padding: 0; min-width: 0; min-height: 0; background: none; }}
+.checklist {{ padding: {px(8)} 0; }}
+.checklist-row {{ padding: {px(10)} {px(12)}; background: none; border: none; box-shadow: none; border-radius: 0; }}
+.checklist-row:hover {{ background-color: alpha({OFF_WHITE}, 0.04); }}
+.arrange-row {{ background-color: {SURFACE}; border: 1px solid {BORDER}; border-radius: {px(6)}; padding: {px(6)} {px(12)}; }}
+.arrow-button {{ background: none; border: none; box-shadow: none; min-width: {px(48)}; min-height: {px(48)}; padding: 0; border-radius: {px(24)}; }}
+.arrow-button label {{ color: {SIGNAL_ORANGE}; }}
+.arrow-button:disabled label {{ color: {BORDER}; }}
+.sky-tap, .sky-tap:hover, .sky-tap:active {{ background: none; border: none; box-shadow: none; padding: 0; border-radius: 0; }}
+.welcome {{ background-color: {SPACE_BLACK}; }}
+.people-head {{ background-color: {SURFACE}; border: 1px solid {BORDER}; border-radius: {px(8)} {px(8)} 0 0; padding: {px(8)} {px(12)}; }}
+.people-tap {{ background-color: {SURFACE}; border: {px(0.5)} solid {BORDER}; border-radius: 0; box-shadow: none; padding: {px(8)} {px(12)}; min-height: {px(40)}; }}
+.people-tap:hover {{ background-color: {SURFACE_HIGH}; }}
+.dot-primary {{ background-color: {TEXT_PRIMARY}; }}
+.chip.people-chip {{ min-height: {px(48)}; }}
+.chip.people-chip label {{ color: {TEXT_SECONDARY}; }}
+.chip.people-chip.selected label {{ color: {TEXT_PRIMARY}; }}
+.new-row {{ min-height: {px(44)}; padding: {px(6)} 0; border-radius: {px(8)}; }}
+.new-dot {{ min-width: {px(10)}; min-height: {px(10)}; border-radius: {px(5)}; }}
+.textbutton.muted-text label {{ color: {TEXT_SECONDARY}; }}
+.filled.welcome-continue {{ min-height: {px(52)}; }}
 {colours}
 """
 

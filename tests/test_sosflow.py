@@ -72,6 +72,7 @@ class FlowTest(unittest.TestCase):
         sms = next(s_ for s_ in self.fake.sent if s_.get("gateway") == "cellular")
         self.assertEqual(sms["to"], "+31600000000")
         self.assertTrue(sms["text"].startswith("SOS: Kyriakos needs help."))
+        self.assertIs(sms.get("plain"), True, "an SOS text must go out as its words, never sealed (MESHSAT-1424)")
         self.assertTrue(wait(lambda: self.flow.run.route("sms:+31600000000").state == sosrun.SENT))
         # The Bridge's burst counts the sends: the mesh route is sent once the status says so.
         s.sos = {"active": True, "sends": 1}
@@ -95,7 +96,7 @@ class FlowTest(unittest.TestCase):
         self.assertIsNotNone(self.flow.run.cancelled_at)
         self.assertFalse(self.flow.run.active)
         self.assertTrue(wait(lambda: any(r["path"] == "/api/sos/cancel" for r in self.fake.requests)))
-        self.assertTrue(wait(lambda: any("Alarm cancelled: Kyriakos is safe" in s_.get("text", "") and s_.get("gateway") == "cellular" for s_ in self.fake.sent)))
+        self.assertTrue(wait(lambda: any("Alarm cancelled: Kyriakos is safe" in s_.get("text", "") and s_.get("gateway") == "cellular" and s_.get("plain") is True for s_ in self.fake.sent)))
         self.assertTrue(wait(lambda: any("Alarm cancelled" in s_.get("text", "") and "gateway" not in s_ for s_ in self.fake.sent)), "no cancellation on the mesh")
         self.assertTrue(wait(lambda: self.flow.run.route("sms:+31600000000").cancel == sosrun.SENT))
 
@@ -109,6 +110,7 @@ class FlowTest(unittest.TestCase):
         texts = {s_.get("gateway", "mesh"): s_["text"] for s_ in self.fake.sent}
         self.assertEqual(texts["mesh"], "Test from Kyriakos: checking the MeshSat alarm routes. No help needed.")
         self.assertEqual(texts["cellular"], texts["mesh"])
+        self.assertTrue(all(s_.get("plain") is True for s_ in self.fake.sent if s_.get("gateway") == "cellular"))
         self.assertFalse(any(r["path"] == "/api/sos/activate" for r in self.fake.requests), "a test started a real SOS")
         self.assertTrue(wait(lambda: any(r["path"] == "/api/sos/test" for r in self.fake.requests)))
         self.assertTrue(wait(lambda: self.flow.run is not None and not self.flow.run.active), "the test never settled")

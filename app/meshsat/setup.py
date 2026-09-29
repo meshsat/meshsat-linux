@@ -14,7 +14,8 @@ from .model import satellite as satellite_model
 from .pages.safety import SafetyScreen  # noqa: F401  (the Setup row and the route table use it)
 from .passes import PassesScreen
 from .screen import Screen, SubScreen
-from .widgets import KeyValue, NavRow, clear, confirm, filled_button, group_title, outlined_button, page, scroller, text, text_button, when
+from .mailbox import MailboxButton
+from .widgets import KeyValue, NavRow, clear, fact_row, filled_button, group_title, outlined_button, page, paint, scroller, text, text_button, when
 
 # Meshtastic's LoRa config, as the Bridge relays it: protobuf field numbers of Config.LoRaConfig.
 
@@ -50,7 +51,7 @@ class SetupScreen(Screen):
         advanced = NavRow("outlined-build", "Advanced", lambda: app.push(AdvancedScreen(app)))
         advanced.set_detail("Routing, links, queue, logs, diagnostics")
         column.append(advanced)
-        about = NavRow("outlined-info", "About", lambda: app.push(AboutScreen(app)))
+        about = NavRow("outlined-info", "About", lambda: app.open_route("about"))
         about.set_detail(f"MeshSat Linux {VERSION}")
         column.append(about)
         self.append(scroller(column))
@@ -331,61 +332,135 @@ class NodeScreen(Page):
 
 
 class SatelliteScreen(Page):
+    """Setup > Satellite (SettingsScreen.kt:528-733): the passes row, the modem's card with its
+    status, what it said about itself, Poll Signal and Check Mailbox, then the 9704's card,
+    folded away until a 9704 is there. The modem here is a RockBLOCK 9603 on USB-C."""
+
+    SIGNAL_TIMEOUT = 65.0  # a fresh reading (AT+CSQ) can take up to a minute
+
     def __init__(self, app):
         super().__init__(app, "Satellite")
         passes = NavRow("outlined-schedule", "Satellite passes", lambda: app.push(PassesScreen(app)))
         passes.set_detail("When satellites are high overhead")
         self.column.append(passes)
-        card = self.card("Satellite modem on USB-C")
-        self.status = text("Checking the modem.", "body-medium", theme.TEXT_SECONDARY, wrap=True)
+        self.sbd, self.sbd_bars, self.imt, self.imt_bars = None, 0, None, 0
+        self.show_imt = False
+
+        card = self.card(satellite_model.USB_TITLE)
+        self.status, self.status_text = status_row(satellite_model.STATUS)
         card.append(self.status)
-        self.details = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(0))
+        self.details = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(8))
         card.append(self.details)
-        buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(12))
-        self.poll = outlined_button("Poll Signal", self.poll_signal)
-        self.check = filled_button(satellite_model.CHECK_MAILBOX, self.check_mailbox, expand=False)
-        buttons.append(self.poll)
-        buttons.append(self.check)
-        card.append(buttons)
-        card.append(text("A RockBLOCK 9603 on the phone's USB-C port, through a USB adapter. The Bridge finds it by itself.", "body-medium", theme.TEXT_SECONDARY, wrap=True))
-        health = self.card("Node health")
-        self.health = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(0))
-        health.append(self.health)
-        self.update(app.state)
+        self.poll = filled_button(satellite_model.POLL_SIGNAL, self.poll_signal)
+        self.poll.add_css_class("small-text")
+        card.append(self.poll)
+        self.mailbox = MailboxButton(self)
+        card.append(self.mailbox)
+        self.note = text(satellite_model.USB_NOTE, "body-small", theme.TEXT_MUTED, wrap=True)
+        card.append(self.note)
+
+        self.imt_fold = text_button(satellite_model.IMT_FOLD, self.unfold_imt)
+        self.imt_fold.add_css_class("off-white")
+        self.imt_fold.set_halign(Gtk.Align.START)
+        self.column.append(self.imt_fold)
+        self.imt_card = self.card(satellite_model.IMT_TITLE)
+        self.imt_status, self.imt_status_text = status_row(satellite_model.STATUS)
+        self.imt_card.append(self.imt_status)
+        self.imt_details = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(8))
+        self.imt_card.append(self.imt_details)
+        self.imt_buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8), homogeneous=True)
+        poll = filled_button(satellite_model.POLL_SIGNAL, self.poll_imt_signal)
+        poll.add_css_class("small-text")
+        self.imt_buttons.append(poll)
+        off = filled_button(satellite_model.DISCONNECT, self.disconnect_imt)
+        off.add_css_class("small-text")
+        off.add_css_class("red-fill")
+        self.imt_buttons.append(off)
+        self.imt_card.append(self.imt_buttons)
+        self.imt_note = text(satellite_model.IMT_PLUG, "body-small", theme.TEXT_MUTED, wrap=True)
+        self.imt_card.append(self.imt_note)
+        self.render()
+
+    def on_show(self) -> None:
+        self.every(5, self.load)
+        self.mailbox.load()
+
+    def load(self) -> None:
+        self.fetch("/api/iridium/modem?type=sbd", lambda a: self.loaded("sbd", a))
+        self.fetch("/api/iridium/signal/fast?type=sbd", lambda a: self.signal_loaded("sbd", a))
+        self.fetch("/api/iridium/modem?type=imt", lambda a: self.loaded("imt", a))
+        self.fetch("/api/iridium/signal/fast?type=imt", lambda a: self.signal_loaded("imt", a))
+
+    def loaded(self, kind: str, answer: api.Answer) -> None:
+        # 503: no gateway of that kind runs, which is "no modem" here
+        value = answer.body if answer.ok and isinstance(answer.body, dict) else None
+        setattr(self, kind, value)
+        self.render()
+
+    def signal_loaded(self, kind: str, answer: api.Answer) -> None:
+        bars = answer.body.get("bars") if answer.ok and isinstance(answer.body, dict) else None
+        setattr(self, f"{kind}_bars", int(bars or 0))
+        self.render()
 
     def poll_signal(self) -> None:
-        self.call("/api/iridium/signal/fast", lambda a: self.app.toast(f"Signal {a.body.get('bars', 0)} of 5" if a.ok and isinstance(a.body, dict) and "bars" in a.body else "No modem"), method="GET", timeout=20.0)
+        """A fresh reading of the 9603, then "Signal: N/5" (Android's Poll Signal)."""
+        self.call("/api/iridium/signal?type=sbd", lambda a: self.app.toast(satellite_model.signal_toast(a.body) if a.ok else (a.error or "No modem")),
+                  method="GET", timeout=self.SIGNAL_TIMEOUT)
 
-    def check_mailbox(self) -> None:
-        """A check opens a billed Iridium session: asked about first, as on Android."""
-        confirm(self.app, satellite_model.CONFIRM_TITLE, satellite_model.CONFIRM_TEXT, satellite_model.CHECK, self.start_mailbox_check,
-                cancel=satellite_model.CANCEL)
+    def poll_imt_signal(self) -> None:
+        self.call("/api/iridium/signal?type=imt", lambda a: self.app.toast(satellite_model.signal_toast(a.body, "9704 ") if a.ok else (a.error or "No modem")),
+                  method="GET", timeout=self.SIGNAL_TIMEOUT)
 
-    def start_mailbox_check(self) -> None:
-        self.call("/api/iridium/mailbox/check", lambda a: self.app.toast(a.error if not a.ok else "Checking the satellite mailbox"), timeout=20.0)
+    def disconnect_imt(self) -> None:
+        self.call("/api/interfaces/iridium_imt_0/unbind", lambda a: None if a.ok else self.app.toast(a.error or "The Bridge did not take it."))
+
+    def unfold_imt(self) -> None:
+        self.show_imt = True
+        self.render()
 
     def update(self, s: api.State) -> None:
+        self.render()
+
+    def render(self) -> None:
+        s = self.app.state
+        # The poll's modem until the page's own read is in
+        sbd = self.sbd if self.sbd is not None else (s.modem if (s.modem or {}).get("type") in (None, "", "sbd") else None)
+        words, connected = satellite_model.usb_status(bool(s.bridge), sbd, self.sbd_bars or (s.signal or {}).get("bars", 0))
+        self.status_text.set_text(words)
+        paint(self.status_text, theme.GREEN if connected else theme.TEXT_MUTED)
         clear(self.details)
-        clear(self.health)
-        modem = s.modem or {}
-        # Android offers the check only while the modem is connected
-        self.check.set_sensitive(bool(modem.get("connected")))
-        if modem.get("connected"):
-            self.status.set_text(f"Modem ready, signal {(s.signal or {}).get('bars', 0)} of 5.")
-            for k, v in (("Model", modem.get("model", "")), ("IMEI", modem.get("imei", "") or "-"), ("Port", modem.get("port", ""))):
-                self.details.append(KeyValue(k, v, mono=k != "Model"))
-        elif not s.bridge:
-            self.status.set_text("Connect your node first.")
-        elif modem.get("port") in ("", "supervisor", None):
-            self.status.set_text("No modem on this radio. Plug a RockBLOCK into USB-C.")
-        else:
-            self.status.set_text("Checking the modem.")
-        for w in (self.poll, self.check):
-            w.set_sensitive(bool(modem.get("connected")))
-        b = s.bridge or {}
-        for k, v in (("Node", "Connected" if s.mesh_connected() else "Not connected"), ("Modem", "Ready" if modem.get("connected") else "None"),
-                     ("Radio", s.watchdog.get("message", "no word yet")), ("Last reset", b.get("radio_last_reset_reason") or "-")):
-            self.health.append(KeyValue(k, v))
+        for label, value in satellite_model.usb_rows(sbd):
+            self.details.append(fact_row(label, value))
+        self.details.set_visible(connected)
+        self.poll.set_visible(connected)
+        self.mailbox.set_visible(connected)
+        self.mailbox.set_connected(connected)
+        self.note.set_visible(not connected)
+        used = satellite_model.imt_used(self.imt)
+        self.imt_fold.set_visible(not used and not self.show_imt)
+        self.imt_card.set_visible(used or self.show_imt)
+        words, ready = satellite_model.imt_status(self.imt, self.imt_bars)
+        self.imt_status_text.set_text(words)
+        paint(self.imt_status_text, theme.GREEN if ready else theme.TEXT_MUTED)
+        clear(self.imt_details)
+        for label, value in satellite_model.imt_rows(self.imt):
+            self.imt_details.append(fact_row(label, value))
+        self.imt_details.set_visible(ready)
+        self.imt_buttons.set_visible(ready)
+        self.imt_note.set_visible(not ready and not satellite_model.imt_used(self.imt))
+
+
+def status_row(label: str) -> tuple:
+    """ConnectionStatusRow: the label in bodyMedium on the left, the status on the right (Green
+    when connected, else TextMuted)."""
+    row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
+    name = text(label, "body-medium")
+    name.set_hexpand(True)
+    row.append(name)
+    status = text("", "body-medium", theme.TEXT_MUTED, xalign=1.0, wrap=True)
+    status.set_justify(Gtk.Justification.RIGHT)
+    row.append(status)
+    return row, status
 
 
 class SmsScreen(Page):
@@ -496,6 +571,8 @@ class AdvancedScreen(Page):
         self.column.set_margin_end(theme.dp(0))
         self.column.set_margin_top(theme.dp(0))
         for name, title_text, detail, route in self.ROWS:
+            if route == "nodelog" and app.state.node_mode() == "bluetooth":
+                detail = "The node's live log over Bluetooth, on demand"  # Android's words, where they hold
             row = NavRow(name, title_text, lambda t=title_text, r=route: self.open(t, r))
             row.set_detail(detail)
             self.column.append(row)
@@ -507,28 +584,6 @@ class AdvancedScreen(Page):
         page = screen_of(route)(self.app)
         page.route = route
         self.app.push(page, title_text)
-
-
-class AboutScreen(Page):
-    def __init__(self, app):
-        super().__init__(app, "About")
-        title = text("MeshSat Linux", "headline-large", xalign=0.5)
-        self.column.append(title)
-        provenance = read_provenance()
-        version = text(f"v{VERSION} ({provenance.get('build', 'source')})", "title-large", theme.SIGNAL_ORANGE, xalign=0.5)
-        self.column.append(version)
-        self.column.append(text("Pocket gateway for the LoRa back cover mesh + Iridium satellite", "body-large", theme.TEXT_SECONDARY, wrap=True))
-        transports = self.card("Transports")
-        for k, v in (("Meshtastic", "The LoRa back cover over I2C"), ("Iridium 9603N", "RockBLOCK on USB-C"), ("RockBLOCK 9704", "USB serial (JSPR)"), ("Hub", "Wi-Fi or the phone's data")):
-            transports.append(KeyValue(k, v))
-        enc = self.card("Encryption")
-        for k, v in (("Algorithm", "AES-256-GCM"), ("Wire format", "[12B nonce][ciphertext+tag]"), ("Compatible with", "MeshSat Pi transform pipeline")):
-            enc.append(KeyValue(k, v))
-        build = self.card("Build")
-        for k, v in (("Package", "meshsat (net.meshsat.Bridge)"), ("Edition", "Debian package, Mobian"), ("Bridge", provenance.get("bridge", "-")), ("Node firmware", provenance.get("meshtasticd", "-")), ("Toolkit", "GTK 4, libadwaita")):
-            build.append(KeyValue(k, v))
-        lic = self.card("License")
-        lic.append(text("GPL-3.0-or-later. MeshSat is free software. Meshtastic is a registered trademark of Meshtastic LLC; this app is not affiliated with it.", "body-medium", theme.TEXT_SECONDARY, wrap=True))
 
 
 def utc_clock(stamp) -> str:

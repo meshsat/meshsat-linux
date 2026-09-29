@@ -140,6 +140,12 @@ def base() -> dict:
         "GET /api/deliveries": rec("deliveries", []),
         "GET /api/iridium/passes": {"passes": [], "tle_source": "none", "tle_age": -1, "cache_age": -1, "error": "no orbit data"},
         "GET /api/iridium/signal/history": [],
+        "GET /api/deliveries/stats": [],
+        "GET /api/cellular/signal/history": [],
+        # No 9704: its gateway is not running (the Bridge answers 503 for type=imt)
+        "GET /api/iridium/modem?type=imt": {"_status": 503, "_body": {"error": "IMT gateway not running"}},
+        "GET /api/iridium/signal/fast?type=imt": {"_status": 503, "_body": {"error": "IMT gateway not running"}},
+        "GET /api/iridium/signal?type=imt": {"_status": 503, "_body": {"error": "IMT gateway not running"}},
         "GET /api/position/fixed": {"latitude": 0, "longitude": 0},
         "POST /api/sos/test": {"status": "sent"},
         "GET /api/neighbors": {"neighbors": None, "source": "database"},
@@ -443,9 +449,44 @@ def zones_down() -> dict:
     return routes
 
 
+def home_cards() -> dict:
+    """Home with every card filled: the 9603 connected at 3 bars, a pass high overhead now and
+    a high one later, three hours of readings and two sessions, six hours of the mobile signal,
+    and a queue on three lanes (Satellite 3, Mesh 1, SMS 1 waiting; 4 waiting, 1 sending, 3
+    failed, 4 gave up)."""
+    routes = satellite_3_bars()
+    rows, n = [], 0
+    for channel, state, count in (("iridium_0", "queued", 2), ("iridium_0", "retry", 1), ("mesh_0", "sending", 1), ("cellular_0", "failed", 3),
+                                  ("mesh_0", "dead", 4), ("cellular_0", "held", 1), ("mesh_0", "sent", 2)):
+        for _ in range(count):
+            n += 1
+            rows.append(delivery(n, channel, state, f"message {n}", 60 * n))
+    routes["_deliveries"] = rows
+    routes["GET /api/iridium/passes"] = {"passes": [
+        {"satellite": "IRIDIUM 140", "aos": NOW - 300, "los": NOW + 300, "duration_min": 10, "peak_elev_deg": 55.2, "peak_azimuth": 180, "is_active": True},
+        {"satellite": "IRIDIUM 112", "aos": NOW + 1200, "los": NOW + 1500, "duration_min": 5, "peak_elev_deg": 21.0, "peak_azimuth": 90, "is_active": False},
+        {"satellite": "IRIDIUM 106", "aos": NOW + 3600, "los": NOW + 4200, "duration_min": 10, "peak_elev_deg": 62.0, "peak_azimuth": 10, "is_active": False},
+    ], "tle_source": "cache", "tle_age_sec": 3600, "cache_age_sec": 60}
+    routes["_signal_history"] = {"iridium": [{"timestamp": NOW - 600 * i, "value": float(1 + i % 5)} for i in range(18)],
+                                 "gss": [{"timestamp": NOW - 3600, "value": 1.0}, {"timestamp": NOW - 5400, "value": 0.0}]}
+    routes["GET /api/cellular/signal/history"] = [{"id": 36 - i, "timestamp": NOW - 600 * i, "bars": 3, "dbm": -93 + 10 * (i % 3), "technology": "LTE", "operator": "KPN"}
+                                                  for i in range(36)]
+    return routes
+
+
+def bluetooth_off() -> dict:
+    """A node adopted over Bluetooth with the phone's Bluetooth switched off: the link is down."""
+    routes = base()
+    routes["GET /api/status"] = status(connected=False, address="E0:72:A1:B3:C2:ED", transport="ble", node_id="", node_name="")
+    routes["GET /api/mesh/ble/status"] = {"mode": "ready", "address": "E0:72:A1:B3:C2:ED", "name": "MSPA_c2ec", "connected": False, "pairing_pending": False,
+                                          "satellite_pipe": False, "adapter_powered": False}
+    return routes
+
+
 SCENARIOS = {"fresh": fresh, "mesh-only": mesh_only, "one-node": one_node, "nameless-node": nameless_node, "satellite-3-bars": satellite_3_bars, "sim-ready": sim_ready,
              "all-four": all_four, "hub-set-up": hub_set_up, "integrations": integrations, "integrations-empty": integrations_empty, "sos-active": sos_active, "bluetooth-pairing": bluetooth_pairing, "bluetooth-connected": bluetooth_connected,
-             "queue-busy": queue_busy, "advanced": advanced, "messaging": messaging, "messaging-encoder": lambda: messaging(True), "zones": zones, "zones-down": zones_down}
+             "queue-busy": queue_busy, "advanced": advanced, "messaging": messaging, "messaging-encoder": lambda: messaging(True), "zones": zones, "zones-down": zones_down,
+             "home-cards": home_cards, "bluetooth-off": bluetooth_off, "bluetooth-off-sos": lambda: {**bluetooth_off(), "_sos": sos_active()["_sos"]}}
 
 
 def build(name: str) -> dict:

@@ -70,5 +70,20 @@ class SearchTest(unittest.TestCase):
         self.assertEqual(chat.search(rows, "nothing"), [])
 
 
+class NewMessageNumberTest(unittest.TestCase):
+    """NewMessageDialog's numberOk and the number the chat keeps."""
+
+    def test_number_ok(self):
+        self.assertTrue(chat.number_ok("+31612345678"))
+        self.assertTrue(chat.number_ok(" +31 6 1234 5678 "))
+        self.assertTrue(chat.number_ok("123456"))
+        self.assertFalse(chat.number_ok("12345"))
+        self.assertFalse(chat.number_ok("+31-612345678"))
+        self.assertFalse(chat.number_ok("call me"))
+
+    def test_number_kept(self):
+        self.assertEqual(chat.number_of(" +31 6 1234 5678 "), "+31612345678")
+
+
 if __name__ == "__main__":
     unittest.main()

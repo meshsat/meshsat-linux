@@ -14,8 +14,12 @@ from .a11y import Tree
 
 class App:
     def __init__(self, work: str, bridge_url: str, app_dir: str | None = None, app_id: str = "net.meshsat.Test",
-                 units: str = "meshtasticd.service=active,meshsat-bridge.service=active", hardware: dict | None = None, poll: float = 2.0, env: dict | None = None):
+                 units: str = "meshtasticd.service=active,meshsat-bridge.service=active", hardware: dict | None = None, poll: float = 2.0, env: dict | None = None,
+                 prefs: dict | None = None):
         self.work = work
+        # The app's preferences at its first start in this module (a restart keeps what the app
+        # wrote since): the welcome is behind it, unless the case is about the welcome.
+        self.prefs = {"welcome_done": True, **(prefs or {})}
         self.bridge_url = bridge_url
         self.app_dir = app_dir or "/usr/lib/meshsat/app"
         self.app_id = app_id
@@ -39,6 +43,11 @@ class App:
             path = os.path.join(self.work, "xdg", name.split("_")[1].lower())
             os.makedirs(path, exist_ok=True)
             env[name] = path
+        prefs = os.path.join(env["XDG_CONFIG_HOME"], "meshsat", "app.json")
+        if not os.path.exists(prefs):
+            os.makedirs(os.path.dirname(prefs), exist_ok=True)
+            with open(prefs, "w", encoding="utf-8") as handle:
+                json.dump(self.prefs, handle)
         if self.hardware == "real":
             # A live case: the device's own verdict, the watchdog's own file, the units as they are.
             hardware, status = "/run/meshsat/hardware.json", "/run/meshsat-node/status"

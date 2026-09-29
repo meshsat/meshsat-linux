@@ -12,8 +12,9 @@ import time
 from gi.repository import Gdk, GLib, Gtk
 
 from . import api, theme
+from .model import sky
 from .screen import Screen
-from .widgets import Card, Field, Sheet, SubHeader, clear, page, scroller, spacer, text, text_button
+from .widgets import Card, Field, Sheet, SubHeader, clear, name_widget, page, scroller, spacer, text, text_button
 
 # Elevation environment presets, the Bridge's and Android's
 ELEV_PRESETS = ((5, "Open", "Open field or rooftop"), (20, "Trees", "Some trees or low buildings"), (40, "City", "Tall buildings, narrow streets"), (60, "Canyon", "Deep valley or dense city"))
@@ -83,54 +84,29 @@ def elevation_colour(elev: float) -> str:
     return theme.TEXT_MUTED
 
 
-def signal_colour(bars: float) -> str:
-    """Green from 3 bars, amber at 1 and 2, red at 0: the Bridge's thresholds."""
-    b = round(bars)
-    return SIGNAL_GREEN if b >= 3 else NOW_AMBER if b >= 1 else "#EF4444"
-
-
-def averaged(signals, step: int):
-    """Readings averaged into steps, one point per step at its middle (SkyGeometry.averaged)."""
-    if step <= 60:
-        return sorted((s["at"], float(s["bars"])) for s in signals)
-    buckets = {}
-    for s in signals:
-        buckets.setdefault(s["at"] // step, []).append(s["bars"])
-    return [(b * step + step // 2, sum(v) / len(v)) for b, v in sorted(buckets.items())]
-
-
-def step_for(span: int, width: float, min_gap: float) -> int:
-    points = max(1.0, width / min_gap)
-    return max(60, int(span / points))
-
-
-def ticks(start: int, end: int, step: int):
-    t = math.ceil(start / step) * step
-    while t < end:
-        yield t
-        t += step
-
-
 class SkyChart(Gtk.DrawingArea):
     """Predicted passes with the modem's real signal and its satellite sessions on one time
-    axis: the Bridge's "Signal vs passes" chart. A pass is a triangle from AOS to LOS whose apex
-    is its peak elevation on a 0-90 degree scale, readings sit on a 0-5 bar scale, sessions are
-    dots on the baseline. Tap to inspect."""
+    axis: the Bridge's "Signal vs passes" chart (SkyChart.kt). A pass is a triangle from AOS to
+    LOS whose apex is its peak elevation on a 0-90 degree scale, readings sit on a 0-5 bar
+    scale, sessions are dots on the baseline. The full chart (this page) has both scales, a
+    "now" label and tap to inspect; `compact` is Home's card: 104 dp, no scales, hour labels."""
 
-    def __init__(self):
+    def __init__(self, compact: bool = False):
         super().__init__()
-        self.set_content_height(theme.dp(220))
+        self.compact = compact
+        self.set_content_height(theme.dp(104 if compact else 220))
         self.set_hexpand(True)
         self.passes, self.signals, self.sessions = [], [], []
         self.start = self.end = self.now = 0
         self.tap = None
         self.set_draw_func(self.draw)
-        click = Gtk.GestureClick()
-        click.connect("pressed", self.on_tap)
-        self.add_controller(click)
+        if not compact:
+            click = Gtk.GestureClick()
+            click.connect("pressed", self.on_tap)
+            self.add_controller(click)
 
     def set_data(self, passes, signals, sessions, start: int, end: int, now: int) -> None:
-        self.passes = [p for p in passes if p["los"] > start and p["aos"] < end]
+        self.passes = [p for p in passes if sky.overlaps(p, start, end)]
         self.signals, self.sessions = signals, sessions
         self.start, self.end, self.now = start, end, now
         self.queue_draw()
@@ -140,24 +116,22 @@ class SkyChart(Gtk.DrawingArea):
         self.queue_draw()
 
     def x_of(self, ts, left, width):
-        return left + (ts - self.start) / max(1, self.end - self.start) * width
+        return sky.x(ts, self.start, max(self.start + 1, self.end), left, width)
 
     def draw(self, area, cr, w, h):
-        d = theme.SCALE
-        pad_l, pad_r, top, bottom = 22 * d, 24 * d, 14 * d, h - 22 * d
+        import cairo  # noqa: PLC0415  (pycairo comes with PyGObject)
+
+        d, c = theme.SCALE, self.compact
+        pad_l, pad_r = (6 if c else 22) * d, (6 if c else 24) * d
+        top, bottom = (6 if c else 14) * d, h - (14 if c else 22) * d
         plot_w, plot_h = w - pad_l - pad_r, bottom - top
         if plot_w <= 0 or plot_h <= 0 or self.end <= self.start:
             return
         cr.select_font_face(theme.FONT)
-        cr.set_font_size(9 * d)
+        cr.set_font_size((8 if c else 9) * d)
+        label_colour = "#4B5563" if c else LABEL
 
-        def bars_y(bars):
-            return bottom - max(0.0, min(5.0, bars)) / 5.0 * plot_h
-
-        def elev_y(deg):
-            return bottom - deg / 90.0 * plot_h
-
-        def label(s, x, y, align="left", colour=LABEL, alpha=1.0):
+        def label(s, x, y, align="left", colour=label_colour, alpha=1.0):
             ext = cr.text_extents(s)
             if align == "right":
                 x -= ext.x_advance
@@ -167,83 +141,88 @@ class SkyChart(Gtk.DrawingArea):
             cr.move_to(x, y)
             cr.show_text(s)
 
-        # Grid at the bar positions, both scales
+        # Grid at the bar positions (1 to 5 on the card, 0 to 5 here)
         cr.set_line_width(0.5 * d)
         cr.set_dash([2 * d, 3 * d])
         cr.set_source_rgba(*rgba(GRID))
-        for v in range(6):
-            cr.move_to(pad_l, bars_y(v))
-            cr.line_to(w - pad_r, bars_y(v))
+        for v in range(1 if c else 0, 6):
+            cr.move_to(pad_l, sky.bars_y(v, bottom, plot_h))
+            cr.line_to(w - pad_r, sky.bars_y(v, bottom, plot_h))
         cr.stroke()
         cr.set_dash([])
-        for v in range(6):
-            label(str(v), pad_l - 5 * d, bars_y(v) + 3 * d, "right")
-        label("bars", pad_l - 5 * d, top - 4 * d, "right")
-        for deg in (0, 15, 30, 45, 60, 75, 90):
-            label(str(deg), w - pad_r + 5 * d, elev_y(deg) + 3 * d, "left", INDIGO, 0.5)
-        label("deg", w - pad_r + 5 * d, top - 4 * d, "left", INDIGO, 0.5)
+        if not c:
+            for v in range(6):
+                label(str(v), pad_l - 5 * d, sky.bars_y(v, bottom, plot_h) + 3 * d, "right")
+            label("bars", pad_l - 5 * d, top - 4 * d, "right")
+            for deg in (0, 15, 30, 45, 60, 75, 90):
+                label(str(deg), w - pad_r + 5 * d, sky.elev_y(deg, bottom, plot_h) + 3 * d, "left", INDIGO, 0.5)
+            label("deg", w - pad_r + 5 * d, top - 4 * d, "left", INDIGO, 0.5)
 
         cr.save()
         cr.rectangle(pad_l, top, plot_w, plot_h)
         cr.clip()
         # Pass triangles, the background layer
-        cr.set_font_size(8 * d)
+        cr.set_font_size((7 if c else 8) * d)
         for p in self.passes:
-            x1 = max(pad_l, self.x_of(p["aos"], pad_l, plot_w))
-            x2 = min(pad_l + plot_w, self.x_of(p["los"], pad_l, plot_w))
-            mid, peak_y = (x1 + x2) / 2, elev_y(p["peak_elev_deg"])
-            base = INDIGO_ACTIVE if p.get("is_active") else INDIGO
+            x1, mid, x2, peak_y = sky.triangle(p, self.start, self.end, pad_l, plot_w, bottom, plot_h)
+            active = bool(p.get("is_active"))
+            base = INDIGO_ACTIVE if active else INDIGO
             cr.move_to(x1, bottom)
             cr.line_to(mid, peak_y)
             cr.line_to(x2, bottom)
             cr.close_path()
-            import cairo  # noqa: PLC0415  (pycairo comes with PyGObject)
-            gradient = cairo.LinearGradient(0, peak_y, 0, bottom)
-            gradient.add_color_stop_rgba(0, *rgba(base, 0.50 if p.get("is_active") else 0.30))
-            gradient.add_color_stop_rgba(1, *rgba(base, 0.08 if p.get("is_active") else 0.03))
-            cr.set_source(gradient)
+            if c:
+                cr.set_source_rgba(*rgba(base, 0.35 if active else 0.15))
+            else:
+                gradient = cairo.LinearGradient(0, peak_y, 0, bottom)
+                gradient.add_color_stop_rgba(0, *rgba(base, 0.50 if active else 0.30))
+                gradient.add_color_stop_rgba(1, *rgba(base, 0.08 if active else 0.03))
+                cr.set_source(gradient)
             cr.fill_preserve()
-            cr.set_source_rgba(*rgba(base, 0.5 if p.get("is_active") else 0.2))
-            cr.set_line_width(1 * d)
+            cr.set_source_rgba(*rgba(base, 0.5 if active else 0.2))
+            cr.set_line_width((0.5 if c else 1) * d)
             cr.stroke()
-            if x2 - x1 > 20 * d:
+            if x2 - x1 > (15 if c else 20) * d:
                 label(str(int(p["peak_elev_deg"])), mid, peak_y - 3 * d, "center", INDIGO_ACTIVE, 0.6)
         # Signal: soft area, the line, then a dot per reading coloured by strength
-        step = step_for(self.end - self.start, plot_w, 3 * d)
-        pts = [(self.x_of(ts, pad_l, plot_w), bars_y(bars), bars) for ts, bars in averaged([s for s in self.signals if self.start <= s["at"] <= self.end], step)]
+        step = sky.step_for(self.end - self.start, plot_w, 3 * d)
+        pts = [(self.x_of(ts, pad_l, plot_w), sky.bars_y(bars, bottom, plot_h), bars)
+               for ts, bars in sky.averaged([s for s in self.signals if self.start <= s["at"] <= self.end], step)]
         if len(pts) > 1:
-            import cairo  # noqa: PLC0415
             cr.move_to(pts[0][0], bottom)
             for x, y, _b in pts:
                 cr.line_to(x, y)
             cr.line_to(pts[-1][0], bottom)
             cr.close_path()
-            gradient = cairo.LinearGradient(0, top, 0, bottom)
-            gradient.add_color_stop_rgba(0, *rgba(SIGNAL_GREEN, 0.15))
-            gradient.add_color_stop_rgba(1, *rgba(SIGNAL_GREEN, 0.02))
-            cr.set_source(gradient)
+            if c:
+                cr.set_source_rgba(*rgba(SIGNAL_GREEN, 0.08))
+            else:
+                gradient = cairo.LinearGradient(0, top, 0, bottom)
+                gradient.add_color_stop_rgba(0, *rgba(SIGNAL_GREEN, 0.15))
+                gradient.add_color_stop_rgba(1, *rgba(SIGNAL_GREEN, 0.02))
+                cr.set_source(gradient)
             cr.fill()
             cr.move_to(pts[0][0], pts[0][1])
             for x, y, _b in pts[1:]:
                 cr.line_to(x, y)
             cr.set_source_rgba(*rgba(SIGNAL_GREEN, 0.7))
-            cr.set_line_width(1.5 * d)
+            cr.set_line_width((1.2 if c else 1.5) * d)
             cr.stroke()
         for x, y, bars in pts:
-            cr.set_source_rgba(*rgba(signal_colour(bars), 0.85))
-            cr.arc(x, y, 1.8 * d, 0, 2 * math.pi)
+            cr.set_source_rgba(*rgba(sky.signal_colour(bars), 0.85))
+            cr.arc(x, y, (1.4 if c else 1.8) * d, 0, 2 * math.pi)
             cr.fill()
         # Satellite sessions on the baseline
         for s in self.sessions:
             if not self.start <= s["at"] <= self.end:
                 continue
             cr.set_source_rgba(*rgba(SESSION_OK, 0.9) if s["ok"] else rgba(SESSION_FAIL, 0.7))
-            cr.arc(self.x_of(s["at"], pad_l, plot_w), bottom - 6 * d, 3 * d, 0, 2 * math.pi)
+            cr.arc(self.x_of(s["at"], pad_l, plot_w), bottom - (4 if c else 6) * d, (2 if c else 3) * d, 0, 2 * math.pi)
             cr.fill()
         # Now
         now_x = self.x_of(self.now, pad_l, plot_w)
-        cr.set_source_rgba(*rgba(NOW_AMBER, 0.6))
-        cr.set_line_width(1 * d)
+        cr.set_source_rgba(*rgba(NOW_AMBER, 0.5 if c else 0.6))
+        cr.set_line_width((0.5 if c else 1) * d)
         cr.set_dash([3 * d, 2 * d])
         cr.move_to(now_x, top)
         cr.line_to(now_x, bottom)
@@ -251,15 +230,18 @@ class SkyChart(Gtk.DrawingArea):
         cr.set_dash([])
         cr.restore()
 
-        # Time labels: every hour up to 6 h, every 3 h up to a day, else every 6 h; room for "now"
-        cr.set_font_size(9 * d)
+        # Time labels: every hour on the card and up to 6 h here, every 3 h up to a day, else
+        # every 6 h; room for "now" here, none on the card
+        cr.set_font_size((8 if c else 9) * d)
         span = self.end - self.start
-        label_step = 3600 if span <= 6 * 3600 else 3 * 3600 if span <= 24 * 3600 else 6 * 3600
-        for t in ticks(self.start, self.end, label_step):
+        label_step = 3600 if c or span <= 6 * 3600 else 3 * 3600 if span <= 24 * 3600 else 6 * 3600
+        for t in sky.ticks(self.start, self.end, label_step):
             x = self.x_of(t, pad_l, plot_w)
-            if abs(x - now_x) < 30 * d:
+            if not c and abs(x - now_x) < 30 * d:
                 continue
             label(hhmm(t), x, h - 3 * d, "center")
+        if c:
+            return
         label("now", now_x, h - 3 * d, "center", NOW_AMBER)
 
         # Tap to inspect: the time, the highest pass there, the nearest reading
@@ -285,6 +267,33 @@ class SkyChart(Gtk.DrawingArea):
             cr.fill()
             for i, s in enumerate(lines):
                 label(s, box_x + 6 * d, top + 2 * d + line_h * (i + 1), "left", TIP_FG)
+
+
+def sky_legend(compact: bool, window_label: str | None = None) -> Gtk.FlowBox:
+    """The chart's legend as Android's FlowRow: 4 dp above and at the sides, 10 dp between the
+    items, wrapping on a narrow screen instead of being cut off."""
+    legend = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, homogeneous=False, max_children_per_line=8,
+                         column_spacing=theme.dp(10), row_spacing=theme.dp(2))
+    legend.add_css_class("legend")
+    legend.set_margin_top(theme.dp(4))
+    legend.set_margin_start(theme.dp(4))
+    legend.set_margin_end(theme.dp(4))
+    items = [("▲", rgba_hex(INDIGO, 0.7), "Pass"), ("●", SIGNAL_GREEN, "Signal"), ("●", SESSION_OK, "Session" if compact else "Session sent")]
+    if not compact:
+        items.append(("●", SESSION_FAIL, "Session failed"))
+    for mark, colour, name in items:
+        item = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        item.append(text(mark, "label-small", colour))
+        item.append(text(f" {name}", "label-small", LABEL))
+        legend.append(item)
+    if window_label:
+        legend.append(text(window_label, "label-small", LABEL))
+    return legend
+
+
+def rgba_hex(colour: str, alpha: float) -> str:
+    """#RRGGBB at `alpha` as #RRGGBBAA, for a label's colour."""
+    return f"{colour}{round(alpha * 255):02X}"
 
 
 class SegmentedChoice(Gtk.Box):
@@ -363,6 +372,7 @@ class PassesScreen(Screen):
         toggle_row.append(spacer())
         self.list_chevron = Gtk.Image.new_from_icon_name("meshsat-outlined-expand-more-symbolic")
         self.list_chevron.add_css_class("fg-text-muted")
+        name_widget(self.list_chevron, "Show the passes")
         toggle_row.append(self.list_chevron)
         self.list_toggle.set_child(toggle_row)
         self.list_toggle.connect("clicked", lambda *_: self.toggle_list())
@@ -424,6 +434,7 @@ class PassesScreen(Screen):
         self.expanded = not self.expanded
         self.rows.set_visible(self.expanded)
         self.list_chevron.set_from_icon_name(f"meshsat-outlined-{'expand-less' if self.expanded else 'expand-more'}-symbolic")
+        name_widget(self.list_chevron, "Hide the passes" if self.expanded else "Show the passes")
 
     # Data
     def update(self, s: api.State) -> None:
@@ -463,7 +474,8 @@ class PassesScreen(Screen):
             self.error = "The Bridge did not answer."
             self.passes = []
         elif "error" in answer and "passes" not in answer:
-            self.error = "No orbit data. Tap Update when online." if "TLE" in str(answer.get("error", "")) else str(answer["error"])
+            # Android: "No orbit data. Tap Refresh TLEs when online." names a button it does not have (its button says Update)
+            self.error = "No orbit data. Tap Update when online." if "TLE" in str(answer.get("error", "")) else f"Prediction failed: {answer['error']}"
             self.passes = []
         else:
             self.passes = sorted(answer.get("passes") or [], key=lambda p: p["aos"])
@@ -525,15 +537,7 @@ class PassesScreen(Screen):
         else:
             self.chart.set_data(self.passes, self.signals, self.sessions, now - self.window_hours * 1800, now + self.window_hours * 1800, now)
             self.chart_body.append(self.chart)
-            legend = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(10))
-            legend.set_margin_start(theme.dp(4))
-            legend.set_margin_top(theme.dp(4))
-            for mark, colour, name in (("▲", INDIGO, "Pass"), ("●", SIGNAL_GREEN, "Signal"), ("●", SESSION_OK, "Session sent"), ("●", SESSION_FAIL, "Session failed")):
-                item = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
-                item.append(text(mark, "label-small", colour))
-                item.append(text(f" {name}", "label-small", LABEL))
-                legend.append(item)
-            self.chart_body.append(legend)
+            self.chart_body.append(sky_legend(False))
         self.list_toggle.set_visible(bool(self.passes) and not self.loading)
         self.list_title.set_text(f"Every pass in the window ({len(self.passes)})")
         clear(self.rows)
