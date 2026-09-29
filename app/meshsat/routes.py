@@ -29,7 +29,7 @@ ROUTES = {
     "setup/integrations": ("setup", "setup", "IntegrationsScreen"),
     "setup/advanced": ("setup", "setup", "AdvancedScreen"),
     "setup/about": ("setup", "setup", "AboutScreen"),
-    "radio-config": ("setup", "setup", "RadioScreen"),
+    "radio-config": ("setup", "pages.radio", "RadioConfigScreen"),
     "about": ("setup", "setup", "AboutScreen"),
     "nodelog": ("setup", "pages.nodelog", "NodeLogScreen"),
     "sos": ("setup", "pages.sos", "SosScreen"),

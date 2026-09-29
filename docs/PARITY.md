@@ -2,9 +2,9 @@
 
 MeshSat Android is the reference, pinned at `v2.19.4`. One row per screen, tab, card, dialog, banner and notification of the Android app; a row is done when the Linux app has it, in Android's words, and a test proves it. Kept by `tools/parity-check.py` from `tests/parity/ledger.json`; the words by `tools/android-strings.py`.
 
-**Rows:** 114: 12 missing, 18 partial, 20 built, 53 verified, 9 excluded, 2 blocked.
+**Rows:** 126: 11 missing, 17 partial, 20 built, 67 verified, 9 excluded, 2 blocked.
 
-**Words:** 837 of 1410 readable strings of Android's `ui/` and `sos/` are in the Linux sources, 0 excluded with a reason, 573 still to port.
+**Words:** 962 of 1410 readable strings of Android's `ui/` and `sos/` are in the Linux sources, 2 excluded with a reason, 446 still to port.
 
 States: `missing` (not there), `partial` (some of it), `built` (there, untested), `verified` (there, in Android's words, with a test that ran green on the phone), `excluded` (not ported, with the reason), `blocked` (built and tested against the scripted Bridge, waiting for hardware the bench lacks).
 
@@ -74,7 +74,7 @@ States: `missing` (not there), `partial` (some of it), `built` (there, untested)
 | setup.messaging | screen | `ui/screens/SettingsScreen.kt:messaging` | `setup.py:MessagingScreen` | both | partial |  | read only until 0.9.1 |
 | setup.maps | screen | `ui/screens/SettingsScreen.kt:maps` | `setup.py:MapsScreen` | both | partial |  | 0.10.0 |
 | setup.integrations | screen | `ui/screens/SettingsScreen.kt:integrations` | `setup.py:IntegrationsScreen` | both | partial |  | read only until 0.9.1 |
-| radio-config | screen | `ui/screens/RadioConfigScreen.kt` | `setup.py:RadioScreen` | both | partial |  | read only until 0.9.0 (Bridge change B1) |
+| radio-config | screen | `ui/screens/RadioConfigScreen.kt` | `pages/radio.py:RadioConfigScreen` | both | verified | h_radio::name_tab_facts_and_save | seven tabs over the Bridge's named settings (GET /api/config?format=names, MESHSAT-1405); every Apply sends only what changed and the Bridge lays it over the node's own section; a tab is drawn again only when its settings change, so a poll keeps what is typed (remember(loaded)) |
 | setup.advanced | screen | `ui/screens/SetupScreen.kt:162-170` | `setup.py:AdvancedScreen` | both | verified | h_shell::every_route_opens_and_fits_the_screen | every row a native page since 0.8.0; the Diagnostics row reads "Link health, service" (no batch queue, no local crash telemetry here) |
 | rules | screen | `ui/screens/RulesScreen.kt` | `pages/rules.py:RulesScreen` | both | verified | h_rules::tabs_badges_and_cards | five tabs with badges, subtitles and empty texts; the cards with the switch, the route in the links' colours, the meta line, the filters; the add button |
 | interfaces | screen | `ui/screens/InterfacesScreen.kt` | `pages/links.py:LinksScreen` | both | verified | h_links::six_tabs_in_androids_words | a link the Bridge's device manager does not bind (the mesh over the daemon or Bluetooth, the SIM, the Hub) shows the lane's state the app sees |
@@ -122,15 +122,26 @@ States: `missing` (not there), `partial` (some of it), `built` (there, untested)
 | audit.check | behaviour | `ui/screens/AuditScreen.kt:357-395` | `model/audit.py:check_words` | both | verified | h_advanced::audit_a_changed_log_says_where | a changed log names the first changed entry by its number |
 | decrypt.words | strings | `crypto/AesGcmCrypto.kt, AesGcmWireFormatTest` | `model/crypto.py` | both | verified | AesGcmWireFormatTest.test_encrypted_output_has_a_12_byte_nonce_and_a_16_byte_tag | AesGcmWireFormatTest ported |
 | setup.diagnostics.telemetry | card | `ui/screens/SettingsScreen.kt:2226-2246` | `` | both | excluded |  | Android's local telemetry server (LocalApiServer, localhost:6051): the approved exclusion; the Bridge is a system service with its own journal |
-| nodelog.bluetooth | behaviour | `ui/screens/NodeLogScreen.kt:63-129, ble/NodeLog.kt` | `pages/nodelog.py (a note)` | bluetooth | missing |  | 0.9.0: the Bridge relays LogRadio (B11) and sets security.debug_log_api_enabled, which needs B1's safe config writes |
+| nodelog.bluetooth | behaviour | `ui/screens/NodeLogScreen.kt:63-129, ble/NodeLog.kt` | `pages/nodelog.py:read_bluetooth, set_streaming` | bluetooth | verified | h_radio_bt::the_node_log_streams_over_the_link | the switch writes only security.debug_log_api_enabled (the Bridge keeps the node's keys); the Bridge follows LogRadio while the page asks (MESHSAT-1406); live: l_radio::b_the_tdecks_log_streams_while_its_switch_is_on (T-Deck A's own lines); Android's "restarts once" kept, T-Deck 2.7.26 does not restart (MESHSAT-1409) |
 | nodelog.words | strings | `ble/NodeLog.kt` | `model/nodelog.py` | both | verified | NodeLogTest.test_the_buffer_holds_while_paused_and_keeps_2000 | the line format, the levels, the buffer that holds while paused |
+| radio-config.name | tab | `ui/screens/RadioConfigScreen.kt:231-320` | `pages/radio.py:draw_name` | both | verified | h_radio::name_tab_facts_and_save | This node (hardware by Android's table, else the protobuf name: Portduino), Save name; the Bridge sends the node's own is_licensed back |
+| radio-config.radio | tab | `ui/screens/RadioConfigScreen.kt:326-564` | `pages/radio.py:draw_radio` | both | verified | h_radio::radio_tab_sends_only_the_hop_limit | region, preset with Details, power 0-30, hops 1-7, transmit; read back 2.5 s after Apply; live: l_radio::a_hop_limit_set_in_the_app_reaches_the_tdeck (T-Deck A over Bluetooth, 4 read over USB, 3 put back) |
+| radio-config.region-check | banner | `ui/components/RegionCheck.kt` | `model/radio.py:region_warning` | both | verified | h_radio::region_is_checked_and_asked_first | the phone's country from the SIM, else the language settings' territory (Android: SIM, else Locale); country names as Android's English Locale gives them |
+| radio-config.radio.confirm | dialog | `ui/screens/RadioConfigScreen.kt:544-563` | `pages/radio.py:draw_radio` | both | verified | h_radio::region_is_checked_and_asked_first | "Apply these radio settings?" with its two consequences |
+| radio-config.cover-power | linux-only | `` | `model/radio.py:COVER_POWER` | cover | verified | h_radio::radio_tab_sends_only_the_hop_limit | the LoRa back cover's transmit power: 0 dBm, capped by its service (SX126X_MAX_POWER), with the reason; no field, and Android's "0 means the highest power" hint left out there |
+| radio-config.channels | tab | `ui/screens/RadioConfigScreen.kt:570-801` | `pages/radio.py:draw_channels` | both | verified | h_radio::channels_edit_never_sends_a_key | every channel the node reports, the key in words (the Bridge never gives the key), the edit dialog (name 11, role, MQTT both ways), "Change channel N?"; a write never carries a key and the Bridge keeps the node's |
+| radio-config.position | tab | `ui/screens/RadioConfigScreen.kt:807-894` | `pages/radio.py:draw_position` | both | verified | h_radio::position_tab | GPS on, Fixed position, Every (seconds), Smart sharing |
+| radio-config.bluetooth | tab | `ui/screens/RadioConfigScreen.kt:900-1026` | `pages/radio.py:draw_bluetooth` | bluetooth | verified | h_radio_bt::turning_bluetooth_off_asks_first | pairing modes, the fixed PIN of 6 digits, "Turn off Bluetooth?"; with the back cover the node has no Bluetooth of its own and the tab says so (h_radio::the_cover_has_no_wifi_or_bluetooth) |
+| radio-config.wifi | tab | `ui/screens/RadioConfigScreen.kt:1032-1126` | `pages/radio.py:draw_wifi` | bluetooth | verified | h_radio_bt::wifi_with_the_password_hidden | the password hidden until shown (Android's eye icons); with the back cover the phone's own network is the node's, and the tab says so |
+| radio-config.admin | tab | `ui/screens/RadioConfigScreen.kt:1132-1298` | `pages/radio.py:draw_restart` | both | verified | h_radio::restart_and_reset_ask_first | Set the clock, Restart (with the delay), Switch off (when the node can), Forget heard nodes, Factory reset, each after Android's question (Bridge: set_clock, shutdown, nodedb_reset, MESHSAT-1405); with the back cover the restart question leaves out the satellite modem, which is on the phone's USB |
+| radio-config.not-loaded | banner | `ui/screens/RadioConfigScreen.kt:142-164, 216-225` | `pages/radio.py:not_loaded` | both | verified | h_radio::not_connected_offers_the_node_page | not connected: the card and Connect your node (to the Node page); not loaded: Android's two sentences; against a real Bridge with no node: s_radio::without_a_node_nothing_is_written |
+| radio-config.words | strings | `ui/screens/RadioConfigScreen.kt` | `model/radio.py` | both | verified | RadioTabTest.test_only_what_changed_is_sent | labels, limits, the changes each tab sends, the questions and the toasts; a refusal of the Bridge in Android's words (409, 503) or its own (400) |
 
 ## Words, per Android file
 
 | file | carried | excluded | missing |
 |---|---|---|---|
-| `ui/screens/SettingsScreen.kt` | 36/251 | 0 | 215 |
-| `ui/screens/RadioConfigScreen.kt` | 32/146 | 0 | 114 |
+| `ui/screens/SettingsScreen.kt` | 38/251 | 0 | 213 |
 | `ui/screens/GeofenceScreen.kt` | 13/46 | 0 | 33 |
 | `ui/screens/ContactCards.kt` | 12/34 | 0 | 22 |
 | `ui/screens/MessagesScreen.kt` | 55/73 | 0 | 18 |
@@ -139,14 +150,12 @@ States: `missing` (not there), `partial` (some of it), `built` (there, untested)
 | `ui/screens/Onboarding.kt` | 12/27 | 0 | 15 |
 | `ui/components/CheckMailboxButton.kt` | 3/18 | 0 | 15 |
 | `ui/components/ProvisionClaimHost.kt` | 3/17 | 0 | 14 |
-| `ui/screens/DashboardScreen.kt` | 18/31 | 0 | 13 |
+| `ui/screens/DashboardScreen.kt` | 19/31 | 0 | 12 |
 | `sos/SosController.kt` | 17/26 | 0 | 9 |
 | `ui/components/NodeDetailSheet.kt` | 8/16 | 0 | 8 |
 | `ui/screens/PassPredictorScreen.kt` | 32/39 | 0 | 7 |
 | `ui/screens/SosScreens.kt` | 65/72 | 0 | 7 |
 | `ui/components/ProvisionLinkDialog.kt` | 2/9 | 0 | 7 |
-| `ui/screens/NodeLogScreen.kt` | 7/13 | 0 | 6 |
-| `ui/components/RegionCheck.kt` | 0/5 | 0 | 5 |
 | `ui/screens/TopologyScreen.kt` | 25/29 | 0 | 4 |
 | `ui/components/PermissionAsk.kt` | 0/4 | 0 | 4 |
 | `sos/SosRun.kt` | 12/16 | 0 | 4 |
@@ -163,9 +172,12 @@ States: `missing` (not there), `partial` (some of it), `built` (there, untested)
 | `ui/components/HoldToSend.kt` | 0/1 | 0 | 1 |
 | `ui/components/Lane.kt` | 2/3 | 0 | 1 |
 | `ui/components/NodeLinkBanner.kt` | 6/7 | 0 | 1 |
+| `ui/components/RegionCheck.kt` | 4/5 | 0 | 1 |
 | `ui/MeshSatUI.kt` | 23/23 | 0 | 0 |
 | `ui/Words.kt` | 26/26 | 0 | 0 |
+| `ui/screens/NodeLogScreen.kt` | 11/13 | 2 | 0 |
 | `ui/screens/PeersScreen.kt` | 13/13 | 0 | 0 |
+| `ui/screens/RadioConfigScreen.kt` | 146/146 | 0 | 0 |
 | `ui/screens/RulesScreen.kt` | 83/83 | 0 | 0 |
 | `ui/components/Chrome.kt` | 1/1 | 0 | 0 |
 | `ui/components/SkyChart.kt` | 7/7 | 0 | 0 |

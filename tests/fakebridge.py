@@ -44,6 +44,10 @@ class FakeBridge:
         self.audit = None  # the audit log, newest last (`_audit`); `_audit_broken_at` makes the check fail there
         self.audit_broken_at = -1
         self.credentials = None  # the credential store (`_credentials`): upload, delete
+        self.settings = None  # the node's settings as GET /api/config?format=names gives them (`_settings`)
+        self.radio_log = None  # the radio log lines (`_radio_log`), and whether the node offers it over Bluetooth
+        self.log_available = False
+        self.follows = 0
         self.apply(scenario or {})
         fake = self
 
@@ -125,6 +129,12 @@ class FakeBridge:
         self.audit_broken_at = int(routes.pop("_audit_broken_at", -1))
         creds = routes.pop("_credentials", None)
         self.credentials = [dict(c) for c in creds] if creds is not None else None
+        settings = routes.pop("_settings", None)
+        self.settings = json.loads(json.dumps(settings)) if settings is not None else None
+        log = routes.pop("_radio_log", None)
+        self.radio_log = [dict(line) for line in log] if log is not None else None
+        self.log_available = bool(routes.pop("_log_available", False))
+        self.follows = 0
         self.routes = routes
 
     # Life
@@ -295,6 +305,22 @@ class FakeBridge:
                 before = len(self.credentials)
                 self.credentials = [c for c in self.credentials if c["id"] != parts[3]]
                 return (200, {"status": "deleted"}) if len(self.credentials) < before else (404, {"error": "credential not found"})
+        # The node's settings, as the Bridge's node_config.go (MESHSAT-1405): a write names only
+        # the fields it changes and is laid over the node's own; 400 for what cannot stand, 409
+        # while the node has not sent the section.
+        if self.settings is not None and (path.startswith("/api/config") or path == "/api/channels" or path.startswith("/api/admin/")):
+            return self.reduce_settings(method, path, body, full_path)
+        if self.radio_log is not None and path == "/api/mesh/radio-log" and method == "GET":
+            query = urllib.parse.parse_qs(urllib.parse.urlparse(full_path).query)
+            after = int(query.get("after", ["0"])[0] or 0)
+            following = False
+            if query.get("follow", [""])[0] == "1":
+                self.follows += 1
+                following = self.log_available
+            lines = [dict(line) for line in self.radio_log if line.get("seq", 0) > after]
+            security = ((self.settings or {}).get("config") or {}).get("security")
+            return 200, {"count": len(lines), "last_reset_reason": "", "lines": lines, "available": self.log_available, "following": following,
+                         "debug_log_api_enabled": security.get("debug_log_api_enabled") if security else None}
         # A link switched on or off changes the interface list the scenario serves; a bind is taken.
         if path.startswith("/api/interfaces/") and method == "POST":
             parts = path.split("/")
@@ -309,6 +335,70 @@ class FakeBridge:
                 if not (body or {}).get("device_id"):
                     return 400, {"error": "device_id is required"}
                 return 200, {"status": "bound"}
+        return None
+
+    def reduce_settings(self, method: str, path: str, body, full_path: str):
+        settings = self.settings
+        body = body if isinstance(body, dict) else {}
+        if path == "/api/config" and method == "GET":
+            query = urllib.parse.parse_qs(urllib.parse.urlparse(full_path).query)
+            if query.get("format", [""])[0] == "names":
+                return 200, json.loads(json.dumps(settings))
+            return None
+        if path.startswith("/api/config/") and method == "GET":
+            return 200, {"status": "config request sent for section: " + path.rsplit("/", 1)[1]}
+        if path in ("/api/config/radio", "/api/config/module") and method == "POST":
+            kind = "config" if path.endswith("radio") else "module"
+            section = body.get("section", "")
+            config = body.get("config")
+            if not section:
+                return 400, {"error": "section is required"}
+            if not isinstance(config, dict) or not config:
+                return 400, {"error": f"config must be a JSON object of the {section} settings"}
+            current = (settings.get(kind) or {}).get(section)
+            if current is None:
+                return 409, {"error": f"the node has not sent these settings yet: {section}"}
+            for key, value in config.items():
+                if key not in current:
+                    return 400, {"error": f'unknown {section} setting "{key}"'}
+                if value is None:
+                    return 400, {"error": f'{section} setting "{key}" needs a value'}
+            if section == "security":
+                if {"private_key", "public_key"} & set(config):
+                    return 400, {"error": "the node's keys are not changed through the settings; only its other security settings are"}
+                if not current.get("private_key_set"):
+                    return 409, {"error": "the node has not sent these settings yet: the node has not sent its private key"}
+            current.update(config)
+            return 200, {"status": ("radio" if kind == "config" else "module") + " config updated"}
+        if path == "/api/channels" and method == "POST":
+            index = int(body.get("index", 0))
+            if index > 7:
+                return 400, {"error": f"there is no channel {index}: channels are 0 to 7"}
+            channel = next((c for c in settings.get("channels") or [] if int(c.get("index", 0)) == index), None)
+            if channel is None:
+                return 409, {"error": f"the node has not sent these settings yet: channel {index}"}
+            roles = {"PRIMARY": 1, "SECONDARY": 2, "DISABLED": 0}
+            role = roles.get(body.get("role") or "", channel.get("role", 0)) if body.get("role") in roles or not body.get("role") else None
+            if role is None:
+                return 400, {"error": "unknown channel role: " + str(body.get("role"))}
+            if (index == 0) != (role == 1):
+                return 400, {"error": "channel 0 is always the main channel" if index == 0 else "only channel 0 is the main channel"}
+            channel.update(role=role, name=body.get("name", ""), uplink_enabled=bool(body.get("uplink_enabled")), downlink_enabled=bool(body.get("downlink_enabled")))
+            if body.get("psk"):
+                channel["key"] = "private" if len(body["psk"]) > 4 else "default"
+            return 200, {"status": "channel updated"}
+        if path == "/api/config/owner" and method == "POST":
+            owner = settings.get("owner")
+            if not owner:
+                return 409, {"error": "the node has not sent these settings yet: the node's own name"}
+            if not body.get("long_name") and not body.get("short_name"):
+                return 400, {"error": "at least one of long_name or short_name is required"}
+            owner.update({k: body[k] for k in ("long_name", "short_name") if body.get(k)})
+            return 200, {"status": "owner updated"}
+        if path.startswith("/api/admin/") and method == "POST":
+            order = path.rsplit("/", 1)[1]
+            if order in ("reboot", "factory_reset", "set_clock", "shutdown", "nodedb_reset"):
+                return 200, {"status": order + " sent"}
         return None
 
     # Orders from the test
@@ -330,6 +420,15 @@ class FakeBridge:
             if order == "requests":
                 since = int(urllib.parse.parse_qs(urllib.parse.urlparse(path).query).get("since", ["0"])[0])
                 return 200, {"requests": self.requests[since:], "total": len(self.requests), "unexpected": self.unexpected, "sent": self.sent}
+            if order == "log":
+                # Lines the node "sent" since: appended to the radio log with the next numbers.
+                if self.radio_log is None:
+                    self.radio_log = []
+                for line in body.get("lines", []):
+                    line = dict(line)
+                    line["seq"] = max([l.get("seq", 0) for l in self.radio_log] + [0]) + 1
+                    self.radio_log.append(line)
+                return 200, {"lines": len(self.radio_log)}
             if order == "delay":
                 self.delay = float(body.get("seconds", 0))
                 return 200, {"delay": self.delay}
@@ -344,7 +443,8 @@ class FakeBridge:
                 return 200, {"ok": True}
             if order == "state":
                 return 200, {"sos": self.sos, "deadman": self.deadman, "down": self.down, "delay": self.delay, "deliveries": self.deliveries, "rules": self.rules,
-                             "credentials": self.credentials, "audit_count": len(self.audit) if self.audit is not None else None}
+                             "credentials": self.credentials, "audit_count": len(self.audit) if self.audit is not None else None, "settings": self.settings,
+                             "follows": self.follows}
         if order == "event":
             self.push(body)
             return 200, {"listeners": len(self.listeners)}

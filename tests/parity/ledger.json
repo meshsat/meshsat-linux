@@ -709,12 +709,12 @@
    "id": "radio-config",
    "kind": "screen",
    "android": "ui/screens/RadioConfigScreen.kt",
-   "linux": "setup.py:RadioScreen",
+   "linux": "pages/radio.py:RadioConfigScreen",
    "modes": "both",
-   "state": "partial",
-   "test": "",
+   "state": "verified",
+   "test": "h_radio::name_tab_facts_and_save",
    "capture": "radio-config",
-   "note": "read only until 0.9.0 (Bridge change B1)"
+   "note": "seven tabs over the Bridge's named settings (GET /api/config?format=names, MESHSAT-1405); every Apply sends only what changed and the Bridge lays it over the node's own section; a tab is drawn again only when its settings change, so a poll keeps what is typed (remember(loaded))"
   },
   {
    "id": "setup.advanced",
@@ -1237,12 +1237,12 @@
    "id": "nodelog.bluetooth",
    "kind": "behaviour",
    "android": "ui/screens/NodeLogScreen.kt:63-129, ble/NodeLog.kt",
-   "linux": "pages/nodelog.py (a note)",
+   "linux": "pages/nodelog.py:read_bluetooth, set_streaming",
    "modes": "bluetooth",
-   "state": "missing",
-   "test": "",
-   "capture": "",
-   "note": "0.9.0: the Bridge relays LogRadio (B11) and sets security.debug_log_api_enabled, which needs B1's safe config writes"
+   "state": "verified",
+   "test": "h_radio_bt::the_node_log_streams_over_the_link",
+   "capture": "nodelog-bluetooth",
+   "note": "the switch writes only security.debug_log_api_enabled (the Bridge keeps the node's keys); the Bridge follows LogRadio while the page asks (MESHSAT-1406); live: l_radio::b_the_tdecks_log_streams_while_its_switch_is_on (T-Deck A's own lines); Android's \"restarts once\" kept, T-Deck 2.7.26 does not restart (MESHSAT-1409)"
   },
   {
    "id": "nodelog.words",
@@ -1253,6 +1253,138 @@
    "test": "NodeLogTest.test_the_buffer_holds_while_paused_and_keeps_2000",
    "capture": "source",
    "note": "the line format, the levels, the buffer that holds while paused",
+   "state": "verified"
+  },
+  {
+   "id": "radio-config.name",
+   "kind": "tab",
+   "android": "ui/screens/RadioConfigScreen.kt:231-320",
+   "linux": "pages/radio.py:draw_name",
+   "modes": "both",
+   "test": "h_radio::name_tab_facts_and_save",
+   "capture": "radio-config",
+   "note": "This node (hardware by Android's table, else the protobuf name: Portduino), Save name; the Bridge sends the node's own is_licensed back",
+   "state": "verified"
+  },
+  {
+   "id": "radio-config.radio",
+   "kind": "tab",
+   "android": "ui/screens/RadioConfigScreen.kt:326-564",
+   "linux": "pages/radio.py:draw_radio",
+   "modes": "both",
+   "test": "h_radio::radio_tab_sends_only_the_hop_limit",
+   "capture": "radio-config-radio",
+   "note": "region, preset with Details, power 0-30, hops 1-7, transmit; read back 2.5 s after Apply; live: l_radio::a_hop_limit_set_in_the_app_reaches_the_tdeck (T-Deck A over Bluetooth, 4 read over USB, 3 put back)",
+   "state": "verified"
+  },
+  {
+   "id": "radio-config.region-check",
+   "kind": "banner",
+   "android": "ui/components/RegionCheck.kt",
+   "linux": "model/radio.py:region_warning",
+   "modes": "both",
+   "test": "h_radio::region_is_checked_and_asked_first",
+   "capture": "radio-config-region",
+   "note": "the phone's country from the SIM, else the language settings' territory (Android: SIM, else Locale); country names as Android's English Locale gives them",
+   "state": "verified"
+  },
+  {
+   "id": "radio-config.radio.confirm",
+   "kind": "dialog",
+   "android": "ui/screens/RadioConfigScreen.kt:544-563",
+   "linux": "pages/radio.py:draw_radio",
+   "modes": "both",
+   "test": "h_radio::region_is_checked_and_asked_first",
+   "capture": "radio-config-apply",
+   "note": "\"Apply these radio settings?\" with its two consequences",
+   "state": "verified"
+  },
+  {
+   "id": "radio-config.cover-power",
+   "kind": "linux-only",
+   "android": "",
+   "linux": "model/radio.py:COVER_POWER",
+   "modes": "cover",
+   "test": "h_radio::radio_tab_sends_only_the_hop_limit",
+   "capture": "radio-config-radio",
+   "note": "the LoRa back cover's transmit power: 0 dBm, capped by its service (SX126X_MAX_POWER), with the reason; no field, and Android's \"0 means the highest power\" hint left out there",
+   "state": "verified"
+  },
+  {
+   "id": "radio-config.channels",
+   "kind": "tab",
+   "android": "ui/screens/RadioConfigScreen.kt:570-801",
+   "linux": "pages/radio.py:draw_channels",
+   "modes": "both",
+   "test": "h_radio::channels_edit_never_sends_a_key",
+   "capture": "radio-config-channels",
+   "note": "every channel the node reports, the key in words (the Bridge never gives the key), the edit dialog (name 11, role, MQTT both ways), \"Change channel N?\"; a write never carries a key and the Bridge keeps the node's",
+   "state": "verified"
+  },
+  {
+   "id": "radio-config.position",
+   "kind": "tab",
+   "android": "ui/screens/RadioConfigScreen.kt:807-894",
+   "linux": "pages/radio.py:draw_position",
+   "modes": "both",
+   "test": "h_radio::position_tab",
+   "capture": "radio-config",
+   "note": "GPS on, Fixed position, Every (seconds), Smart sharing",
+   "state": "verified"
+  },
+  {
+   "id": "radio-config.bluetooth",
+   "kind": "tab",
+   "android": "ui/screens/RadioConfigScreen.kt:900-1026",
+   "linux": "pages/radio.py:draw_bluetooth",
+   "modes": "bluetooth",
+   "test": "h_radio_bt::turning_bluetooth_off_asks_first",
+   "capture": "radio-config-bluetooth-off",
+   "note": "pairing modes, the fixed PIN of 6 digits, \"Turn off Bluetooth?\"; with the back cover the node has no Bluetooth of its own and the tab says so (h_radio::the_cover_has_no_wifi_or_bluetooth)",
+   "state": "verified"
+  },
+  {
+   "id": "radio-config.wifi",
+   "kind": "tab",
+   "android": "ui/screens/RadioConfigScreen.kt:1032-1126",
+   "linux": "pages/radio.py:draw_wifi",
+   "modes": "bluetooth",
+   "test": "h_radio_bt::wifi_with_the_password_hidden",
+   "capture": "radio-config-wifi",
+   "note": "the password hidden until shown (Android's eye icons); with the back cover the phone's own network is the node's, and the tab says so",
+   "state": "verified"
+  },
+  {
+   "id": "radio-config.admin",
+   "kind": "tab",
+   "android": "ui/screens/RadioConfigScreen.kt:1132-1298",
+   "linux": "pages/radio.py:draw_restart",
+   "modes": "both",
+   "test": "h_radio::restart_and_reset_ask_first",
+   "capture": "radio-config-restart",
+   "note": "Set the clock, Restart (with the delay), Switch off (when the node can), Forget heard nodes, Factory reset, each after Android's question (Bridge: set_clock, shutdown, nodedb_reset, MESHSAT-1405); with the back cover the restart question leaves out the satellite modem, which is on the phone's USB",
+   "state": "verified"
+  },
+  {
+   "id": "radio-config.not-loaded",
+   "kind": "banner",
+   "android": "ui/screens/RadioConfigScreen.kt:142-164, 216-225",
+   "linux": "pages/radio.py:not_loaded",
+   "modes": "both",
+   "test": "h_radio::not_connected_offers_the_node_page",
+   "capture": "radio-config-not-connected",
+   "note": "not connected: the card and Connect your node (to the Node page); not loaded: Android's two sentences; against a real Bridge with no node: s_radio::without_a_node_nothing_is_written",
+   "state": "verified"
+  },
+  {
+   "id": "radio-config.words",
+   "kind": "strings",
+   "android": "ui/screens/RadioConfigScreen.kt",
+   "linux": "model/radio.py",
+   "modes": "both",
+   "test": "RadioTabTest.test_only_what_changed_is_sent",
+   "capture": "source",
+   "note": "labels, limits, the changes each tab sends, the questions and the toasts; a refusal of the Bridge in Android's words (409, 503) or its own (400)",
    "state": "verified"
   }
  ]

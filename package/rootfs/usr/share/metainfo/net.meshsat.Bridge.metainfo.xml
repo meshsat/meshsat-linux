@@ -36,6 +36,11 @@
   </recommends>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.9.0" date="2026-09-29">
+      <description>
+        <p>Mesh radio settings in seven tabs, as MeshSat Android's: the node's name; region (checked against the country the phone is in), preset, transmit power, hops and transmit, each change asked about where Android asks; the channels with what their keys mean, edited without ever touching a key; position sharing; Bluetooth with its pairing modes, asked about before it is switched off; WiFi; setting the clock, restarting, switching off, forgetting heard nodes and a factory reset, each after a question. Only what was changed goes to the node. With the LoRa back cover the transmit power stays at 0 dBm, with the reason beside it. A node over Bluetooth streams its own log to the Node log page while its switch is on.</p>
+      </description>
+    </release>
     <release version="0.8.0" date="2026-09-29">
       <description>
         <p>The rest of Setup > Advanced as native screens in MeshSat Android's words, and the Bridge's web pages gone from the app: the mesh as it was heard, drawn as a graph that lays itself out, with who hears whom and every node; the Bridge's signed audit log with its count, a filter per link, a check of its hash chain and a copy saved where you choose; the certificates and keys the Bridge keeps, imported from a PEM file and deleted after a question; AES-256-GCM by hand with the key the links encrypt with; the links' health and the background service (start after a restart, restart after a question); the node's own log, paused, cleared and saved.</p>

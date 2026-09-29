@@ -16,8 +16,6 @@ from .screen import Screen, SubScreen
 from .widgets import KeyValue, NavRow, clear, filled_button, group_title, outlined_button, page, scroller, spacer, text, text_button, when
 
 # Meshtastic's LoRa config, as the Bridge relays it: protobuf field numbers of Config.LoRaConfig.
-REGIONS = {0: "Unset", 1: "US", 2: "EU_433", 3: "EU_868", 4: "CN", 5: "JP", 6: "ANZ", 7: "KR", 8: "TW", 9: "RU", 10: "IN", 11: "NZ_865", 12: "TH", 13: "LORA_24", 14: "UA_433", 15: "UA_868", 16: "MY_433", 17: "MY_919", 18: "SG_923"}
-PRESETS = {0: "LongFast", 1: "LongSlow", 2: "VeryLongSlow", 3: "MediumSlow", 4: "MediumFast", 5: "ShortSlow", 6: "ShortFast", 7: "LongModerate", 8: "ShortTurbo"}
 
 
 class SetupScreen(Screen):
@@ -41,7 +39,7 @@ class SetupScreen(Screen):
             ("outlined-lock", "Messaging", "Encryption, compression, quick messages", lambda: app.push(MessagingScreen(app))),
             ("outlined-map", "Maps", "Offline maps for when there is no internet", lambda: app.push(MapsScreen(app))),
             ("outlined-radio", "Ham radio, TAK and Reticulum", "Other networks MeshSat can bridge", lambda: app.push(IntegrationsScreen(app))),
-            ("outlined-tune", "Mesh radio settings", "Region, channels, transmit power", lambda: app.push(RadioScreen(app))),
+            ("outlined-tune", "Mesh radio settings", "Region, channels, transmit power", lambda: app.open_route("radio-config")),
         )
         for name, title_text, detail, action in rows:
             row = NavRow(name, title_text, action)
@@ -564,42 +562,6 @@ class IntegrationsScreen(Page):
         self.fetch("/api/aprs/status", lambda a: self.aprs_text.set_text("Working" if a.ok and (a.body or {}).get("connected") else "Off: no radio or TNC on this phone"))
         self.fetch("/api/tak/enroll/status", lambda a: self.tak_text.set_text("Enrolled" if a.ok and ((a.body or {}).get("success") or (a.body or {}).get("enrolled")) else "Not set up"))
         self.fetch("/api/rns/status", lambda a: self.rns_text.set_text(f"Working, {words.count((a.body or {}).get('links', 0), 'link')}" if a.ok and (a.body or {}).get("enabled") else "Off"))
-
-
-class RadioScreen(Page):
-    def __init__(self, app):
-        super().__init__(app, "Mesh radio settings")
-        self.card_box = self.card("Radio")
-        self.rows = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(0))
-        self.card_box.append(self.rows)
-        self.card_box.append(text("Transmit power is capped at 0 dBm on this radio: the back cover's crystal drifts above that and long frames are lost. Change region and channels with meshsat-node-channels.", "body-medium", theme.TEXT_SECONDARY, wrap=True))
-        self.config = None
-        self.update(app.state)
-
-    def on_show(self) -> None:
-        self.fetch("/api/config", self.loaded)
-
-    def loaded(self, answer: api.Answer) -> None:
-        self.config = answer.body if answer.ok and isinstance(answer.body, dict) else {}
-        self.update(self.app.state)
-
-    def update(self, s: api.State) -> None:
-        clear(self.rows)
-        if not s.mesh_connected():
-            self.rows.append(text("Your phone is not connected to your node, so its settings cannot be read or changed.", "body-medium", theme.TEXT_SECONDARY, wrap=True))
-            return
-        if self.config is None:
-            self.rows.append(text("Reading the node's settings.", "body-medium", theme.TEXT_SECONDARY, wrap=True))
-            return
-        lora = self.config.get("config_6") or {}
-        if not isinstance(lora, dict):
-            lora = {}
-        b = s.bridge or {}
-        channel = (self.config.get("channel_0") or {}).get("2", {})
-        name = channel.get("3", "") if isinstance(channel, dict) else ""
-        for k, v in (("Node", b.get("node_name") or "-"), ("Region", REGIONS.get(lora.get("7", 0), str(lora.get("7", "-")))), ("Preset", PRESETS.get(lora.get("2", 0), str(lora.get("2", "-")))),
-                     ("Primary channel", name or "default"), ("Transmit power", f"0 dBm (capped; the node asks for {lora.get('10', '-')})"), ("Hops", str(lora.get("8", 3))), ("Firmware", b.get("firmware_version", ""))):
-            self.rows.append(KeyValue(k, v))
 
 
 class AdvancedScreen(Page):
