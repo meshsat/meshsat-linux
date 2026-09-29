@@ -10,6 +10,7 @@ from gi.repository import Adw, GLib, Gtk
 from . import __version__ as VERSION
 from . import api, system, theme
 from .model import hub as hub_model
+from .model import nodes as nodes_model
 from .model import satellite as satellite_model
 from .pages.safety import SafetyScreen  # noqa: F401  (the Setup row and the route table use it)
 from .passes import PassesScreen
@@ -194,22 +195,40 @@ class NodeScreen(Page):
         if ble.get("pairing_pending") and self.pin_asked_for != ble.get("pairing_since"):
             self.pin_asked_for = ble.get("pairing_since")
             self.ask_pin(ble)
+        # Rebuilt only when what it shows changes: a poll that brings the same state must not
+        # replace the buttons under a person's finger (or a test's click).
+        own = s.own_node() or {}
+        key = (s.mesh_connected(), state, b.get("firmware_version"), b.get("node_id"), b.get("reboot_count"),
+               nodes_model.describe(own.get("battery_level"), own.get("voltage")),
+               tuple(((n.get("long_name") or "").strip() or n.get("user_id", ""), (n.get("short_name") or "").strip()) for n in (s.nodes or [])),
+               ble.get("pairing_pending"), ble.get("name"), ble.get("address"), ble.get("error"), self.scanning,
+               None if self.devices is None else tuple((d.get("name"), d.get("address"), d.get("rssi"), d.get("chosen")) for d in self.devices))
+        if key == getattr(self, "_bt_key", None):
+            return
+        self._bt_key = key
         clear(self.bt_body)
         if s.mesh_connected():
             own = s.own_node() or {}
-            battery = own.get("battery_level") or 0
             rows = [("Firmware", b.get("firmware_version", "")), ("Node ID", b.get("node_id", ""))]
+            battery = nodes_model.describe(own.get("battery_level"), own.get("voltage"))
             if battery:
-                rows.append(("Battery", "On USB power" if battery > 100 else f"{battery}%"))
+                rows.append(("Battery", battery))
             if b.get("reboot_count"):
                 rows.append(("Reboots", str(b["reboot_count"])))
-            names = [(n.get("long_name") or n.get("user_id", "")) + (f" ({n['short_name']})" if n.get("short_name") else "") for n in s.nodes[:8]]
-            rows.append((f"Mesh Nodes ({len(s.nodes)})", ", ".join(names) or "none yet"))
             for k, v in rows:
                 if v:
                     self.bt_body.append(KeyValue(k, v, mono=k in ("Node ID", "Firmware")))
-            disconnect = outlined_button("Disconnect", self.disconnect)
-            disconnect.add_css_class("danger")
+            if s.nodes:
+                # "Mesh Nodes (N)" over one row per node: the long name (or the id), the short
+                # name in the mesh colour; nothing while the node has sent no list.
+                self.bt_body.append(text(f"Mesh Nodes ({len(s.nodes)})", "body-small", theme.TEXT_MUTED))
+                for n in s.nodes:
+                    self.bt_body.append(KeyValue((n.get("long_name") or "").strip() or n.get("user_id", ""), (n.get("short_name") or "").strip(), theme.MESH))
+            # Button(containerColor = MeshSatRed, fillMaxWidth) with bodySmall ink text, as the
+            # 9704's Disconnect on the Satellite page.
+            disconnect = filled_button("Disconnect", self.disconnect)
+            disconnect.add_css_class("small-text")
+            disconnect.add_css_class("red-fill")
             self.bt_body.append(disconnect)
             return
         if state == "pairing" or ble.get("pairing_pending"):
@@ -469,17 +488,12 @@ class SmsScreen(Page):
     def __init__(self, app):
         super().__init__(app, "SMS")
         card = self.card("Text messages")
-        status = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
-        self.dot = Gtk.Box()
-        self.dot.add_css_class("dot")
-        self.dot.set_valign(Gtk.Align.CENTER)
-        status.append(self.dot)
-        self.status = text("Not allowed yet", "body-large")
-        status.append(self.status)
-        card.append(status)
+        # SettingsScreen.kt:1915-1942: ConnectionStatusRow "SMS", then the sentence; no rows of
+        # modem facts. The value is Android's "Allowed" once the SIM can send, else why it cannot
+        # (the Setup row's words: the modem and the SIM stand where Android asks a permission).
+        row, self.status = status_row("SMS")
+        card.append(row)
         card.append(text("MeshSat sends and receives texts through this phone's SIM when the network works. Your carrier's normal rates apply.", "body-medium", theme.TEXT_SECONDARY, wrap=True))
-        self.details = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
-        card.append(self.details)
         card.append(text("SOS texts go to your emergency contacts under Safety. A text you write carries its own number.", "body-medium", theme.TEXT_SECONDARY, wrap=True))
         # SettingsScreen.kt:1945-1981: the one number a text with no recipient goes to (the
         # Bridge's SMS gateway's default number, MESHSAT-1412).
@@ -531,20 +545,9 @@ class SmsScreen(Page):
         self.call("/api/gateways/cellular", done, body=self.words.cellular_body(self.gateway, number), method="PUT")
 
     def update(self, s: api.State) -> None:
-        for c in ("dot-green", "dot-amber", "dot-muted"):
-            self.dot.remove_css_class(c)
-        c = s.cellular or {}
-        if s.sms_ready():
-            self.dot.add_css_class("dot-green")
-            self.status.set_text("Allowed")
-        else:
-            self.dot.add_css_class("dot-amber" if c.get("connected") else "dot-muted")
-            self.status.set_text(s.sms_reason() or "Not allowed yet")
-        clear(self.details)
-        for k, v in (("Modem", c.get("model") or "-"), ("SIM", {"READY": "Ready", "NOT_INSERTED": "None", "PIN_REQUIRED": "Locked", "SIM_ERROR": "Faulty"}.get(c.get("sim_state", ""), c.get("sim_state") or "-")),
-                     ("Network", (c.get("operator") or "-") + (f", {c['network_type']}" if c.get("network_type") else "")), ("Number", c.get("phone_number") or "-"),
-                     ("Sent, received", f"{c.get('sms_sent', 0)}, {c.get('sms_received', 0)}")):
-            self.details.append(KeyValue(k, v, mono=k == "Number"))
+        ready = s.sms_ready()
+        self.status.set_text("Allowed" if ready else (s.sms_reason() or "Not allowed yet"))
+        paint(self.status, theme.GREEN if ready else theme.TEXT_MUTED)
 
 
 class AdvancedScreen(Page):

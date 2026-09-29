@@ -10,8 +10,8 @@ if [ -d /run/systemd/system ]; then
     case "$1" in remove) systemctl --global disable meshsat-notify.service >/dev/null 2>&1 || true ;; esac
     case "$1" in
         remove)
-            systemctl stop meshsat-bridge.service meshsat-radio-watch.timer meshsat-radio-watch.service meshtasticd.service 2>/dev/null || true
-            systemctl disable meshsat-bridge.service meshsat-radio-watch.timer meshtasticd.service meshsat-hardware.service >/dev/null 2>&1 || true
+            systemctl stop meshsat-bridge.service meshsat-radio-watch.timer meshsat-radio-watch.service meshtasticd.service meshsat-share.service 2>/dev/null || true
+            systemctl disable meshsat-bridge.service meshsat-radio-watch.timer meshtasticd.service meshsat-hardware.service meshsat-share.service >/dev/null 2>&1 || true
             ;;
         upgrade|deconfigure)
             # The new version's postinst starts the Bridge again where it ran, even with its

@@ -8,6 +8,7 @@ import time
 from gi.repository import GLib, Gtk
 
 from .. import api, theme
+from ..layout import empty_text
 from ..model import deliveries as deliveries_model
 from ..model import rules as model
 from ..model import words
@@ -101,11 +102,9 @@ class RulesScreen(SubScreen):
         self.content.append(subtitle)
         rules = model.by_tab(self.rules)[tab]
         if not rules:
-            empty = text(model.EMPTY[tab], "body-medium", theme.TEXT_MUTED, xalign=0.5, wrap=True)
-            empty.set_justify(Gtk.Justification.CENTER)
-            empty.set_margin_top(theme.dp(48))
-            empty.set_margin_bottom(theme.dp(48))
-            self.content.append(empty)
+            # RulesListContent's Box(weight(1f), Alignment.Center): the empty text in the middle
+            # of the room under the tab's sub-line
+            self.content.append(empty_text(model.EMPTY[tab]))
             return
         for rule in rules:
             self.content.append(self.rule_card(rule, now))
@@ -175,11 +174,8 @@ class RulesScreen(SubScreen):
         self.content.append(intro)
         waiting, gave_up = deliveries_model.queue_sections(self.deliveries)
         if not waiting and not gave_up:
-            empty = text(deliveries_model.QUEUE_EMPTY, "body-medium", theme.TEXT_MUTED, xalign=0.5, wrap=True)
-            empty.set_justify(Gtk.Justification.CENTER)
-            empty.set_margin_top(theme.dp(48))
-            empty.set_margin_bottom(theme.dp(48))
-            self.content.append(empty)
+            # QueueTabContent's Box(weight(1f), Alignment.Center), as the rule tabs
+            self.content.append(empty_text(deliveries_model.QUEUE_EMPTY))
             return
         for is_waiting, items in ((True, waiting), (False, gave_up)):
             if not items:

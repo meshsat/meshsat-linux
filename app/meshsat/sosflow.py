@@ -2,9 +2,9 @@
 """Sends an SOS on every route the phone has, or a test of the alarm, and keeps the record
 (sos/SosController.kt). A real SOS: one call starts the Bridge's own burst on the mesh, the
 satellite modem and the Hub's uplink, which keeps trying by itself; the app adds an SMS to
-each emergency contact from the phone's SIM. A test: the test text on the mesh, by SMS to the
-contacts and, with a modem, by satellite (one credit), and a test event to the Hub that raises
-nothing. The run is kept in the preferences, so the banner, the result screen and the
+each emergency contact from the phone's SIM. A test: the test text on the mesh and by SMS to the
+contacts; with a modem, a position report to the Hub by satellite (one credit; the test text
+when the phone has no fix); and a test event to the Hub that raises nothing. The run is kept in the preferences, so the banner, the result screen and the
 cancellation survive a restart. No GTK here: the tests drive it against a scripted Bridge."""
 import threading
 import time
@@ -88,7 +88,10 @@ class Flow:
         if self.run.route("mesh") is not None:
             self._send("mesh", {"text": text})
         if self.run.route("sat") is not None:
-            self._send("sat", {"text": text, "gateway": "iridium"})
+            if s.phone:
+                self._position_report(s)
+            else:
+                self._send("sat", {"text": text, "gateway": "iridium"})
         self._text_contacts(s, text, cancel=False)
         if self.run.route("hub") is not None:
             self._tell_hub(text, fix)
@@ -97,11 +100,50 @@ class Flow:
         self._set(key, sosrun.SENDING, "Sending now")
 
         def done(answer: api.Answer) -> None:
-            state, detail = sosrun.state_of_answer(answer.ok, answer.error, queued=isinstance(answer.body, dict) and answer.body.get("status") == "queued")
-            self._set(key, state, detail)
+            queued = isinstance(answer.body, dict) and answer.body.get("status") == "queued"
+            if answer.ok and queued:
+                self._queued(key, answer.body.get("msg_ref"), cancel=False)
+            elif not answer.ok and body.get("gateway"):
+                self._set(key, sosrun.FAILED, sosrun.NOT_QUEUED)
+            else:
+                state, detail = sosrun.state_of_answer(answer.ok, answer.error)
+                self._set(key, state, detail)
             self._settle_test()
 
         api.fetch("/api/messages/send", done, method="POST", body=body)
+
+    def _queued(self, key: str, ref, cancel: bool) -> None:
+        """A leg the Bridge queued: its delivery tells the rest (follow_deliveries)."""
+        with self._lock:
+            route = self.run.route(key) if self.run else None
+            if route is None:
+                return
+            if cancel:
+                route.cancel_ref, route.cancel = ref or None, sosrun.WAITING
+            else:
+                route.ref, route.state, route.detail = ref or None, sosrun.WAITING, "Waiting to send"
+        self.save()
+
+    def _position_report(self, s) -> None:
+        """The test's satellite leg with the phone's fix: a position report to the Hub
+        (SosMessages.positionFrame). The Bridge queues Android's frame on its satellite modem,
+        on the same path to the Hub's uplink decoder as an SOS frame, and it never reaches the
+        Hub's routing engine (MESHSAT-1430)."""
+        body = {"satellite": True, "latitude": s.phone[0], "longitude": s.phone[1]}
+        altitude = (s.fix or {}).get("altitude")
+        if altitude is not None:
+            body["altitude"] = altitude
+        self._set("sat", sosrun.SENDING, "Sending now")
+
+        def done(answer: api.Answer) -> None:
+            ref = answer.body.get("msg_ref") if answer.ok and isinstance(answer.body, dict) else None
+            if ref:
+                self._queued("sat", ref, cancel=False)
+            else:
+                self._set("sat", sosrun.FAILED, sosrun.NOT_QUEUED)
+            self._settle_test()
+
+        api.fetch("/api/sos/test", done, method="POST", body=body)
 
     def _text_contacts(self, s, text: str, cancel: bool) -> None:
         """The SMS legs, one per emergency contact, through the Bridge's SMS gateway, as the words
@@ -120,15 +162,24 @@ class Flow:
             def done(answer: api.Answer, key=key, phone=contact["phone"]) -> None:
                 if answer.ok:
                     api.record_sent(text, phone, "sms", me)
+                ref = answer.body.get("msg_ref") if answer.ok and isinstance(answer.body, dict) else None
                 if cancel:
+                    if ref:
+                        self._queued(key, ref, cancel=True)
+                        return
                     with self._lock:
                         route = self.run.route(key) if self.run else None
                         if route is not None:
                             route.cancel = sosrun.SENT if answer.ok else sosrun.FAILED
                     self.save()
+                elif ref:
+                    self._queued(key, ref, cancel=False)
+                    self._settle_test()
+                elif answer.ok:
+                    self._set(key, sosrun.SENT, "Sent")
+                    self._settle_test()
                 else:
-                    state, detail = sosrun.state_of_answer(answer.ok, answer.error)
-                    self._set(key, state, detail)
+                    self._set(key, sosrun.FAILED, sosrun.NOT_QUEUED)
                     self._settle_test()
 
             api.fetch("/api/messages/send", done, method="POST", body={"text": text, "gateway": "cellular", "to": contact["phone"], "plain": True})
@@ -166,9 +217,50 @@ class Flow:
             self.save()
 
     # Following the Bridge
+    FOLLOW_FOR = 1800.0
+    FOLLOW_EVERY = 5.0
+
+    def follow_deliveries(self) -> None:
+        """The legs the app queued, read from the Bridge's queue (SosProgress.routes): state and
+        words from each delivery, the cancellation's too; for half an hour after the start, so a
+        late confirmation (the Hub's receipt, the carrier's report) still shows."""
+        run = self.run
+        now = time.time()
+        if run is None or now - run.id > self.FOLLOW_FOR or now - getattr(self, "_followed", 0.0) < self.FOLLOW_EVERY:
+            return
+        self._followed = now
+        for route in list(run.routes):
+            for ref, cancel in ((route.ref, False), (route.cancel_ref, True)):
+                if not ref:
+                    continue
+
+                def done(answer: api.Answer, key=route.key, cancel=cancel, run=run) -> None:
+                    if self.run is not run or not answer.ok or not isinstance(answer.body, list) or not answer.body:
+                        return
+                    delivery = answer.body[0]
+                    state, detail = sosrun.state_of_delivery(delivery), sosrun.detail_of_delivery(delivery)
+                    with self._lock:
+                        route = run.route(key)
+                        if route is None:
+                            return
+                        if cancel:
+                            if route.cancel == state:
+                                return
+                            route.cancel = state
+                        else:
+                            if (route.state, route.detail) == (state, detail):
+                                return
+                            route.state, route.detail = state, detail
+                    self.save()
+                    self._settle_test()
+
+                api.fetch(f"/api/deliveries/message/{ref}", done)
+
     def follow(self, s) -> None:
-        """Every poll: a real SOS's Bridge-carried routes follow the Bridge's status; a real
-        SOS the Bridge no longer knows (it restarted) is over."""
+        """Every poll: the legs the app queued follow their deliveries; a real SOS's
+        Bridge-carried routes follow the Bridge's status; a real SOS the Bridge no longer knows
+        (it restarted) is over."""
+        self.follow_deliveries()
         run = self.run
         if run is None or run.test or not run.active:
             return
@@ -205,7 +297,7 @@ class Flow:
             run.finished_at = time.time()
             for route in run.routes:
                 if route.state in (sosrun.WAITING, sosrun.SENDING):
-                    route.state, route.detail = sosrun.STOPPED, "Stopped"
+                    route.state, route.detail = sosrun.STOPPED, sosrun.HUB_STOPPED if route.key == "hub" else "Stopped"
             self.save()
             trace.event("sos", test=True, stopped=True)
             return

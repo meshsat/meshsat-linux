@@ -181,6 +181,7 @@ class FakeBridge:
         # answers, the checks started, and what the next one ends with (`_mailbox_next`).
         self.mailbox = dict(routes.pop("_mailbox", None) or {"running": False, "result": None, "finished_at": None})
         self.mailbox_checks = 0
+        self.queued = {}  # the deliveries of gateway sends, by msg_ref (/__fake__/delivery moves one on)
         self.mailbox_next = routes.pop("_mailbox_next", None)
         # The chats' own keys (Bridge change B21): "type:address" -> 64 hex
         self.chat_keys = dict(routes.pop("_chat_keys", None) or {})
@@ -263,6 +264,28 @@ class FakeBridge:
                 return 409, {"status": "already_active"}
             self.sos.update(active=True, started_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), sends=1, trigger=(body or {}).get("trigger", "manual"), message=(body or {}).get("message", ""))
             return 200, {"status": "activated", "started_at": self.sos["started_at"]}
+        if path == "/api/sos/test" and method == "POST" and (body or {}).get("satellite"):
+            # As the Bridge since MESHSAT-1430: Android's position frame queued on the satellite
+            # modem; 503 without one, 400 without a position, 409 while an SOS is on.
+            if self.sos.get("active"):
+                return 409, {"error": "an SOS is active: the SOS replaces its test"}
+            modem = self.routes.get("GET /api/iridium/modem")
+            if not (isinstance(modem, dict) and modem.get("connected")):
+                return 503, {"error": "no iridium gateway running"}
+            if not (body or {}).get("latitude") and not (body or {}).get("longitude"):
+                return 400, {"error": "no position: send latitude and longitude (this Bridge has no GPS fix)"}
+            preview = "Alarm test: position report to the Hub"
+            # A test still open on the link is answered again, not queued twice (one credit each)
+            for ref, row in self.queued.items():
+                if row.get("text_preview") == preview and row.get("status") in ("queued", "retry", "held", "sending"):
+                    return 200, {"status": row["status"], "delivery_id": row["id"], "msg_ref": ref, "message": preview, "interface": row["channel"],
+                                 "bridge_id": "e2e-bridge", "existing": True}
+            self.sent.append(dict(body or {}, gateway="iridium"))
+            ref = f"e2e-{len(self.sent)}"
+            self.queued[ref] = {"id": len(self.sent), "msg_ref": ref, "channel": "iridium_0", "status": "queued", "retries": 0, "last_error": "",
+                                "ack_status": None, "text_preview": preview}
+            return 200, {"status": "queued", "delivery_id": len(self.sent), "msg_ref": ref, "message": preview, "interface": "iridium_0", "bridge_id": "e2e-bridge",
+                         "existing": False}
         if path == "/api/sos/cancel" and method == "POST":
             self.sos.update(active=False, sends=0)
             return 200, {"status": "cancelled"}
@@ -283,6 +306,14 @@ class FakeBridge:
             if isinstance(feed, dict):
                 feed.setdefault("packets", []).insert(0, {"dir": "tx", "portnum_name": "TEXT_MESSAGE_APP", "text": (body or {}).get("text", ""), "to": (body or {}).get("to") or "broadcast",
                                                          "time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "bearer": "mesh"})
+            if (body or {}).get("gateway"):
+                # As the Bridge: queued, with a delivery the test can move on (/__fake__/delivery)
+                ref = f"e2e-{len(self.sent)}"
+                channel = {"iridium": "iridium_0", "cellular": "cellular_0", "sms": "cellular_0"}.get(str((body or {}).get("gateway")), str((body or {}).get("gateway")))
+                self.queued[ref] = {"id": len(self.sent), "msg_ref": ref, "channel": channel, "status": "queued", "retries": 0, "last_error": "",
+                                    "ack_status": None, "text_preview": (body or {}).get("text", "")[:200]}
+                return 200, {"status": "queued", "gateway": (body or {}).get("gateway"), "delivery_id": len(self.sent), "msg_ref": ref,
+                             "precedence": "Routine", "plain": bool((body or {}).get("plain"))}
             return 200, {"status": "sent", "id": len(self.sent)}
         if path == "/api/nodes/request-info" and method == "POST":
             return 200, {"status": "nodeinfo request sent"}
@@ -297,6 +328,10 @@ class FakeBridge:
             # The readings of one source (iridium, gss, ...), as the Bridge's signal history.
             source = urllib.parse.parse_qs(urllib.parse.urlparse(full_path).query).get("source", ["iridium"])[0]
             return 200, list(self.routes["_signal_history"].get(source, []))
+        if path.startswith("/api/deliveries/message/") and method == "GET":
+            ref = urllib.parse.unquote(path.rsplit("/", 1)[1])
+            row = self.queued.get(ref)
+            return 200, [dict(row)] if row else []
         if path == "/api/iridium/mailbox" and method == "GET":
             return 200, dict(self.mailbox)
         parts = path.split("/")
@@ -776,6 +811,13 @@ class FakeBridge:
             if order == "tiles":
                 self.tiles_down = bool(body.get("down", False))
                 return 200, {"down": self.tiles_down, "requests": self.tile_requests}
+            if order == "delivery":
+                # A queued send moves on: {"ref", "status", "ack_status", "last_error", "retries"}
+                row = self.queued.get(body.get("ref", ""))
+                if row is None:
+                    return 404, {"error": "no such delivery"}
+                row.update({k: v for k, v in body.items() if k != "ref"})
+                return 200, dict(row)
             if order == "delay":
                 self.delay = float(body.get("seconds", 0))
                 return 200, {"delay": self.delay}
@@ -784,6 +826,7 @@ class FakeBridge:
                 return 200, {"down": self.down}
             if order == "reset":
                 self.requests, self.unexpected, self.sent = [], [], []
+                self.queued = {}
                 self.delay, self.down = 0.0, False
                 self.sos = {"active": False, "started_at": "", "sends": 0, "test": False}
                 self.deadman = {"enabled": False, "timeout_min": 240, "last_activity": "", "triggered": False}
@@ -794,7 +837,7 @@ class FakeBridge:
                              "follows": self.follows, "gateways": self.gateways, "zones": self.zones, "zone_events": self.zone_events,
                              "tiles_down": self.tiles_down, "tile_requests": self.tile_requests,
                              "key_imports": self.key_imports, "hub": self.hub, "claims": self.claims,
-                             "mailbox": self.mailbox, "mailbox_checks": self.mailbox_checks, "chat_keys": self.chat_keys,
+                             "mailbox": self.mailbox, "mailbox_checks": self.mailbox_checks, "queued": self.queued, "chat_keys": self.chat_keys,
                              "interfaces": self.routes.get("GET /api/interfaces")}
         if order == "event":
             self.push(body)

@@ -66,6 +66,10 @@ class Scripted:
     def state(self) -> dict:
         return self.fake.control("GET", "/__fake__/state", None)[1]
 
+    def delivery(self, ref: str, **fields) -> dict:
+        """A queued send moves on in the Bridge's queue (status, ack_status, last_error, retries)."""
+        return self.fake.control("POST", "/__fake__/delivery", dict({"ref": ref}, **fields))[1]
+
     def position(self, node_id: str, lat: float, lon: float) -> list:
         """A node reports a position: logged, the node moved, the zones checked; the crossings."""
         return self.fake.control("POST", "/__fake__/position", {"node_id": node_id, "lat": lat, "lon": lon})[1]["crossings"]

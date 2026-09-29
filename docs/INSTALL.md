@@ -7,8 +7,8 @@ For a Linux phone running Mobian (Debian 13, arm64): a PinePhone or PinePhone Pr
 Download the package from the [releases](https://github.com/meshsat/meshsat-linux/releases) (the release page lists its sha256), then, on the phone:
 
 ```
-wget https://github.com/meshsat/meshsat-linux/releases/download/v0.12.0/meshsat_0.12.0_arm64.deb
-sudo apt install ./meshsat_0.12.0_arm64.deb
+wget https://github.com/meshsat/meshsat-linux/releases/download/v1.0.0/meshsat_1.0.0_arm64.deb
+sudo apt install ./meshsat_1.0.0_arm64.deb
 ```
 
 That is all. The package installs the Meshtastic daemon for the back cover, its configuration (0 dBm, the one power the radio is qualified at), Meshtastic's web client, the radio watchdog, the MeshSat Bridge and the MeshSat app, and starts the services. The **MeshSat** icon is in the app grid; tap it and the app opens: the same screens as MeshSat Android and iOS, Home, Messages, Map, People and Setup, with this phone's node, a satellite modem on USB-C and the MeshSat Hub. The moon on Home is night mode. A banner at the top says when the Bridge or the node cannot be reached, and what to do.
@@ -39,6 +39,14 @@ The first run makes a private Python environment for the Meshtastic client libra
 - **The MeshSat Hub.** Setup > Hub in the app takes the Hub's QR code text, or put an API key from your tenant's Fleet page at [hub.meshsat.net](https://hub.meshsat.net) into `/etc/meshsat/bridge.env` (`HUB_API_KEY=`), then `sudo systemctl restart meshsat-bridge`. Without it the mesh works and the Hub is simply not reached.
 - **The satellite.** A RockBLOCK 9603 on USB-C (through a USB-C to USB-A adapter) is found by the Bridge by itself; `MESHSAT_IRIDIUM_PORT=` in the same file pins its port if you want. Setup > Satellite shows the modem and its signal; Satellite passes predicts when a satellite is overhead for your position, which comes from the phone's location service (Settings > Privacy > Location Services, then allow MeshSat), from the node, or from a position you type in there (the node then carries it as its fixed position).
 
+## Opening the Bridge from another computer
+
+The Bridge answers without a password: whoever reaches it can read and send messages, start an SOS, change every setting and spend satellite credit. So only this phone reaches it. The package closes the Bridge's port (6050), the node's API (4403) and Meshtastic's web client (9443) to the network, and `localhost` works as before (`meshsat-share`, one nftables table, loaded at every boot).
+
+To use the Bridge from a laptop, switch on **Share the Bridge on this network** in the app, under Setup > Advanced > Diagnostics. The app asks first, then the phone asks for your password; the line under the switch gives the address to open, such as `http://192.168.1.20:6050`. Share it only on a network you trust, and switch it off when you are done: switching off also cuts a browser that still has the Bridge open. Even shared, the Bridge stays closed to the phone's mobile data connection and to public addresses (a home, office or hotspot network gives out private ones), and 4403 and 9443 stay on the phone. From a terminal: `sudo /usr/lib/meshsat/bin/meshsat-share on`, `off` or `status`.
+
+An upgrade from a version before 1.0.0 closes the Bridge to the network: a browser or a script on another computer that opened `http://<phone>:6050` needs the switch, or a tunnel (`ssh -L 6050:localhost:6050 <phone>`, then `http://localhost:6050/` on that computer).
+
 ## What you get, and what you do not
 
 | | |
@@ -60,6 +68,7 @@ The measurements behind every line: [meshsat-lora-backplate](https://github.com/
 | `http://localhost:6050/` | the Bridge's own console, in any browser (the expert pages under Setup > Advanced open it inside the app) |
 | `https://localhost:9443/` | Meshtastic's own web client, served by the daemon with the package's self-signed certificate (accept it once; desktop layout) |
 | `/etc/meshsat/bridge.env` | the Bridge's settings (Hub key, ports) |
+| `/etc/meshsat/share-on-network` | there while the Bridge is shared on the network (the switch in Setup > Advanced > Diagnostics, or `meshsat-share`) |
 | `/etc/meshtasticd/` | the daemon's configuration |
 | `/var/lib/meshtasticd/.portduino/default/prefs` | the node's keys, channels and node database |
 | `/var/lib/meshsat/meshsat.db` | the Bridge's database |

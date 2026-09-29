@@ -29,6 +29,13 @@ def case_alarm_test_goes_route_by_route_and_settles(ctx):
     ctx.shot("test-dialog")
     ctx.tree.click_in_dialog("Send the test")
     ctx.bridge.wait_request("POST", "/api/sos/test", since=before, timeout=10)
+    # The satellite leg waits in the Bridge's queue until its session; then the Hub's receipt comes
+    queued = ctx.bridge.state()["queued"]
+    assert queued, "the satellite leg was not queued"
+    ctx.app.open("sos")
+    ctx.tree.wait_text("Waiting to send", timeout=10)
+    for ref, row in queued.items():
+        ctx.bridge.delivery(ref, status="sent", ack_status="acked" if str(row.get("channel", "")).startswith("iridium") else None)
     sends = [r for r in ctx.bridge.requests(before) if r["path"] == "/api/messages/send"]
     texts = {r["body"].get("gateway", "mesh"): r["body"]["text"] for r in sends}
     assert texts.get("mesh") == "Test from A MeshSat user: checking the MeshSat alarm routes. No help needed.", texts
@@ -40,9 +47,11 @@ def case_alarm_test_goes_route_by_route_and_settles(ctx):
     ctx.tree.wait_text("Mesh, everyone in range")
     ctx.tree.wait_text("Hub, over the internet")
     ctx.tree.wait_text("Alarm test finished", timeout=15)
+    ctx.tree.wait_text("Sent, and the Hub has it", timeout=15)
     ctx.tree.wait_text("SMS: you have no emergency contacts. Add them in Setup, Safety.")
     labels = ctx.tree.texts()
-    assert labels.count("Sent") >= 3, labels  # satellite, mesh and the Hub, each "Sent"
+    # The satellite route confirmed by the Hub says so (SosRun.detailOf); the mesh and the Hub each "Sent"
+    assert "Sent, and the Hub has it" in labels and labels.count("Sent") >= 2, labels
     ctx.shot("test-finished")
     ctx.app.open("home")
     ctx.tree.find("button", name="Hold 3 seconds for SOS", timeout=10)

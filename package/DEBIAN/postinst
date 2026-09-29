@@ -95,6 +95,12 @@ case "$1" in
         # Bluetooth (then they stay off); the Bridge follows what it found.
         if [ -d /run/systemd/system ]; then
             systemctl daemon-reload
+            # The Bridge and the node answer this device only, unless the person shared the Bridge
+            # (the app: Setup > Advanced > Diagnostics): the rules are in place before either
+            # starts. Enabled at every configure: an upgrade from a version without them closes
+            # the Bridge to the network until the switch opens it again.
+            systemctl enable meshsat-share.service >/dev/null 2>&1 || true
+            systemctl restart meshsat-share.service || echo "meshsat: the rules that keep the Bridge and the node to this device could not be loaded (journalctl -t meshsat-share)"
             # Enabled at the first install only ($2, the version configured before, is empty): an
             # upgrade keeps what the person chose (Diagnostics > "Start after a phone restart"
             # switches the Bridge's start at boot, and Android's setting survives its updates).

@@ -57,6 +57,7 @@ def case_no_node_at_all_says_so(ctx):
     ctx.tree.wait_text("Nobody heard yet.", timeout=10)
     ctx.tree.wait_text("People appear here when your MeshSat node hears them on the mesh.")
     ctx.tree.find("button", name="Connect your node")
+    ctx.shot("people-empty")  # Android's capture state: the block centred under the cards
 
 
 def case_the_signal_says_how_the_node_was_heard(ctx):

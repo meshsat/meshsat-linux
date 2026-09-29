@@ -1,15 +1,29 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """What the app asks of the system it runs on: the state of the package's units, the node's
-journal, a privileged restart through polkit, a service started for the person at the screen.
+journal, a privileged restart through polkit, a service started for the person at the screen,
+the Bridge shared on the network or not.
 Under MESHSAT_APP_TEST=1 nothing privileged runs: the command goes to the trace instead, and
 unit states come from MESHSAT_APP_UNITS ("meshtasticd.service=active,meshsat-bridge.service=inactive"),
 so a test never opens a polkit dialog and never restarts the phone's services."""
 import os
 import subprocess
+import threading
 
 from . import trace
+from .model import share
+
+try:
+    from gi.repository import GLib
+except (ImportError, ValueError):  # the unit tests, on a machine without GTK
+    GLib = None
 
 TEST = os.environ.get("MESHSAT_APP_TEST") == "1"
+# Sharing the Bridge on the network: meshsat-share keeps the flag and the rules, as root through
+# pkexec; anyone may read the flag.
+SHARE_TOOL = "/usr/lib/meshsat/bin/meshsat-share"
+SHARE_FLAG = "/etc/meshsat/share-on-network"
+BRIDGE_ENV = "/etc/meshsat/bridge.env"
+_share_running = threading.Event()
 
 
 def _test_units() -> dict:
@@ -53,6 +67,89 @@ def privileged(*command: str) -> None:
         subprocess.Popen(["pkexec", *command], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except OSError:
         pass
+
+
+def shared_on_network() -> bool:
+    """Whether the Bridge is shared on the network: meshsat-share's flag file is there
+    (MESHSAT_APP_SHARE_FLAG names another file: the tests)."""
+    return os.path.exists(os.environ.get("MESHSAT_APP_SHARE_FLAG") or SHARE_FLAG)
+
+
+def share_changing() -> bool:
+    """A change of the sharing is under way (pkexec asking for the password, the rules
+    loading): the switch waits for it, whichever page started it."""
+    return _share_running.is_set()
+
+
+def share_on_network(on: bool, done) -> None:
+    """Share the Bridge on the network, or stop: `pkexec meshsat-share on|off` on a thread (the
+    person is asked for their password), then `done(ok)` on the main loop once it exited (ok:
+    it exited 0; a password prompt that was dismissed is 126). Under test nothing runs: the
+    command goes to the trace as `privileged` writes it, the file MESHSAT_APP_SHARE_FLAG names
+    (never the system's own) is made or removed, and done(True)."""
+    command = ["pkexec", SHARE_TOOL, "on" if on else "off"]
+    trace.event("command", command=command)
+    _share_running.set()
+
+    def finish(ok: bool) -> None:
+        _share_running.clear()
+        if GLib is not None:
+            GLib.idle_add(lambda: done(ok) or False)
+        else:
+            done(ok)
+
+    if TEST:
+        path, ok = os.environ.get("MESHSAT_APP_SHARE_FLAG"), True
+        if path:
+            try:
+                if on:
+                    open(path, "a", encoding="utf-8").close()
+                elif os.path.exists(path):
+                    os.remove(path)
+            except OSError:
+                ok = False
+        finish(ok)
+        return
+
+    def run() -> None:
+        try:
+            ok = subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+        except (OSError, subprocess.SubprocessError):
+            ok = False
+        finish(ok)
+
+    threading.Thread(target=run, daemon=True).start()
+
+
+def bridge_port() -> int:
+    """The Bridge's port as meshsat-share opens it: MESHSAT_PORT in /etc/meshsat/bridge.env
+    (MESHSAT_APP_BRIDGE_ENV names another file), 6050 without one."""
+    try:
+        with open(os.environ.get("MESHSAT_APP_BRIDGE_ENV") or BRIDGE_ENV, encoding="utf-8", errors="replace") as handle:
+            return share.bridge_port(handle.read())
+    except OSError:
+        return share.DEFAULT_PORT
+
+
+def lan_addresses() -> list:
+    """This phone's addresses on the network it is on, the ones to open the Bridge at
+    (model/share.py says which count). MESHSAT_APP_ADDRESSES="192.168.1.20,10.0.0.5" stands in
+    for them (the tests, and captures that must not show a real address); under test without
+    it, none."""
+    override = os.environ.get("MESHSAT_APP_ADDRESSES")
+    if override is not None:
+        return [a.strip() for a in override.split(",") if a.strip()]
+    if TEST:
+        return []
+    try:
+        run = subprocess.run(["ip", "-4", "-o", "addr", "show", "scope", "global"], capture_output=True, text=True, timeout=3)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    try:
+        virtual = set(os.listdir("/sys/devices/virtual/net"))
+    except OSError:
+        virtual = set()
+    return share.lan_addresses(run.stdout, virtual)
 
 
 def unit_enabled(unit: str) -> bool:

@@ -1,0 +1,19 @@
+[Unit]
+Description=MeshSat: the Bridge and the node answer this device only, unless the Bridge is shared
+Documentation=https://github.com/meshsat/meshsat-linux/blob/main/docs/INSTALL.md
+After=nftables.service
+Before=meshtasticd.service meshsat-bridge.service
+# The rules again, for the port the Bridge listens on after a change of MESHSAT_PORT in
+# /etc/meshsat/bridge.env (followed by a restart of the Bridge), and after nftables.service
+# restarted or reloaded (its configuration usually flushes every table, this one too).
+PartOf=meshsat-bridge.service nftables.service
+ReloadPropagatedFrom=nftables.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/lib/meshsat/bin/meshsat-share apply
+ExecReload=/usr/lib/meshsat/bin/meshsat-share apply
+
+[Install]
+WantedBy=multi-user.target

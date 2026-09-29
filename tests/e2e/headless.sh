@@ -22,6 +22,8 @@ export LC_ALL=C.UTF-8 TZ=${TZ:-UTC} GTK_A11Y=atspi GSK_RENDERER=cairo
 # to ~/.config. The test notifier's offer of Phosh's plugins would otherwise replace the owner's
 # own plugin lists.
 export GSETTINGS_BACKEND=memory
+# A crash of the runner (a segfault in a C library under PyGObject) leaves its Python traceback.
+export PYTHONFAULTHANDLER=1
 unset WAYLAND_DISPLAY DISPLAY DBUS_SESSION_BUS_ADDRESS
 cat > "$B/inside.sh" <<IN
 #!/bin/bash

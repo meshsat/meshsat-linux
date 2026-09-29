@@ -8,6 +8,7 @@ import time
 from gi.repository import Gtk
 
 from .. import api, theme
+from ..layout import empty_text
 from ..model import deliveries as model
 from ..model import words
 from ..screen import SubScreen
@@ -104,10 +105,9 @@ class Ledger(Gtk.Box):
         self.chips_scroll = hscroll(self.chip_row)
         self.chips_scroll.set_visible(False)
         self.append(self.chips_scroll)
-        self.empty = text("", "body-medium", theme.TEXT_MUTED, xalign=0.5, wrap=True)
-        self.empty.set_justify(Gtk.Justification.CENTER)
-        self.empty.set_margin_top(theme.dp(48))
-        self.empty.set_margin_bottom(theme.dp(48))
+        # Box(weight(1f), Alignment.Center): the empty text in the middle of the room under the
+        # counts and the chips
+        self.empty = empty_text()
         self.append(self.empty)
         self.list = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(6))
         self.append(self.list)
@@ -168,6 +168,7 @@ class Ledger(Gtk.Box):
         clear(self.list)
         self.empty.set_text(model.empty_text(self.deliveries))
         self.empty.set_visible(not items)
+        self.list.set_visible(bool(items))  # an empty list takes no spacing under the empty text
         for d in items:
             self.list.append(DeliveryCard(d, now, self.on_open, self.on_cancel, self.on_retry))
 

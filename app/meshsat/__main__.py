@@ -27,6 +27,8 @@ from .widgets import Banner, Filtered, NavBar, StatusStrip, filled_button, outli
 # The application id is the package's; a test instance takes its own so the two never meet.
 APP_ID = os.environ.get("MESHSAT_APP_ID", "net.meshsat.Bridge")
 TEST = os.environ.get("MESHSAT_APP_TEST") == "1"
+# A test instance posts its notifications only when asked (the e2e session's own daemon takes them).
+NOTIFY = not TEST or os.environ.get("MESHSAT_APP_NOTIFY") == "1"
 TABS = (("home", "Home", HomeScreen), ("messages", "Messages", MessagesScreen), ("map", "Map", MapScreen), ("people", "People", PeopleScreen), ("setup", "Setup", SetupScreen))
 TABS_BY_KEY = {key for key, _title, _cls in TABS}
 
@@ -51,7 +53,10 @@ class MeshSatApp(Adw.Application):
         # The SOS in progress, or the last one (sos/SosController.kt): the banner, the Home
         # card and the result screen read it.
         self.sos = sosflow.Flow(self.prefs, lambda: GLib.idle_add(self.on_sos_change))
-        self._test_notified = None
+        # The alarm test's notification: what it says (run id, words), the pending send, the last send.
+        self._note_shown = None
+        self._note_timer = 0
+        self._note_sent_at = 0.0
         self._down_since = None  # when this app first saw the node's link go (NodeLinkBanner)
         self.night = False
         self.tabs = {}
@@ -507,28 +512,58 @@ class MeshSatApp(Adw.Application):
     def on_sos_change(self) -> bool:
         """The run changed (a route answered, a test settled): the banner, the screen on view,
         and the alarm test's notification (a real SOS is the notifier's, from the Bridge)."""
-        run = self.sos.run
         if self.window is not None:
             self.show_sos_banner(self.state)
             screen = self.visible_screen()
             if screen is not None:
                 screen.update(self.state)
-        if run is not None and run.test:
-            if run.active:
-                from .model import sosrun  # noqa: PLC0415
-
-                note = Gio.Notification.new("Alarm test running")
-                note.set_body(sosrun.summary(run.routes))
-                note.set_default_action("app.open-sos")
-                note.add_button("Stop test", "app.stop-test")
-                note.set_priority(Gio.NotificationPriority.HIGH)
-                if not TEST:
-                    self.send_notification("alarm-test", note)
-                self._test_notified = run.id
-            elif self._test_notified == run.id:
-                self.withdraw_notification("alarm-test")
-                self._test_notified = None
+        self.sync_test_notification()
         return False
+
+    # The alarm test's notification (SosController.notify): "Alarm test running", the routes in one
+    # line (SosProgress.summary), "Stop test"; one notification kept up to date, gone when the test
+    # ends. GLib's freedesktop backend learns the daemon's id only from the reply to its first
+    # Notify: a second send before that reply made a second notification, and a withdraw before it
+    # closed nothing. So a change goes out at most every NOTE_GAP seconds, as the run is then, and
+    # only when the words changed (Android's setOnlyAlertOnce).
+    NOTE_GAP = 0.5
+
+    def sync_test_notification(self) -> None:
+        if self._note_timer:
+            return  # a send is due; it takes the run as it is then
+        wait = self._note_sent_at + self.NOTE_GAP - time.monotonic()
+        if wait > 0:
+            self._note_timer = GLib.timeout_add(int(wait * 1000) + 1, self._note_due)
+        else:
+            self._note_apply()
+
+    def _note_due(self) -> bool:
+        self._note_timer = 0
+        self._note_apply()
+        return False
+
+    def _note_apply(self) -> None:
+        from .model import sosrun  # noqa: PLC0415
+
+        run = self.sos.run
+        want = (run.id, sosrun.summary(run.routes)) if run is not None and run.test and run.active else None
+        if want == self._note_shown:
+            return
+        self._note_sent_at = time.monotonic()
+        if want is None:
+            if NOTIFY:
+                self.withdraw_notification("alarm-test")
+            trace.event("notification", id="alarm-test", withdrawn=True)
+        else:
+            note = Gio.Notification.new("Alarm test running")
+            note.set_body(want[1])
+            note.set_default_action("app.open-sos")
+            note.add_button("Stop test", "app.stop-test")
+            note.set_priority(Gio.NotificationPriority.HIGH)
+            if NOTIFY:
+                self.send_notification("alarm-test", note)
+            trace.event("notification", id="alarm-test", title="Alarm test running", body=want[1], buttons=["Stop test"], default="app.open-sos")
+        self._note_shown = want
 
     def show_node_banner(self, s: api.State) -> None:
         """NodeLinkBanner: once a node was ever chosen, while the mesh is down or the node's

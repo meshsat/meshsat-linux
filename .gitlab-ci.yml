@@ -54,5 +54,6 @@ install-amd64:
     - PYTHONPATH=/usr/lib/meshsat/app python3 -c 'import meshsat.api, meshsat.model.words, meshsat.model.crypto, meshsat.routes; print("modules import")'
     - PYTHONPATH=/usr/lib/meshsat/app python3 -c 'from meshsat.model import crypto; k = "00" * 32; assert crypto.decrypt_from_base64(crypto.encrypt_to_base64("x", k), k) == "x"; print("AES-256-GCM works")'
     - /usr/bin/meshsat --version || true
-    - systemd-analyze verify /lib/systemd/system/meshsat-bridge.service /lib/systemd/system/meshsat-hardware.service || true
+    - systemd-analyze verify /lib/systemd/system/meshsat-bridge.service /lib/systemd/system/meshsat-hardware.service /lib/systemd/system/meshsat-share.service || true
+    - test "$(/usr/lib/meshsat/bin/meshsat-share status)" = local
     - dpkg -L meshsat | wc -l
