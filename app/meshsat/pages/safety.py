@@ -234,6 +234,10 @@ class SafetyScreen(SubScreen):
         seen = self.app.prefs.get(words_of_home.MODEM_SEEN, "")
         anywhere = words_of_home.reach(s, seen)["anywhere"]
         self.reach.set_text(words_of_home.reach_sentence(s, seen))
+        # The name an SOS carries when this one is left empty: the Hub callsign (SosScreens.kt:502).
+        placeholder = sos.name_placeholder(s.hub_callsign())
+        if self.name.entry.get_placeholder_text() != placeholder:
+            self.name.entry.set_placeholder_text(placeholder)
         can_sms = bool((s.cellular or {}).get("connected")) and bool(s.bridge)
         reason = s.sms_reason()
         for w in (self.contacts_title, self.contacts_note, self.contact_rows):

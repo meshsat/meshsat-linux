@@ -1,10 +1,11 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """One SOS, or one test of the alarm, and where each of its routes stands (sos/SosRun.kt,
 SosProgress). On this edition the Bridge carries the mesh, satellite and Hub legs of a real
-SOS itself (one call starts them all, and it keeps trying); the app sends the SMS legs from
-the phone's SIM through the Bridge's SMS gateway, and an alarm test route by route. The run
-is kept in the app's preferences, so the banner, the result screen and the cancellation
-survive a restart."""
+SOS itself (one call starts them all; each leg waits while its link is down and goes out when
+it is back, until the SOS is cancelled: GET /api/sos/status lists them); the app sends the SMS
+legs from the phone's SIM through the Bridge's SMS gateway, and an alarm test route by route.
+The run is kept in the app's preferences, so the banner, the result screen and the
+cancellation survive a restart."""
 import time
 
 from . import home, words
@@ -101,18 +102,29 @@ def cancel_words(state: str | None) -> str:
     return {SENT: "sent", SENDING: "sending", WAITING: "waiting to send", STOPPED: "stopped", FAILED: "failed"}.get(state or "", "")
 
 
-def plan(s, test: bool, contacts_reach: bool) -> tuple:
-    """The routes an SOS or a test takes from this phone right now, and the ones it cannot:
-    (routes, skipped), in Android's words (SosController.start)."""
+# The Bridge's names for the routes it carries (POST /api/sos/activate "routes", the legs of
+# GET /api/sos/status), and back.
+BRIDGE_ROUTE = {"sat": "satellite", "mesh": "mesh", "hub": "hub"}
+APP_ROUTE = {bridge: app for app, bridge in BRIDGE_ROUTE.items()}
+
+
+def plan(s, test: bool, contacts_reach: bool, modem_seen: str = "") -> tuple:
+    """The routes an SOS or a test takes from this phone, and the ones it cannot: (routes,
+    skipped), in Android's words (SosController.start). The routes are every route set up
+    (home.reach, as the SOS card promised them), not only the ones up this minute: the
+    satellite once the phone has had a modem (`modem_seen`), the mesh once a node is paired or
+    started; a leg on a route that is down waits in the Bridge's queue and goes when it is back
+    (the owner's decision on MESHSAT-1446)."""
     routes, skipped = [], []
     if not s.bridge:
         skipped.append("The Bridge is not running on this phone, so nothing could be queued. Start it under Setup, Your MeshSat node.")
         return routes, skipped
-    if s.modem_connected():
+    reach = home.reach(s, modem_seen)
+    if reach["satellite"]:
         routes.append(Route("sat", "Satellite, to the Hub"))
     else:
         skipped.append("Satellite: no satellite modem has been connected to this phone yet.")
-    if s.mesh_connected():
+    if reach["mesh"]:
         routes.append(Route("mesh", "Mesh, everyone in range"))
     else:
         skipped.append("Mesh: no mesh radio is paired with this phone." if s.node_mode() == "bluetooth" else "Mesh: the node is not connected.")
@@ -124,11 +136,38 @@ def plan(s, test: bool, contacts_reach: bool) -> tuple:
         for c in s.contacts:
             who = c.get("name") or c["phone"]
             routes.append(Route("sms:" + c["phone"], f"SMS to {who}"))
-    if s.hub_configured():
+    if reach["hub"]:
         routes.append(Route("hub", HUB_LABEL, WAITING, "Waiting for the Hub connection"))
     else:
         skipped.append("Hub: not set up on this phone.")
     return routes, skipped
+
+
+def state_of_leg(leg: dict) -> tuple:
+    """(state, detail) of a leg the Bridge carries (GET /api/sos/status legs): one waiting for
+    its link (a satellite modem not there yet, the Hub's link down), one the Bridge could not
+    queue, the Hub told, or its delivery's state in the queue (state_of_delivery)."""
+    status = leg.get("status")
+    if status == "waiting":
+        return WAITING, "Waiting for the Hub connection" if leg.get("route") == "hub" else "Waiting to send"
+    if status == "failed":
+        return FAILED, str(leg.get("error") or "").strip() or NOT_QUEUED
+    if leg.get("route") == "hub":
+        return (SENT, "Sent") if status == "sent" else (WAITING, "Waiting for the Hub connection")
+    delivery = {"status": status, "last_error": leg.get("last_error") or "", "ack_status": leg.get("ack_status"), "channel": leg.get("interface") or ""}
+    return state_of_delivery(delivery), detail_of_delivery(delivery)
+
+
+def skipped_reason(skipped: list, key: str) -> str | None:
+    """Why the Bridge does not carry the app's route `key`, from its "skipped" list ("Mesh:
+    the mesh link is switched off in Links." gives "The mesh link is switched off in Links.")."""
+    prefix = {"sat": "Satellite:", "mesh": "Mesh:", "hub": "Hub:"}.get(key)
+    for line in skipped or []:
+        line = str(line)
+        if prefix and line.startswith(prefix):
+            rest = line[len(prefix):].strip()
+            return rest[:1].upper() + rest[1:] if rest else None
+    return None
 
 
 def state_of_delivery(d: dict) -> str:

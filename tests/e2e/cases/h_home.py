@@ -18,6 +18,12 @@ def settle(ctx) -> None:
     ctx.app.open("home")
     ctx.app.refresh()
     ctx.tree.wait_text("Messages can go out by mesh.", timeout=10)
+    if ctx.tree.has_text("SOS is on. Tap to see where it went, or to cancel."):
+        # an SOS a failed case left on: cancelled, so this case starts from no SOS
+        ctx.tree.click("Cancel SOS")
+        ctx.tree.wait_text("Cancel the SOS?")
+        ctx.tree.click_in_dialog("Cancel SOS")
+        ctx.tree.find("button", name="Hold 3 seconds for SOS", timeout=15)
 
 
 def case_sentence_and_lanes_follow_the_bridge(ctx):
@@ -76,6 +82,8 @@ def case_sos_confirmed_activates_and_can_be_cancelled(ctx):
     sent = ctx.bridge.wait_request("POST", "/api/sos/activate", since=before)
     assert sent["body"]["trigger"] == "hold", sent
     assert sent["body"]["message"].startswith("SOS: A MeshSat user needs help."), sent["body"]["message"]
+    # Every route set up (MESHSAT-1446): the lanes case showed a modem, so this phone has had one
+    assert sent["body"]["routes"] in (["mesh"], ["satellite", "mesh"]), sent["body"]
     ctx.tree.wait_text("SOS is on since", timeout=10)
     ctx.tree.wait_text("SOS is on. Tap to see where it went, or to cancel.")
     ctx.shot("sos-on")

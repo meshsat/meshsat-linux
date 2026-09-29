@@ -41,7 +41,7 @@
    "linux": "__main__.py:on_state",
    "modes": "both",
    "state": "verified",
-   "test": "h_sos::sos_screen_shows_where_it_went_and_the_cancellation",
+   "test": "h_sos_screen::sos_screen_shows_where_it_went_and_the_cancellation",
    "capture": "home",
    "note": "SOS and alarm test words"
   },
@@ -635,7 +635,7 @@
    "linux": "pages/sos.py:SosScreen",
    "modes": "both",
    "state": "verified",
-   "test": "h_sos::sos_screen_shows_where_it_went_and_the_cancellation",
+   "test": "h_sos_screen::sos_screen_shows_where_it_went_and_the_cancellation",
    "capture": "sos",
    "note": ""
   },
@@ -1086,9 +1086,9 @@
    "linux": "model/sosrun.py, sosflow.py",
    "modes": "both",
    "state": "verified",
-   "test": "FlowTest.test_a_test_goes_route_by_route_and_tells_the_hub",
+   "test": "h_sos_routes::b_an_sos_takes_the_modem_this_phone_has_had",
    "capture": "source",
-   "note": "the Bridge carries the mesh, satellite and Hub legs of a real SOS; the app the SMS legs and the test"
+   "note": "every route that is set up (the SOS card's reach rule), as SosController; the Bridge carries the mesh, satellite and Hub legs, each waiting in its queue for its link (MESHSAT-1447); the app the SMS legs and the test; a blank name takes the Hub callsign"
   },
   {
    "id": "deliveries.details",
