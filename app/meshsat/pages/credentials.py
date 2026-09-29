@@ -8,6 +8,7 @@ import os
 from gi.repository import Gtk
 
 from .. import api, files, theme
+from ..layout import centred
 from ..model import credentials as model
 from ..screen import SubScreen
 from ..widgets import Card, clear, confirm, icon, icon_button, text, tone_colour
@@ -54,11 +55,12 @@ class CredentialsScreen(SubScreen):
         self._key = key
         clear(self.list)
         if not self.credentials:
+            # Box(weight(1f), Alignment.Center): the two lines in the middle of the room under
+            # Import PEM
             empty = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(4))
-            empty.set_margin_top(theme.dp(48))
             empty.append(text(model.EMPTY[0], "title-medium", theme.TEXT_MUTED, xalign=0.5))
             empty.append(text(model.EMPTY[1], "body-small", theme.TEXT_MUTED, xalign=0.5))
-            self.list.append(empty)
+            self.list.append(centred(empty))
             return
         for cred in self.credentials:
             self.list.append(self.card(cred))

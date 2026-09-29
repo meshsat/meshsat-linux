@@ -36,6 +36,11 @@
   </recommends>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="1.0.0" date="2026-09-29">
+      <description>
+        <p>Every screen of MeshSat Android, in its words, proven on the phone. The SOS and the alarm test follow every route through the Bridge's queue, up to "Sent, and the Hub has it" and "Delivered to their phone"; the alarm test's satellite route is a position report to the Hub; an SOS by satellite is no longer held back by the credit budget. The Bridge, the node's API and Meshtastic's web client answer this device only, unless "Share the Bridge on this network" is switched on in Diagnostics. The node page, the notifications, the tray, the quick-settings tile and the lock-screen widget are tested as the rest.</p>
+      </description>
+    </release>
     <release version="0.12.0" date="2026-09-29">
       <description>
         <p>Home as MeshSat Android's: Getting started with Hide, Arrange Home, and the cards for the message queue, the phone's position, the satellite signal and passes, the mobile signal, the satellite mailbox and the recent messages. A welcome at the first start, About, People with your own node, the node banner that says when Bluetooth is off, the Satellite page in Android's words, and a chat's own encryption key. An SOS text to an emergency contact now always goes out as written.</p>

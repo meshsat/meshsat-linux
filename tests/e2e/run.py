@@ -105,13 +105,17 @@ def run_module(path: str, args, report: Report) -> None:
         app = App(work, url, app_dir=args.app_dir, hardware=hardware, units=units, poll=getattr(module, "POLL", 4.0 if tier == "l" else 2.0),
                   env={k: str(v).replace("{bridge}", url).replace("{work}", work) for k, v in (getattr(module, "ENV", None) or {}).items()},
                   prefs=getattr(module, "PREFS", None)).start()
-        if getattr(module, "NOTIFIER", False):
+        if getattr(module, "NOTIFIER", False) or getattr(module, "NOTIFICATIONS", False):
+            # The stand-in notification daemon; NOTIFICATIONS alone: the app's own notifications, no notifier.
             from driver.notifications import NotificationDaemon  # noqa: PLC0415
 
             notifications = NotificationDaemon().start()
+        if getattr(module, "NOTIFIER", False):
             import subprocess  # noqa: PLC0415
 
-            notifier = subprocess.Popen(["python3", "-m", "meshsat.notify"], env=app.environment(), stdout=subprocess.DEVNULL, stderr=open(os.path.join(work, "notify.stderr"), "w", encoding="utf-8"), cwd=work)
+            # Its GSettings stay in memory: in this private session a write would reach the
+            # person's own dconf database (the private bus starts dconf-service with their HOME).
+            notifier = subprocess.Popen(["python3", "-m", "meshsat.notify"], env=dict(app.environment(), GSETTINGS_BACKEND="memory"), stdout=subprocess.DEVNULL, stderr=open(os.path.join(work, "notify.stderr"), "w", encoding="utf-8"), cwd=work)
             time.sleep(3)
     except Exception as error:  # noqa: BLE001
         for case_name, _fn in cases:

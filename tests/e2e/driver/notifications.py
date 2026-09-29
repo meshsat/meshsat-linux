@@ -44,7 +44,11 @@ class NotificationDaemon:
         self.closed = []
         self.next_id = 1
         self.lock = threading.Lock()
-        self.loop = GLib.MainLoop()
+        # Its own main context and its own bus connection: the runner's shared session connection
+        # and default context belong to its main thread (AT-SPI), and a second daemon in the same
+        # run could not register on a shared connection the first one never let go of.
+        self.context = GLib.MainContext.new()
+        self.loop = GLib.MainLoop.new(self.context, False)
         self.bus = None
         self.registration = None
         self.owner = None
@@ -58,11 +62,25 @@ class NotificationDaemon:
         return self
 
     def _run(self) -> None:
-        self.bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
-        node = Gio.DBusNodeInfo.new_for_xml(INTROSPECTION)
-        self.registration = self.bus.register_object("/org/freedesktop/Notifications", node.interfaces[0], self._call, None, None)
-        self.owner = Gio.bus_own_name_on_connection(self.bus, "org.freedesktop.Notifications", Gio.BusNameOwnerFlags.REPLACE, lambda *_: self.ready.set(), None)
-        self.loop.run()
+        self.context.push_thread_default()
+        try:
+            address = Gio.dbus_address_get_for_bus_sync(Gio.BusType.SESSION, None)
+            self.bus = Gio.DBusConnection.new_for_address_sync(
+                address, Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT | Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION, None, None)
+            node = Gio.DBusNodeInfo.new_for_xml(INTROSPECTION)
+            self.registration = self.bus.register_object("/org/freedesktop/Notifications", node.interfaces[0], self._call, None, None)
+            self.owner = Gio.bus_own_name_on_connection(self.bus, "org.freedesktop.Notifications",
+                                                        Gio.BusNameOwnerFlags.REPLACE | Gio.BusNameOwnerFlags.ALLOW_REPLACEMENT, lambda *_: self.ready.set(), None)
+            self.loop.run()
+        finally:
+            # Let the name and the object go, so the next module's daemon gets them
+            if self.owner is not None:
+                Gio.bus_unown_name(self.owner)
+            if self.bus is not None:
+                if self.registration:
+                    self.bus.unregister_object(self.registration)
+                self.bus.close_sync(None)
+            self.context.pop_thread_default()
 
     def _call(self, connection, sender, path, interface, method, parameters, invocation) -> None:
         if method == "Notify":
@@ -98,3 +116,4 @@ class NotificationDaemon:
 
     def stop(self) -> None:
         self.loop.quit()
+        self.thread.join(5)

@@ -47,7 +47,8 @@
   "You can change any of these later in Android's settings for MeshSat.": "names Android's settings; Linux says the phone's (ledger row welcome)"
  },
  "app/src/main/java/net/meshsat/android/sos/SosMessages.kt": {
-  "%.5f, %.5f": "a Kotlin format string: the Linux app writes the same text with Python's formatting and Kotlin's half-up rounding (model/dashboard.py:half_up)"
+  "%.5f, %.5f": "a Kotlin format string: the Linux app writes the same text with Python's formatting and Kotlin's half-up rounding (model/dashboard.py:half_up)",
+  ", position unknown": "the text inside the satellite SOS frame to the Hub (frameMessage): the Bridge builds its frame from the burst's message, the mesh text, which says \"Position unknown.\" itself; no screen shows it"
  },
  "app/src/main/java/net/meshsat/android/ui/screens/PassPredictorScreen.kt": {
   "No orbit data. Tap Refresh TLEs when online.": "Android names a button it does not have (its button says Update); the Linux app says \"Tap Update\"",
@@ -91,7 +92,8 @@
   "; skipped": "a line in Android's log, not shown",
   "SMS is not allowed yet: allow it in Setup, SMS, and the messages go out.": "Android's permission flow (approved exclusion: Linux asks no permission for SMS; a SIM that cannot send is said in the SMS lane's words)",
   "Satellite: could not be queued.": "Android queues each leg itself and lists a refused one as skipped; the Linux app queues through the Bridge after planning, so a refused leg stays on its route as SosRun.kt's 'Could not be queued'",
-  "Mesh: could not be queued.": "Android queues each leg itself and lists a refused one as skipped; the Linux app queues through the Bridge after planning, so a refused leg stays on its route as SosRun.kt's 'Could not be queued'"
+  "Mesh: could not be queued.": "Android queues each leg itself and lists a refused one as skipped; the Linux app queues through the Bridge after planning, so a refused leg stays on its route as SosRun.kt's 'Could not be queued'",
+  "Alarm test: position report to the Hub": "the queue row's preview of the alarm test's satellite leg: the Bridge writes it on the row it queues since MESHSAT-1430, and the Message queue shows it from there"
  },
  "app/src/main/java/net/meshsat/android/ui/screens/GeofenceScreen.kt": {
   "%.1f km": "a Kotlin format string; the Linux app writes the same text, half-up rounded (model/geofence.py:format_distance)"

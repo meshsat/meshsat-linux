@@ -8,10 +8,11 @@ import urllib.parse
 from gi.repository import Gtk
 
 from .. import api, files, theme
+from ..layout import empty_text, flow_row
 from ..model import audit as model
 from ..model import words
 from ..screen import SubScreen
-from ..widgets import Card, clear, dot, filled_button, hscroll, name_widget, outlined_button, text, tone_colour
+from ..widgets import Card, clear, dot, filled_button, name_widget, outlined_button, text, tone_colour
 
 
 class AuditScreen(SubScreen):
@@ -42,8 +43,14 @@ class AuditScreen(SubScreen):
         self.key_button.set_visible(False)
         top.append(self.key_button)
         self.column.append(top)
-        self.chip_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(6))
-        self.column.append(hscroll(self.chip_row))
+        # AuditScreen.kt:290: Spacer(4.dp), FlowRow(spacedBy(6.dp)) of FilterChips, Spacer(8.dp):
+        # every link on screen, the chips wrapping onto more lines. Material's 48 dp touch height
+        # round a 32 dp chip adds 8 dp above the first line and 8 dp under the last: above, 4 + 8
+        # less the column's own 8 dp spacing; under, those 8.
+        self.chip_row = flow_row(6, 16)
+        self.chip_row.set_margin_top(theme.dp(4))
+        self.chip_row.set_margin_bottom(theme.dp(8))
+        self.column.append(self.chip_row)
         actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
         self.check_button = outlined_button(model.CHECK, self.check_log)
         self.check_button.set_visible(False)
@@ -117,6 +124,7 @@ class AuditScreen(SubScreen):
                 inner.append(dot(words.channel_lane(link), 8))
             inner.append(text(name, "label-large"))
             chip.set_child(inner)
+            chip.set_halign(Gtk.Align.START)  # its own width, also in a Gtk.FlowBox's column
             chip.connect("clicked", lambda _b, l=link: self.set_link(l))
             self.chip_row.append(chip)
 
@@ -210,10 +218,8 @@ class AuditScreen(SubScreen):
         self._key = key
         clear(self.list)
         if not self.entries:
-            empty = text(model.empty_text(self.link is not None), "body-medium", theme.TEXT_MUTED, xalign=0.5, wrap=True)
-            empty.set_justify(Gtk.Justification.CENTER)
-            empty.set_margin_top(theme.dp(48))
-            self.list.append(empty)
+            # Box(weight(1f), Alignment.Center): in the middle of the room under the buttons
+            self.list.append(empty_text(model.empty_text(self.link is not None)))
             return
         for entry in self.entries:
             self.list.append(self.card(entry, now))

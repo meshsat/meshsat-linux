@@ -7,6 +7,7 @@ import time
 from gi.repository import Gtk
 
 from . import api, theme
+from .layout import centred
 from .model import nodes as node_words
 from .model import words
 from .pages.cards import CardsSection
@@ -40,8 +41,9 @@ class PeopleScreen(Gtk.Box):
         column.append(carry)
 
         # Silence is not evidence of an empty mesh: a node only shows up once it transmits.
-        self.empty = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(12))
-        self.empty.set_margin_top(theme.dp(16))
+        # PeersScreen.kt:142-173: Box(fillMaxSize, padding(top = 16.dp), Alignment.Center), the
+        # block in the middle of the room under the cards; the table, hidden then, takes none.
+        self.empty = centred(Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(12)), top=theme.dp(16))
         self.empty.set_margin_start(theme.dp(32))
         self.empty.set_margin_end(theme.dp(32))
         self.empty_title = text("Nobody heard yet.", "title-medium", xalign=0.5)

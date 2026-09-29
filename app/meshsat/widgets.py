@@ -2,6 +2,7 @@
 """The pieces every screen is built from, each the Android counterpart by name and measure
 (the iOS app draws the same ones by hand): the status strip, the banners, the wordmark, the
 lane rows, cards, NavRows, chips, the bottom navigation, sub-screen headers, buttons."""
+import math
 import os
 import time
 
@@ -587,19 +588,123 @@ def ago(ts) -> str:
 # The building blocks the settings screens are made of, each after its Android counterpart.
 
 
+# Material 3's OutlinedTextField (OutlinedTextField.kt, TextFieldImpl.kt), in dp.
+FIELD_TOP = 8  # room above the outline for the upper half of the floating label (OutlinedTextFieldTopPadding)
+FIELD_INSET = 16  # where the text, the label and the supporting line start and end (TextFieldPadding)
+FIELD_GAP = 4  # how far the outline stays open either side of the floating label
+FIELD_RADIUS = 4  # MaterialTheme.shapes.extraSmall
+
+
+class _Outline:
+    """The box Field and PickerField share, Material 3's OutlinedTextField: `control` (the entry,
+    or the picker's button) FIELD_TOP dp down in an overlay and see-through; over it the outline,
+    1 dp in Outline (2 dp in Signal Orange while focused, red on an error, white at 12 % when
+    disabled) with 4 dp corners; and the label: where the text goes, in bodyLarge, while the
+    field rests (empty and unfocused), and on the top edge in 12 sp once it is focused or filled,
+    in a gap the outline leaves open for it. The label's colour and size are theme.py's
+    (.field-box .field-label); the outline is drawn here, so its gap shows whatever lies behind
+    the field, a card or a dialog or the page."""
+
+    def __init__(self, control: Gtk.Widget, label: str):
+        self.state = None
+        self.box = Gtk.Overlay()
+        self.box.add_css_class("field-box")
+        control.set_margin_top(theme.dp(FIELD_TOP))
+        self.box.set_child(control)
+        self.area = Gtk.DrawingArea(accessible_role=Gtk.AccessibleRole.PRESENTATION)
+        self.area.set_can_target(False)
+        self.area.set_draw_func(self.draw)
+        self.box.add_overlay(self.area)
+        # The label never takes a tap: a finger on it reaches the entry (or the picker) under it.
+        self.label = Gtk.Label(label=label, xalign=0.0)
+        self.label.add_css_class("field-label")
+        self.label.set_can_target(False)
+        self.label.set_wrap_mode(Pango.WrapMode.WORD_CHAR)
+        self.label.set_margin_start(theme.dp(FIELD_INSET))
+        self.label.set_margin_end(theme.dp(FIELD_INSET))
+        self.box.add_overlay(self.label)
+        # A resting label too long for one line makes the box taller, as Android's does.
+        self.box.set_measure_overlay(self.label, True)
+        # New words make the label wider or narrower: the gap in the outline follows.
+        self.label.connect("notify::label", lambda *_: self.area.queue_draw())
+
+    def paint(self, focused: bool, disabled: bool, error: bool, floating: bool) -> None:
+        state = (focused and not disabled, disabled, error, floating)
+        if state == self.state:
+            return
+        self.state = state
+        for name, on in zip(("focused", "disabled", "error"), state):
+            (self.box.add_css_class if on else self.box.remove_css_class)(name)
+        (self.box.remove_css_class if floating else self.box.add_css_class)("resting")
+        label = self.label
+        if floating:  # one line on the top edge, its middle on the outline
+            label.set_wrap(False)
+            label.set_ellipsize(Pango.EllipsizeMode.END)
+            label.set_halign(Gtk.Align.START)
+            label.set_valign(Gtk.Align.START)
+            label.set_margin_top(0)
+            label.set_margin_bottom(0)
+        else:  # where the text goes, FIELD_INSET dp in from the outline on every side
+            label.set_ellipsize(Pango.EllipsizeMode.NONE)
+            label.set_wrap(True)
+            label.set_halign(Gtk.Align.FILL)
+            label.set_valign(Gtk.Align.CENTER)
+            label.set_margin_top(theme.dp(FIELD_TOP) + theme.dp(FIELD_INSET))
+            label.set_margin_bottom(theme.dp(FIELD_INSET))
+        self.area.queue_draw()
+
+    def draw(self, area, cr, width: int, height: int) -> None:
+        focused, disabled, error, floating = self.state or (False, False, False, False)
+        rgba = Gdk.RGBA()
+        rgba.parse(theme.TEXT_PRIMARY if disabled else theme.RED if error else theme.SIGNAL_ORANGE if focused else theme.OUTLINE)
+        cr.set_source_rgba(rgba.red, rgba.green, rgba.blue, 0.12 if disabled else 1.0)
+        line = 2.0 if focused else 1.0
+        half = line / 2  # the stroke's middle, so a 1 px line covers whole pixels
+        x0, y0, x1, y1 = half, theme.dp(FIELD_TOP) + half, width - half, height - half
+        if x1 <= x0 or y1 <= y0:
+            return
+        r = max(0.0, min(theme.dp(FIELD_RADIUS) - half, (x1 - x0) / 2, (y1 - y0) / 2))
+        gap = None
+        if floating and self.label.get_label():
+            ok, bounds = self.label.compute_bounds(area)
+            if ok and bounds.get_width() > 0:
+                start = max(x0 + r, bounds.get_x() - theme.dp(FIELD_GAP))
+                end = min(x1 - r, bounds.get_x() + bounds.get_width() + theme.dp(FIELD_GAP))
+                gap = (start, end) if end > start else None
+        cr.set_line_width(line)
+        cr.new_path()
+        cr.move_to(gap[1] if gap else x0 + r, y0)
+        cr.line_to(x1 - r, y0)
+        cr.arc(x1 - r, y0 + r, r, -math.pi / 2, 0)
+        cr.line_to(x1, y1 - r)
+        cr.arc(x1 - r, y1 - r, r, 0, math.pi / 2)
+        cr.line_to(x0 + r, y1)
+        cr.arc(x0 + r, y1 - r, r, math.pi / 2, math.pi)
+        cr.line_to(x0, y0 + r)
+        cr.arc(x0 + r, y0 + r, r, math.pi, 1.5 * math.pi)
+        if gap:
+            cr.line_to(gap[0], y0)
+        else:
+            cr.close_path()
+        cr.stroke()
+
+
 class Field(Gtk.Box):
-    """A text field as Android's OutlinedTextField: the label above, the entry, a helper or an
-    error line under it, and a counter when there is a limit. The entry's accessible name is
-    the label."""
+    """A text field as Android's OutlinedTextField (see _Outline): the box see-through with a
+    1 dp outline, the label inside it while the field is empty and unfocused and on its top edge
+    once it is focused or filled, the placeholder only while it is focused and empty; then, 16 dp
+    in, a helper or an error line and a counter when there is a limit (supportingText). The
+    entry's accessible name is the label; `label` is the label's Gtk.Label, `entry` the
+    Gtk.Entry (the pages set its visibility, sensitivity, limit and placeholder directly, and the
+    box follows)."""
 
     def __init__(self, label: str, placeholder: str = "", helper: str = "", max_length: int = 0, purpose=None, mono: bool = False, on_change=None):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(4))
         self.label_text = label
         self.max_length = max_length
-        self.label = text(label, "label-medium", theme.TEXT_SECONDARY)
-        self.append(self.label)
         self.entry = Gtk.Entry(placeholder_text=placeholder)
         self.entry.add_css_class("field")
+        self.entry.add_css_class("field-input")
         if mono:
             self.entry.add_css_class("mono")
         if purpose is not None:
@@ -607,24 +712,41 @@ class Field(Gtk.Box):
         if max_length:
             self.entry.set_max_length(max_length)
         name_widget(self.entry, label)
-        self.append(self.entry)
-        under = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
+        self.outline = _Outline(self.entry, label)
+        self.box, self.label = self.outline.box, self.outline.label
+        self.append(self.box)
+        self.under = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
+        self.under.set_margin_start(theme.dp(FIELD_INSET))
+        self.under.set_margin_end(theme.dp(FIELD_INSET))
         self.helper_text = helper
         self.helper = text(helper, "body-small", theme.TEXT_SECONDARY, wrap=True)
         self.helper.set_hexpand(True)
         self.helper.set_visible(bool(helper))
-        under.append(self.helper)
+        self.under.append(self.helper)
         self.counter = text("", "body-small", theme.TEXT_SECONDARY, xalign=1.0, mono=True)
         self.counter.set_visible(bool(max_length))
-        under.append(self.counter)
-        self.append(under)
+        self.under.append(self.counter)
+        self.append(self.under)
+        # With neither line showing, nothing sits under the box (not even the 4 dp between).
+        for part in (self.helper, self.counter):
+            part.connect("notify::visible", lambda *_: self.under.set_visible(self.helper.get_visible() or self.counter.get_visible()))
+        self.under.set_visible(self.helper.get_visible() or self.counter.get_visible())
         self.entry.connect("changed", self._changed)
+        # Focus (FOCUS_WITHIN: the entry's own text has the focus) and sensitivity, the entry's or
+        # a parent's, both arrive as state flags.
+        self.entry.connect("state-flags-changed", lambda *_: self._paint())
         self.on_change = on_change
         self._changed(self.entry)
+
+    def _paint(self) -> None:
+        flags = self.entry.get_state_flags()
+        focused = bool(flags & Gtk.StateFlags.FOCUS_WITHIN)
+        self.outline.paint(focused, bool(flags & Gtk.StateFlags.INSENSITIVE), self.entry.has_css_class("error"), focused or bool(self.entry.get_text()))
 
     def _changed(self, entry) -> None:
         if self.max_length:
             self.counter.set_text(f"{len(entry.get_text())}/{self.max_length}")
+        self._paint()
         if self.on_change is not None:
             self.on_change(entry.get_text())
 
@@ -637,7 +759,8 @@ class Field(Gtk.Box):
             self.entry.set_text(value or "")
 
     def set_error(self, message: str | None) -> None:
-        """An error line in red under the field, or the helper back."""
+        """An error line in red under the field, the outline and the label red too; or the
+        helper back."""
         if message:
             self.helper.set_text(message)
             paint(self.helper, theme.RED)
@@ -648,6 +771,7 @@ class Field(Gtk.Box):
             paint(self.helper, theme.TEXT_SECONDARY)
             self.helper.set_visible(bool(self.helper_text))
             self.entry.remove_css_class("error")
+        self._paint()
 
     def set_helper(self, message: str) -> None:
         self.helper_text = message
@@ -799,58 +923,149 @@ class SliderRow(Gtk.Box):
             self._quiet = False
 
 
+# Material 3's AlertDialog on the reference phone, in dp: the card is 280 to 320 wide (the
+# Pixel's dialog window: 320 dp for anything with a line of text to wrap), 24 inside, the title
+# 16 above the text, the text 24 above the answers, the answers 8 apart, 12 between two lines.
+DIALOG_MIN_WIDTH = 280
+DIALOG_WIDTH = 320
+
+
+def dismiss_on_outside_tap(dialog: Adw.Dialog, content: Gtk.Widget) -> None:
+    """Android's onDismissRequest for a tap on the scrim: `dialog` closes, as it does on Escape,
+    when a tap both starts and ends outside `content`. libadwaita's floating dialogs ignore that
+    tap (their dimming is a window handle that does nothing with one press)."""
+    tap = Gtk.GestureClick()
+    began_outside = [False]
+
+    def outside(x: float, y: float) -> bool:
+        ok, bounds = content.compute_bounds(dialog)
+        return bool(ok) and not bounds.contains_point(Graphene.Point.alloc().init(x, y))
+
+    def pressed(_gesture, _n, x, y) -> None:
+        began_outside[0] = outside(x, y)
+
+    def released(_gesture, _n, x, y) -> None:
+        if began_outside[0] and outside(x, y):
+            began_outside[0] = False
+            dialog.close()
+
+    tap.connect("pressed", pressed)
+    tap.connect("released", released)
+    dialog.add_controller(tap)
+
+
+def _answer_row() -> Gtk.Widget:
+    """An AlertDialog's answers (its AlertDialogFlowRow): at the end of the line, 8 dp apart, the
+    ones that do not fit on a line 12 dp lower. Adw.WrapBox (libadwaita 1.7) wraps as Compose's
+    row does; before 1.7 a plain row at the end."""
+    if hasattr(Adw, "WrapBox"):
+        return Adw.WrapBox(child_spacing=theme.dp(8), line_spacing=theme.dp(12), align=1.0)
+    row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
+    row.set_halign(Gtk.Align.END)
+    return row
+
+
 class Sheet:
-    """A bottom sheet or dialog on the window, as Android's ModalBottomSheet and AlertDialog:
-    a title, a body to fill, and a row of text buttons. `present()` shows it."""
+    """A dialog as Android's AlertDialog, which every dialog built on this is on Android (only the
+    node's sheet, NodeDetailSheet.kt, is a bottom sheet there, and it is not built on this): a
+    card in the middle of the screen, DIALOG_MIN_WIDTH to DIALOG_WIDTH dp wide with 16 dp corners,
+    over a 60 % black scrim that leaves the screen readable (theme.py); 24 dp inside, the title in
+    headlineSmall, then `body` for the caller to fill, which scrolls when the window is too short
+    for it, then the answers at the bottom right (`button()`).
+
+    It follows its content: a body that grows after present() (a card that arrives, details
+    shown) makes it taller, up to the window. A tap on the scrim closes it, as Escape does, and
+    the focus starts on its first answer, so no text field takes the focus (and the keyboard)
+    before the person does. `present()` shows it. `width` is kept for the callers; Android's
+    dialogs are all as wide as the phone's dialog window."""
 
     def __init__(self, app, title: str, width: int = 360):
         self.app = app
-        self.dialog = Adw.Dialog(title=title, content_width=width)
-        self.box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(12))
-        self.box.add_css_class("sheet")
-        self.box.append(text(title, "dialog-title", wrap=True))
+        self.dialog = Adw.Dialog(title=title, follows_content_size=True)
+        self.dialog.set_presentation_mode(Adw.DialogPresentationMode.FLOATING)
+        self.box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self.box.add_css_class("dialog-card")
+        self.box.set_size_request(theme.dp(DIALOG_MIN_WIDTH), -1)
+        self.heading = text(title, "dialog-title", wrap=True)
+        self.heading.set_margin_bottom(theme.dp(16))
+        self.box.append(self.heading)
         self.body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(12))
-        self.box.append(self.body)
-        self.buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
-        self.buttons.set_halign(Gtk.Align.END)
+        # The card never outgrows the window: past it, the body scrolls between the title and the
+        # answers (a body that has its own scroller, a list, gives up its height first).
+        scroll = Gtk.ScrolledWindow(propagate_natural_width=True, propagate_natural_height=True, hscrollbar_policy=Gtk.PolicyType.NEVER)
+        scroll.set_child(self.body)
+        self.box.append(scroll)
+        self.buttons = _answer_row()
+        self.buttons.set_margin_top(theme.dp(24))
         self.box.append(self.buttons)
-        self.dialog.set_child(self.box)
+        # DIALOG_WIDTH at most, whatever the natural width of a long line of text inside.
+        clamp = Adw.Clamp(maximum_size=theme.dp(DIALOG_WIDTH), tightening_threshold=theme.dp(DIALOG_WIDTH), unit=Adw.LengthUnit.PX)
+        clamp.set_child(self.box)
+        self.dialog.set_child(clamp)
+        dismiss_on_outside_tap(self.dialog, clamp)
 
     def button(self, label: str, on_click, kind: str = "text") -> Gtk.Button:
         maker = {"text": text_button, "filled": filled_button, "outlined": outlined_button}[kind]
         button = maker(label, on_click) if kind != "filled" else filled_button(label, on_click, expand=False)
+        button.add_css_class("dialog-button")
         self.buttons.append(button)
         return button
 
     def present(self) -> None:
+        if self.dialog.get_focus() is None:
+            child = self.buttons.get_first_child()
+            while child is not None and not (child.get_visible() and child.get_focusable()):
+                child = child.get_next_sibling()
+            if child is not None:
+                self.dialog.set_focus(child)
         self.dialog.present(self.app.window)
 
     def close(self) -> None:
         self.dialog.close()
 
 
-def confirm(app, title: str, body: str, ok: str, on_ok, cancel: str = "Cancel", danger: bool = False, on_cancel=None) -> Adw.AlertDialog:
-    """A question with two answers, as Android's AlertDialog. Its buttons carry their words,
-    so a screen reader and the tests answer it by name."""
-    dialog = Adw.AlertDialog(heading=title, body=body)
-    dialog.add_response("cancel", cancel)
-    dialog.add_response("ok", ok)
-    if danger:
-        dialog.set_response_appearance("ok", Adw.ResponseAppearance.DESTRUCTIVE)
+def confirm(app, title: str, body: str, ok: str, on_ok, cancel: str = "Cancel", danger: bool = False, on_cancel=None, *, filled: bool = False,
+            cancel_colour: str | None = None) -> Adw.Dialog:
+    """A question with two answers, as Android's AlertDialog (InterfacesScreen.kt's "Switch off
+    Mesh?"), on a Sheet: the title, the text in grey under it, both from the left, and the
+    answers as text buttons at the bottom right, `cancel` in grey and `ok` in orange, or in red
+    when `danger`. Each button's name is its word, so a screen reader and the tests answer by
+    name. `cancel` has the focus and is the default (Enter); Escape and a tap on the scrim answer
+    `cancel` too. Exactly one of `on_ok` and `on_cancel` (when given) runs, once, after the
+    dialog has started to close, as Adw.AlertDialog did.
+
+    Where Android answers with a filled button (the mailbox check, the SOS dialogs, the alarm
+    test, the radio's ConfirmDialog, deleting a credential), `filled` draws `ok` as one, orange,
+    or red with ink words when `danger`. `cancel_colour` paints `cancel` where Android does not
+    grey it (OffWhite in the SOS dialogs, orange where it keeps TextButton's own colour)."""
+    sheet = Sheet(app, title)
+    sheet.body.append(text(body, "body-medium", theme.TEXT_SECONDARY, wrap=True))
+    answered = []
+
+    def answer(then, close: bool = True) -> None:
+        if answered:
+            return
+        answered.append(True)
+        if close:  # a button; "closed" (Escape, the scrim, or this close) finds the answer given
+            sheet.close()
+        if then is not None:
+            then()
+
+    no = sheet.button(cancel, lambda: answer(on_cancel))
+    if cancel_colour:
+        paint(no.get_child(), cancel_colour)
     else:
-        dialog.set_response_appearance("ok", Adw.ResponseAppearance.SUGGESTED)
-    dialog.set_default_response("cancel")
-    dialog.set_close_response("cancel")
-
-    def answered(d, response) -> None:
-        if response == "ok":
-            on_ok()
-        elif on_cancel is not None:
-            on_cancel()
-
-    dialog.connect("response", answered)
-    dialog.present(app.window)
-    return dialog
+        no.add_css_class("muted-text")
+    yes = sheet.button(ok, lambda: answer(on_ok), kind="filled" if filled else "text")
+    if danger:
+        yes.add_css_class("red-fill" if filled else "danger-text")
+    for button, word in ((no, cancel), (yes, ok)):
+        name_widget(button, word)
+    sheet.dialog.connect("closed", lambda *_: answer(on_cancel, close=False))
+    sheet.dialog.set_default_widget(no)
+    sheet.dialog.set_focus(no)
+    sheet.present()
+    return sheet.dialog
 
 
 class PickerDialog(Sheet):
@@ -1070,9 +1285,11 @@ def fact_row(label: str, value: str, colour: str | None = None, mono: bool = Fal
 
 
 class PickerField(Gtk.Box):
-    """A choice out of a list as Android's DropdownField (an ExposedDropdownMenu on an
-    OutlinedTextField): the label above, the chosen option's name with a chevron, a helper or
-    an error under it; a tap opens a PickerDialog. The button's accessible name is the label."""
+    """A choice out of a list as Android's DropdownField (an ExposedDropdownMenu on a read-only
+    OutlinedTextField, RulesScreen.kt): the chosen option's name in the outlined box of a Field,
+    its label always on the top edge (there is always a value), a chevron at the right, a helper
+    or an error under it, 16 dp in; a tap opens a PickerDialog. The button's accessible name is
+    the label."""
 
     def __init__(self, app, label: str, options: list, chosen, on_pick, helper: str = ""):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(4))
@@ -1081,7 +1298,6 @@ class PickerField(Gtk.Box):
         self.options = list(options)  # (key, name, detail)
         self.chosen = chosen
         self.on_pick = on_pick
-        self.append(text(label, "label-medium", theme.TEXT_SECONDARY))
         self.button = Gtk.Button()
         self.button.add_css_class("picker")
         name_widget(self.button, label)
@@ -1092,12 +1308,22 @@ class PickerField(Gtk.Box):
         inner.append(icon("outlined-expand-more", 24, theme.TEXT_SECONDARY))
         self.button.set_child(inner)
         self.button.connect("clicked", lambda *_: self.open())
-        self.append(self.button)
+        self.outline = _Outline(self.button, label)
+        self.box, self.label = self.outline.box, self.outline.label
+        self.append(self.box)
+        self.button.connect("state-flags-changed", lambda *_: self._paint())
         self.helper_text = helper
         self.helper = text(helper, "body-small", theme.TEXT_SECONDARY, wrap=True)
+        self.helper.set_margin_start(theme.dp(FIELD_INSET))
+        self.helper.set_margin_end(theme.dp(FIELD_INSET))
         self.helper.set_visible(bool(helper))
         self.append(self.helper)
         self._show()
+        self._paint()
+
+    def _paint(self) -> None:
+        flags = self.button.get_state_flags()
+        self.outline.paint(False, bool(flags & Gtk.StateFlags.INSENSITIVE), self.button.has_css_class("error"), True)
 
     def _show(self) -> None:
         name = next((n for k, n, _d in self.options if k == self.chosen), str(self.chosen))
@@ -1128,6 +1354,7 @@ class PickerField(Gtk.Box):
             paint(self.helper, theme.TEXT_SECONDARY)
             self.helper.set_visible(bool(self.helper_text))
             self.button.remove_css_class("error")
+        self._paint()
 
     def open(self) -> None:
         def picked(key) -> None:

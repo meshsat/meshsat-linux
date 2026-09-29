@@ -1,0 +1,142 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Who reaches the MeshSat Bridge and the node over the network. The Bridge answers without a
+# password (standalone mode: messages, SOS, every setting, satellite credit), and the node's
+# daemon serves its API (TCP 4403, the radio's settings with it) and Meshtastic's web client
+# (TCP 9443) to whoever asks. So only this device reaches them, unless the person shares the
+# Bridge on the network they are on: the app's Setup > Advanced > Diagnostics, "Share the
+# Bridge on this network", runs this through pkexec.
+#
+#   meshsat-share on       share the Bridge: the flag, then its rules (no flag if they fail)
+#   meshsat-share off      this device only: the rules, then no flag (still shared if they fail)
+#   meshsat-share apply    load the rules for the state as it is (meshsat-share.service: at
+#                          boot, and again with every restart of the Bridge)
+#   meshsat-share status   print "shared" or "local"
+#
+# The state is the file /etc/meshsat/share-on-network: there = shared. Only this script makes
+# or removes it; the package never ships it, so an upgrade keeps it and a purge removes it.
+#
+# The rules are one nftables table, inet meshsat, replaced whole in one transaction. On every
+# interface but loopback the node's 4403 and 9443 answer a reset, and so does the Bridge's port
+# (MESHSAT_PORT in /etc/meshsat/bridge.env, 6050 by default) unless it is shared. Shared, the
+# Bridge answers the network this device is on (private and link-local addresses), never the
+# mobile data connection and never a public address: an address on mobile data, an IPv6 one
+# above all, can be reachable from the whole internet. No rule lets an established connection
+# through, so switching off also cuts a browser that still has the Bridge open.
+set -u
+FLAG=/etc/meshsat/share-on-network
+ENV_FILE=/etc/meshsat/bridge.env
+LOCK=/run/meshsat-share.lock
+# The mobile data connection's interfaces: ModemManager's modems (wwan0 on the PinePhone),
+# Qualcomm's rmnet, MediaTek's ccmni, PCIe modems (mhi), a dial-up modem (ppp).
+CELLULAR='"wwan*", "wwp*", "rmnet*", "ccmni*", "mhi*", "ppp*"'
+# The addresses a network gives out of its own: RFC 1918, link-local, IPv6 unique local.
+PRIVATE4='10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16'
+PRIVATE6='fe80::/10, fc00::/7'
+
+say() {
+    logger -t meshsat-share -- "$*" 2>/dev/null || true
+    if [ -t 1 ]; then printf 'meshsat-share: %s\n' "$*"; fi
+}
+warn() {
+    printf 'meshsat-share: %s\n' "$*" >&2
+    logger -t meshsat-share -p user.err -- "$*" 2>/dev/null || true
+}
+die() { warn "$*"; exit 1; }
+
+state() { if [ -e "$FLAG" ]; then echo shared; else echo local; fi; }
+
+# MESHSAT_PORT as the Bridge gets it from systemd (the last assignment, quotes taken off) and
+# reads it (strconv.Atoi: a sign, leading zeros); 6050 when it is absent or not a port, as the
+# Bridge itself falls back.
+bridge_port() {
+    v=$(sed -n 's/^[[:space:]]*MESHSAT_PORT[[:space:]]*=[[:space:]]*//p' "$ENV_FILE" 2>/dev/null | tail -n 1)
+    v=$(printf '%s' "$v" | sed -e 's/[[:space:]]*$//' -e 's/^"\(.*\)"$/\1/' -e "s/^'\\(.*\\)'\$/\\1/" -e 's/^+//' -e 's/^0*\([0-9]\)/\1/')
+    case "$v" in
+        '' | *[!0-9]* | ??????*) echo 6050; return ;;
+    esac
+    if [ "$v" -ge 1 ] && [ "$v" -le 65535 ]; then echo "$v"; else echo 6050; fi
+}
+
+# The table as nft -f reads it: made if missing, deleted and made again, in one transaction.
+rules() {  # rules shared|local PORT
+    cat <<EOF
+table inet meshsat
+delete table inet meshsat
+table inet meshsat {
+    chain input {
+        type filter hook input priority filter; policy accept;
+        iifname "lo" accept
+        tcp dport { 4403, 9443 } reject with tcp reset
+EOF
+    if [ "$1" = shared ]; then
+        cat <<EOF
+        iifname { $CELLULAR } tcp dport $2 reject with tcp reset
+        ip saddr != { $PRIVATE4 } tcp dport $2 reject with tcp reset
+        ip6 saddr != { $PRIVATE6 } tcp dport $2 reject with tcp reset
+EOF
+    else
+        echo "        tcp dport $2 reject with tcp reset"
+    fi
+    echo "    }"
+    echo "}"
+}
+
+load() {  # load shared|local: 0 once the table is in place; else the rules stay as they were
+    if ! command -v nft >/dev/null 2>&1; then
+        warn "nft not found (the nftables package): the rules stay as they were"
+        return 1
+    fi
+    port=$(bridge_port)
+    if ! out=$(rules "$1" "$port" | nft -f - 2>&1); then
+        warn "nft could not load the rules, they stay as they were: $out"
+        return 1
+    fi
+    if [ "$1" = shared ]; then
+        say "shared: the Bridge (TCP $port) answers this device's network, the node's 4403 and 9443 this device only"
+    else
+        say "local: the Bridge (TCP $port) and the node's 4403 and 9443 answer this device only"
+    fi
+}
+
+need_root() { [ "$(id -u)" = 0 ] || die "run as root: pkexec $0 $1"; }
+
+# One change at a time: the app's switch and a restart of the Bridge may meet.
+lock() {
+    exec 9>"$LOCK"
+    if command -v flock >/dev/null 2>&1; then
+        flock -w 30 9 || die "another meshsat-share is still running"
+    fi
+}
+
+case "${1:-}" in
+    status)
+        state
+        ;;
+    apply)
+        need_root apply
+        lock
+        load "$(state)" || exit 1
+        ;;
+    on)
+        need_root on
+        lock
+        touch "$FLAG" 2>/dev/null || die "cannot write $FLAG"
+        if ! load shared; then
+            rm -f "$FLAG"
+            exit 1
+        fi
+        ;;
+    off)
+        # The rules first: when they cannot be loaded, the Bridge is still shared and says so.
+        need_root off
+        lock
+        load local || exit 1
+        rm -f "$FLAG" || die "cannot remove $FLAG"
+        ;;
+    *)
+        echo "usage: meshsat-share on|off|apply|status" >&2
+        exit 2
+        ;;
+esac
+exit 0

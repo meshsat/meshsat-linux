@@ -1,8 +1,16 @@
 #!/bin/sh
 set -e
 case "$1" in
+    remove|purge)
+        # With the Bridge and the node gone, the rules that kept them to this device go too
+        # (meshsat-share's table). A shared Bridge's flag stays until a purge, as a setting does.
+        if command -v nft >/dev/null 2>&1; then nft delete table inet meshsat 2>/dev/null || true; fi
+        ;;
+esac
+case "$1" in
     purge)
         # The node's identity and the Bridge's database go with a purge, never with a remove.
+        rm -f /etc/meshsat/share-on-network
         rm -rf /var/lib/meshtasticd /var/lib/meshsat /etc/meshtasticd/ssl /run/meshsat-node /run/meshsat
         rmdir /etc/meshtasticd/config.d /etc/meshtasticd /etc/meshsat 2>/dev/null || true
         ;;

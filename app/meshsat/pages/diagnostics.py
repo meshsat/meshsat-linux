@@ -2,10 +2,13 @@
 """Setup > Advanced > Diagnostics (SettingsScreen.kt's Diagnostics sections): the links' health
 scores, and the background service: whether it starts after a restart, and a restart of it
 after a question. Android's "Crash reports" card is its own local telemetry server, which this
-edition does not have (the Bridge is a system service with its own journal): excluded."""
+edition does not have (the Bridge is a system service with its own journal): excluded.
+This edition's own row, under the service's start: "Share the Bridge on this network"
+(model/share.py), off unless the person switches it on after a question."""
 from gi.repository import Gtk
 
 from .. import api, system, theme
+from ..model import share
 from ..screen import SubScreen
 from ..widgets import confirm, outlined_button, text
 
@@ -62,6 +65,22 @@ class DiagnosticsScreen(SubScreen):
         self.boot.connect("state-set", self.boot_changed)
         boot.append(self.boot)
         service.append(boot)
+        # The Bridge answers without a password: only this phone reaches it until the person
+        # shares it (meshsat-share). The switch shows the flag, never its own last position.
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(12))
+        texts = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(2))
+        texts.set_hexpand(True)
+        texts.append(text(share.TITLE, "body-medium", wrap=True))
+        self.share_note = text(share.LOCAL, "body-small", theme.TEXT_MUTED, wrap=True)
+        texts.append(self.share_note)
+        row.append(texts)
+        self.share_switch = Gtk.Switch()
+        self.share_switch.set_valign(Gtk.Align.CENTER)
+        name_widget(self.share_switch, share.TITLE)
+        self._asking = False
+        self.share_switch.connect("state-set", self.share_changed)
+        row.append(self.share_switch)
+        service.append(row)
         restart = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(12))
         texts = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(2))
         texts.set_hexpand(True)
@@ -81,6 +100,10 @@ class DiagnosticsScreen(SubScreen):
             self.boot.set_active(system.unit_enabled(BRIDGE))
         finally:
             self._quiet = False
+        self.show_share()
+
+    def update(self, s: api.State) -> None:
+        self.show_share()
 
     def got_scores(self, answer: api.Answer) -> None:
         from ..widgets import clear, tone_colour  # noqa: PLC0415
@@ -108,6 +131,49 @@ class DiagnosticsScreen(SubScreen):
             return False
         system.privileged("systemctl", "enable" if on else "disable", BRIDGE)
         return False
+
+    def show_share(self) -> None:
+        """The switch and the line under it as the system has them: meshsat-share's flag, read
+        on show and at every poll. While a change runs the switch waits, insensitive, and while
+        the question is open it keeps the position the person gave it."""
+        busy = system.share_changing()
+        self.share_switch.set_sensitive(not busy)
+        if busy or self._asking:
+            return
+        on = system.shared_on_network()
+        self._quiet = True
+        try:
+            self.share_switch.set_active(on)
+        finally:
+            self._quiet = False
+        self.share_note.set_text(share.subtitle(on, system.lan_addresses() if on else [], system.bridge_port()))
+
+    def share_changed(self, switch, on) -> bool:
+        if self._quiet or bool(on) == system.shared_on_network():
+            return False
+        if on:
+            # Opening the Bridge to the network asks first; closing it does not.
+            self._asking = True
+            confirm(self.app, share.QUESTION, share.QUESTION_BODY, share.SHARE, lambda: self.share_run(True),
+                    cancel=share.NOT_NOW, danger=True, on_cancel=self.share_kept)
+        else:
+            self.share_run(False)
+        return False
+
+    def share_kept(self) -> None:
+        self._asking = False
+        self.show_share()
+
+    def share_run(self, on: bool) -> None:
+        self._asking = False
+
+        def done(ok: bool) -> None:
+            if not ok:
+                self.app.toast(share.not_changed(on))
+            self.show_share()
+
+        system.share_on_network(on, done)
+        self.show_share()
 
     def restart_asked(self) -> None:
         title, body = RESTART_DIALOG

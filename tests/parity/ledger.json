@@ -98,7 +98,7 @@
    "state": "verified",
    "test": "h_home_cards::e_the_satellite_lane_quotes_the_high_pass",
    "capture": "home",
-   "note": "the queue from the delivery stats (iridium_0 and iridium_imt_0: both modems are the one satellite lane here), the pass line from Home's passes (40° and up), the node's modem out of reach said first; the node's own modem states (silent, the node holding it, asking for it) read the Bridge's fields, which it sends with B9 (0.13.0). A USB modem is checked before Bluetooth (it needs none)"
+   "note": "the queue from the delivery stats (iridium_0 and iridium_imt_0: both modems are the one satellite lane here), the pass line from Home's passes (40° and up), the node's modem out of reach said first; the node's own modem states (silent, the node holding it, asking for it) read the Bridge's fields, which it sends with B9 (a later release). A USB modem is checked before Bluetooth (it needs none)"
   },
   {
    "id": "home.lane.mesh",
@@ -458,8 +458,8 @@
    "android": "ui/screens/SetupScreen.kt",
    "linux": "setup.py:SetupScreen",
    "modes": "both",
-   "state": "built",
-   "test": "",
+   "state": "verified",
+   "test": "h_setup::a_the_rows_in_androids_words",
    "capture": "setup",
    "note": ""
   },
@@ -469,9 +469,9 @@
    "android": "ui/screens/SettingsScreen.kt:384-525",
    "linux": "setup.py:NodeScreen",
    "modes": "both",
-   "state": "built",
-   "test": "",
-   "capture": "setup-node",
+   "state": "verified",
+   "test": "h_node::a_connected_in_androids_words",
+   "capture": "node-bluetooth-connected",
    "note": "the Bluetooth card as Android's; the cover card and the device card are this edition's"
   },
   {
@@ -480,9 +480,9 @@
    "android": "-",
    "linux": "setup.py:NodeScreen.update_cover",
    "modes": "cover",
-   "state": "built",
-   "test": "",
-   "capture": "setup-node",
+   "state": "verified",
+   "test": "h_setup::c_the_cover_card",
+   "capture": "node-cover",
    "note": "the PinePhone's LoRa back cover as the node"
   },
   {
@@ -491,9 +491,9 @@
    "android": "-",
    "linux": "setup.py:NodeScreen.ask_pin",
    "modes": "bluetooth",
-   "state": "built",
-   "test": "",
-   "capture": "",
+   "state": "verified",
+   "test": "h_node::e_the_pin_dialog_when_a_node_asks_to_pair",
+   "capture": "pin-dialog",
    "note": "Android's system shows the PIN dialog; here the app does"
   },
   {
@@ -502,9 +502,9 @@
    "android": "-",
    "linux": "setup.py:NodeScreen",
    "modes": "both",
-   "state": "built",
-   "test": "",
-   "capture": "setup-node",
+   "state": "verified",
+   "test": "h_node::g_this_device_in_both_modes_and_looking_again",
+   "capture": "device-cover",
    "note": "which node this device has, and the look-again button"
   },
   {
@@ -535,8 +535,8 @@
    "android": "ui/screens/PassPredictorScreen.kt",
    "linux": "passes.py:PassesScreen",
    "modes": "both",
-   "state": "built",
-   "test": "",
+   "state": "verified",
+   "test": "h_passes::a_the_page_and_its_chart",
    "capture": "passes",
    "note": ""
   },
@@ -546,9 +546,9 @@
    "android": "-",
    "linux": "passes.py:PositionDialog",
    "modes": "both",
-   "state": "built",
-   "test": "",
-   "capture": "",
+   "state": "verified",
+   "test": "h_passes::c_a_position_typed_in",
+   "capture": "passes",
    "note": "a position typed in, for a phone without a fix"
   },
   {
@@ -670,7 +670,7 @@
    "state": "verified",
    "test": "h_messaging::the_three_cards_in_androids_words",
    "capture": "setup-messaging",
-   "note": "the settings live in the Bridge's link chains (PUT /api/interfaces/{id}/transforms, MESHSAT-1412); the app's preferences keep what the chains cannot (the key while encryption is off)"
+   "note": "the settings live in the Bridge's link chains (PUT /api/interfaces/{id}/transforms, MESHSAT-1412); the app's preferences keep what the chains cannot (the key while encryption is off) Show, Copy, Paste and Share are drawn readable: Android's ink labels on Surface (about 1.1:1) are an Android defect, not copied (MESHSAT-1441)."
   },
   {
    "id": "setup.maps",
@@ -805,6 +805,17 @@
    "note": "Link health and Background service; the restart and the boot switch through polkit (dry under test); \"Start after a phone restart\" keeps Android's first sentence only (its second is about Android); Crash reports excluded (row setup.diagnostics.telemetry)"
   },
   {
+   "id": "setup.share",
+   "kind": "linux-only",
+   "android": "-",
+   "linux": "pages/diagnostics.py:DiagnosticsScreen.show_share",
+   "modes": "both",
+   "state": "verified",
+   "test": "h_share::b_share_runs_pkexec_once_and_names_the_address",
+   "capture": "shared",
+   "note": "\"Share the Bridge on this network\": the Bridge answers without a password, so only this device reaches it (meshsat-share, one nftables table; the node's 4403 and 9443 always); the switch opens the Bridge's port to the network after a question, through pkexec (dry under test), and names the address to open"
+  },
+  {
    "id": "nodelog",
    "kind": "screen",
    "android": "ui/screens/NodeLogScreen.kt",
@@ -824,7 +835,7 @@
    "state": "verified",
    "test": "h_about::the_sections_in_androids_words",
    "capture": "setup-about",
-   "note": "Android's order, sections and styles; the rows that name Android's machinery name this edition's (the cover or Bluetooth, the RockBLOCK on USB-C, the SIM through ModemManager; Bridge and Toolkit in place of the two SDK rows): Linux words by design"
+   "note": "Android's order, sections and styles; the rows that name Android's machinery name this edition's (the cover or Bluetooth, the RockBLOCK on USB-C, the SIM through ModemManager; Bridge and Toolkit in place of the two SDK rows): Linux words by design The title and the version name this edition (MeshSat Linux), as Android's name its own."
   },
   {
    "id": "welcome",
@@ -876,9 +887,9 @@
    "android": "GatewayService delivery failures",
    "linux": "notify.py",
    "modes": "both",
-   "state": "built",
-   "test": "",
-   "capture": "",
+   "state": "verified",
+   "test": "h_notify_more::a_a_message_that_did_not_go",
+   "capture": "source",
    "note": ""
   },
   {
@@ -887,9 +898,9 @@
    "android": "GatewayService satellite signal",
    "linux": "notify.py",
    "modes": "both",
-   "state": "built",
-   "test": "",
-   "capture": "",
+   "state": "verified",
+   "test": "h_notify_more::b_the_satellite_signal_in_place",
+   "capture": "source",
    "note": "drawn from a stand-in status on the bench"
   },
   {
@@ -898,10 +909,10 @@
    "android": "-",
    "linux": "phosh-plugins/meshsat-quick-setting.c",
    "modes": "both",
-   "state": "built",
-   "test": "",
-   "capture": "",
-   "note": "Phosh's quick settings, for Android's status-bar icon"
+   "state": "verified",
+   "test": "h_phosh::c_the_tile_follows_the_bridge_and_a_tap_opens_the_app",
+   "capture": "quick-setting",
+   "note": "the plugin loaded as Phosh's loader loads it, in its own GTK 3 host on the test session: the label follows the Bridge, a tap opens Home; placed among Phosh's quick settings on the bench phone since 28 Sep 2026"
   },
   {
    "id": "outside.lockscreen",
@@ -909,10 +920,10 @@
    "android": "-",
    "linux": "phosh-plugins/meshsat-lockscreen.c",
    "modes": "both",
-   "state": "built",
-   "test": "",
-   "capture": "",
-   "note": "not yet seen on the lock screen itself"
+   "state": "verified",
+   "test": "h_phosh::b_the_lock_screen_widget_follows_the_bridge",
+   "capture": "lockscreen-widget",
+   "note": "the widget loaded in its own GTK 3 host: the satellite and mesh lines follow the Bridge, and it says when MeshSat is not running; on Phosh's lock screen it cannot be captured (grim fails while the screen is locked)"
   },
   {
    "id": "outside.tray",
@@ -920,10 +931,10 @@
    "android": "-",
    "linux": "notify.py:tray",
    "modes": "both",
-   "state": "built",
-   "test": "",
-   "capture": "",
-   "note": "not yet tried on a desktop"
+   "state": "verified",
+   "test": "h_tray::b_the_icon_and_the_words_follow_the_bridge",
+   "capture": "source",
+   "note": "the StatusNotifierItem against a stand-in tray host (registration, icon and tooltip following the Bridge, a click opening Home, re-registration after a tray restart); what a real desktop tray draws is not captured"
   },
   {
    "id": "watchdog.banner",
@@ -931,9 +942,9 @@
    "android": "-",
    "linux": "__main__.py:on_state",
    "modes": "cover",
-   "state": "built",
-   "test": "",
-   "capture": "",
+   "state": "verified",
+   "test": "h_setup::d_the_watchdog_banner",
+   "capture": "watchdog-banner",
    "note": "the radio in the cover stopped answering"
   },
   {
@@ -1052,9 +1063,9 @@
    "android": "sos/SosController.kt:notify",
    "linux": "__main__.py:on_sos_change",
    "modes": "both",
-   "state": "built",
-   "test": "",
-   "capture": "",
+   "state": "verified",
+   "test": "h_alarm_notify::a_the_notification_in_androids_words_kept_in_place",
+   "capture": "alarm-test-running",
    "note": "'Alarm test running' with Stop test, posted by the app itself"
   },
   {
@@ -1658,7 +1669,7 @@
    "state": "blocked",
    "test": "",
    "capture": "",
-   "note": "'Satellite modem on the node' and 'Use the node's modem': Bridge change B9 (MESHSAT-1391), release 0.13.0; its live proof needs the T-Beam with the RockBLOCK in Bluetooth range"
+   "note": "'Satellite modem on the node' and 'Use the node's modem': Bridge change B9 (MESHSAT-1391), a later release; its live proof needs the T-Beam with the RockBLOCK in Bluetooth range"
   },
   {
    "id": "setup.satellite.node-health",
@@ -1669,7 +1680,7 @@
    "state": "blocked",
    "test": "",
    "capture": "",
-   "note": "the node's STATS: Bridge change B9 (MESHSAT-1391), release 0.13.0"
+   "note": "the node's STATS: Bridge change B9 (MESHSAT-1391), a later release"
   },
   {
    "id": "chat.bubble.lock",
@@ -1681,6 +1692,28 @@
    "capture": "sealed-bubble",
    "note": "the amber lock, 'Decrypted', on an SMS that went or came sealed (the Bridge's `encrypted`, B21); Android's red 'Encrypted (locked)' has no counterpart: the Bridge keeps an SMS it could not open as it came",
    "state": "verified"
+  },
+  {
+   "id": "sos.progress",
+   "state": "verified",
+   "kind": "behaviour",
+   "android": "sos/SosRun.kt: SosProgress.stateOf/detailOf (152-170), SosController.kt:282-330 follow",
+   "linux": "model/sosrun.py:state_of_delivery/detail_of_delivery, sosflow.py:follow_deliveries",
+   "modes": "both",
+   "test": "h_sos::alarm_test_goes_route_by_route_and_settles",
+   "capture": "sos",
+   "note": "every leg the app queues keeps its msg_ref and reads GET /api/deliveries/message/{ref} for half an hour: Waiting to send, Sending now, Sent, \"Sent, and the Hub has it\" (satellite acked), \"Delivered to their phone\" (SMS acked), Trying again: …, Stopped, Failed; \"Could not be queued\" when the Bridge refuses; Android's SosRunTest cases ported (tests/test_sos_deliveries.py)"
+  },
+  {
+   "id": "sos.test.position",
+   "state": "verified",
+   "kind": "behaviour",
+   "android": "sos/SosController.kt:166-173, SosMessages.positionFrame",
+   "linux": "sosflow.py:Flow._position_report",
+   "modes": "both",
+   "test": "h_sos_position::the_satellite_route_is_a_position_report",
+   "capture": "position-report-confirmed",
+   "note": "with the phone's fix the test's satellite leg is POST /api/sos/test {satellite, latitude, longitude, altitude}: the Bridge queues Android's 31-byte frame on the modem (MESHSAT-1430), idempotent while it waits, dropped after 30 min; without a fix the test text by satellite, as Android"
   }
  ]
 }

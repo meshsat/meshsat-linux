@@ -184,10 +184,25 @@ class Tree:
 
     # Acting
     def click(self, name: str, role: str = "button", timeout: float = 5.0) -> None:
-        self.find(role, name=name, timeout=timeout).do("click")
+        self._click_fresh(lambda: self.find(role, name=name, timeout=timeout))
 
     def click_containing(self, contains: str, role: str = "button", timeout: float = 5.0) -> None:
-        self.find(role, contains=contains, timeout=timeout).do("click")
+        self._click_fresh(lambda: self.find(role, contains=contains, timeout=timeout))
+
+    @staticmethod
+    def _click_fresh(find) -> None:
+        """Click what `find` returns; a widget a screen replaced between the walk and the click is
+        gone from the bus with no actions left, so it is looked up again (three tries)."""
+        from . import HarnessError  # noqa: PLC0415
+
+        for attempt in range(3):
+            try:
+                find().do("click")
+                return
+            except HarnessError as error:
+                if "no 'click' action" not in str(error) or attempt == 2:
+                    raise
+                time.sleep(0.5)
 
     @staticmethod
     def _subtree(nodes: list, start: int) -> list:

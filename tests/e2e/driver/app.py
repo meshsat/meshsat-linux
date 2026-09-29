@@ -34,6 +34,9 @@ class App:
         self.journal_path = os.path.join(work, "journal.log")
         self.saved_dir = os.path.join(work, "saved")
         self.pick_path = os.path.join(work, "pick", "picked.pem")
+        # meshsat-share's flag ("Share the Bridge on this network"): a file of the module's own,
+        # absent at the start, so no case ever reads or writes the phone's.
+        self.share_flag = os.path.join(work, "share-on-network")
         self.enabled = "meshsat-bridge.service=enabled"
         self._trace_seen = 0
 
@@ -73,7 +76,8 @@ class App:
         journal = self.journal_path
         if not os.path.exists(journal):
             open(journal, "w", encoding="utf-8").close()
-        env.update({"MESHSAT_APP_JOURNAL": journal, "MESHSAT_APP_SAVE_DIR": self.saved_dir, "MESHSAT_APP_PICK": self.pick_path, "MESHSAT_APP_ENABLED": self.enabled})
+        env.update({"MESHSAT_APP_JOURNAL": journal, "MESHSAT_APP_SAVE_DIR": self.saved_dir, "MESHSAT_APP_PICK": self.pick_path, "MESHSAT_APP_ENABLED": self.enabled,
+                    "MESHSAT_APP_SHARE_FLAG": self.share_flag})
         env.update({"MESHSAT_APP_ID": self.app_id, "MESHSAT_APP_TEST": "1", "MESHSAT_APP_BRIDGE": self.bridge_url, "MESHSAT_APP_TRACE": self.trace_path,
                     "MESHSAT_APP_UNITS": units, "MESHSAT_APP_HARDWARE": hardware, "MESHSAT_APP_STATUS": status, "MESHSAT_APP_POLL": str(self.poll),
                     "PYTHONPATH": self.app_dir, "GTK_A11Y": "atspi", "GSK_RENDERER": os.environ.get("GSK_RENDERER", "cairo"), "LC_ALL": "C.UTF-8", "TZ": os.environ.get("TZ", "UTC")})

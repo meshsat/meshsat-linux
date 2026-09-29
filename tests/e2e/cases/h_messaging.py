@@ -147,6 +147,14 @@ def case_no_recipient_number_goes_over_the_sms_gateway(ctx):
     for words in ("Where a text goes with no recipient", "Optional number, e.g. +31612345678",
                   "Only used when a message has no recipient of its own: a routing rule that forwards to SMS without naming a number."):
         ctx.tree.wait_text(words, timeout=10)
+    # Text messages as Android's card (SettingsScreen.kt:1915-1942): "SMS" and its value in one
+    # row (no SIM here, so why it cannot go), then the sentence; none of the modem's facts
+    ctx.tree.wait_text("This phone cannot send SMS.", timeout=10)
+    texts = ctx.tree.texts()
+    at = texts.index("Text messages")
+    assert texts[at + 1:at + 3] == ["SMS", "This phone cannot send SMS."], texts[at:at + 4]
+    for gone in ("Modem", "SIM", "Network", "Number", "Sent, received"):
+        assert gone not in texts, f"{gone!r} is on the SMS page: {texts}"
     before = ctx.bridge.count()
     ctx.tree.set_text("Optional number, e.g. +31612345678", "abc")
     ctx.tree.click("Save")

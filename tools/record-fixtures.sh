@@ -4,6 +4,8 @@
 # raw material: one JSON file per call under tests/fixtures/recorded/<date>-<bridge sha8>/.
 # Runs against 127.0.0.1:6050 (or $1); writes to $2 (default: a directory named after today and
 # the Bridge's commit). The scenarios in tests/fixtures/scenarios.py start from these files.
+# From another computer, through a tunnel (ssh -L 6050:127.0.0.1:6050 <phone>, then the default
+# URL): since 1.0.0 only the phone itself reaches its Bridge unless it is shared (meshsat-share).
 set -u
 B=${1:-http://127.0.0.1:6050}
 sha=$(curl -s -m 5 "$B/api/version" | python3 -c 'import json,sys; d=json.load(sys.stdin); print((d.get("commit") or d.get("git_commit") or d.get("version") or "unknown")[:8])' 2>/dev/null || echo unknown)

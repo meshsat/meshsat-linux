@@ -84,6 +84,39 @@ def px(value: float) -> str:
     return f"{value * SCALE:.1f}px"
 
 
+def switch_css() -> str:
+    """Material 3's switch (SwitchTokens): a 52 x 32 dp pill with a 2 dp outline, a round thumb
+    of 16 dp while off and 24 dp while on, each centred in the round end it sits in; off, the
+    track is SurfaceLight with an Outline border and thumb, on, it is orange with an ink thumb.
+
+    In whole pixels, because GTK rounds CSS lengths down, and laid out the way GtkSwitch does it:
+    the slider gets half of the switch's content width and all of its height, and its margins
+    place the thumb inside that half. The margins always add up to that half, so neither thumb
+    makes the switch measure larger; the larger one reaches back over the middle with a negative
+    left margin (GTK takes those as they are). libadwaita's 3 px padding, its hover and press
+    tints and the thumb's shadow go."""
+    border = max(1, round(2 * SCALE))
+    height = 2 * round(32 * SCALE / 2)  # even, so both thumbs centre on whole pixels
+    width = height + 2 * round((52 - 32) * SCALE / 2)
+    inner_width, inner_height = width - 2 * border, height - 2 * border
+    half = inner_width // 2
+    rules = [f"switch {{ background-color: {SURFACE_LIGHT}; background-image: none; border: {border}px solid {OUTLINE}; border-radius: {height // 2}px; "
+             f"padding: 0; min-width: {inner_width}px; min-height: {inner_height}px; box-shadow: none; }}",
+             f"switch:checked {{ background-color: {SIGNAL_ORANGE}; border-color: {SIGNAL_ORANGE}; }}"]
+    for state, size, colour in (("", 16, OUTLINE), (":checked", 24, SPACE_BLACK)):
+        thumb = round(size * SCALE)
+        if (inner_height - thumb) % 2:
+            thumb -= 1
+        # The thumb's centre, in the content box: the middle of the left end, or of the right one.
+        centre = height / 2 - border if not state else width - height / 2 - border
+        left = round(centre - thumb / 2) - (half if state else 0)
+        right = half - thumb - left
+        top = (inner_height - thumb) // 2
+        rules.append(f"switch{state} > slider {{ background-color: {colour}; background-image: none; border: none; box-shadow: none; border-radius: 50%; "
+                     f"min-width: {thumb}px; min-height: {thumb}px; margin: {top}px {right}px {top}px {left}px; }}")
+    return "\n".join(rules)
+
+
 def css() -> str:
     colours = "\n".join(f".fg-{slug}.fg-{slug} {{ color: {value}; }} .bg-{slug}.bg-{slug} {{ background-color: {value}; }}" for value, slug in CLASSES.items())
     return f"""
@@ -92,6 +125,10 @@ def css() -> str:
   --accent-bg-color: {SIGNAL_ORANGE}; --accent-fg-color: {ON_PRIMARY}; --accent-color: {SIGNAL_ORANGE}; --headerbar-bg-color: {SURFACE}; --headerbar-fg-color: {TEXT_PRIMARY};
   --sheet-bg-color: {SURFACE}; --sheet-fg-color: {TEXT_PRIMARY}; }}
 bottom-sheet > sheet {{ background-color: {SURFACE}; }}
+floating-sheet > sheet {{ background-color: {SURFACE}; color: {TEXT_PRIMARY}; border-radius: {px(16)}; box-shadow: none; }}
+dialog.alert floating-sheet > sheet {{ background-color: {SURFACE_HIGH}; }}
+floating-sheet > dimming {{ background-color: alpha(black, 0.6); }}
+bottom-sheet > dimming {{ background-color: alpha(black, 0.32); }}
 window {{ background-color: {SPACE_BLACK}; color: {TEXT_PRIMARY}; font-family: "{FONT}", sans-serif; font-size: {px(16)}; }}
 * {{ outline-width: 0; -gtk-icon-style: symbolic; }}
 label {{ color: {TEXT_PRIMARY}; }}
@@ -152,8 +189,6 @@ button label.body-large, button label.body-medium, button label.body-small {{ fo
 .filled {{ background-color: {SIGNAL_ORANGE}; border-radius: {px(20)}; padding: 0 {px(24)}; min-height: {px(40)}; border: none; box-shadow: none; }}
 .filled label {{ color: {ON_PRIMARY}; font-size: {px(14)}; font-weight: 500; }}
 .filled:hover {{ background-color: {ORANGE_LIGHT}; }}
-.filled:disabled {{ background-color: alpha({OFF_WHITE}, 0.12); }}
-.filled:disabled label {{ color: alpha({OFF_WHITE}, 0.38); }}
 .outlined {{ background: none; border: 1px solid {OUTLINE}; border-radius: {px(20)}; padding: 0 {px(24)}; min-height: {px(40)}; box-shadow: none; }}
 .outlined label {{ color: {SIGNAL_ORANGE}; font-size: {px(14)}; font-weight: 500; }}
 .outlined.danger {{ border-color: {RED}; background-color: {ERROR_CONTAINER}; min-height: {px(56)}; }}
@@ -161,8 +196,17 @@ button label.body-large, button label.body-medium, button label.body-small {{ fo
 .textbutton {{ background: none; border: none; box-shadow: none; padding: {px(8)} {px(12)}; }}
 .textbutton label {{ color: {SIGNAL_ORANGE}; font-size: {px(14)}; font-weight: 500; }}
 .textbutton.off-white label {{ color: {OFF_WHITE}; }}
-.field {{ background-color: {SPACE_BLACK}; border: 1px solid {OUTLINE}; border-radius: {px(4)}; padding: 0 {px(14)}; min-height: {px(56)}; color: {TEXT_PRIMARY}; font-size: {px(16)}; caret-color: {SIGNAL_ORANGE}; }}
+.field {{ background-color: transparent; border: 1px solid {OUTLINE}; border-radius: {px(4)}; padding: 0 {px(14)}; min-height: {px(56)}; color: {TEXT_PRIMARY}; font-size: {px(16)}; caret-color: {SIGNAL_ORANGE}; }}
 .field:focus-within {{ border: 2px solid {SIGNAL_ORANGE}; }}
+.field.field-input, .field.field-input:focus-within {{ background: none; border: none; box-shadow: none; padding: 0 {px(16)}; }}
+.field-input > text > placeholder {{ color: {TEXT_SECONDARY}; opacity: 1; }}
+.field-box.resting .field-input > text > placeholder {{ opacity: 0; }}
+.field-label {{ color: {TEXT_SECONDARY}; font-size: {px(12)}; font-weight: 400; }}
+.field-box.resting .field-label {{ font-size: {px(16)}; }}
+.field-box.focused .field-label {{ color: {SIGNAL_ORANGE}; }}
+.field-box.error .field-label {{ color: {RED}; }}
+.field-box.disabled .field-label {{ color: alpha({TEXT_PRIMARY}, 0.38); }}
+.field-label:disabled {{ filter: none; }}
 .bubble {{ background-color: {SURFACE}; border: 1px solid {BORDER}; border-radius: {px(12)} {px(12)} {px(12)} {px(4)}; padding: {px(10)}; }}
 .bubble.mine {{ background-color: alpha({SIGNAL_ORANGE}, 0.15); border-color: alpha({SIGNAL_ORANGE}, 0.3); border-radius: {px(12)} {px(12)} {px(4)} {px(12)}; }}
 .icon-button.small {{ padding: {px(4)}; min-width: {px(12)}; min-height: {px(12)}; border-radius: {px(10)}; }}
@@ -190,8 +234,7 @@ button label.body-large, button label.body-medium, button label.body-small {{ fo
 .ledger-group.selected.tint-red {{ background-color: alpha({RED}, 0.15); }}
 .ledger-group.selected.tint-muted {{ background-color: alpha({TEXT_MUTED}, 0.15); }}
 .tonal-box {{ background-color: {SURFACE_LIGHT}; border-radius: {px(4)}; padding: {px(8)}; }}
-.picker {{ background-color: {SPACE_BLACK}; border: 1px solid {OUTLINE}; border-radius: {px(4)}; padding: 0 {px(14)}; min-height: {px(56)}; box-shadow: none; }}
-.picker.error {{ border-color: {RED}; }}
+.picker {{ background: none; border: none; border-radius: {px(4)}; padding: 0 {px(12)} 0 {px(16)}; min-height: {px(56)}; box-shadow: none; }}
 .fab {{ background-color: {SIGNAL_ORANGE}; border: none; border-radius: {px(16)}; min-width: {px(56)}; min-height: {px(56)}; padding: 0; box-shadow: 0 2px 6px alpha(black, 0.4); }}
 .fab:hover {{ background-color: {ORANGE_LIGHT}; }}
 .tab-chip {{ background: none; border: none; box-shadow: none; border-radius: {px(6)}; padding: 0 {px(12)}; min-height: {px(48)}; }}
@@ -206,6 +249,7 @@ button label.body-large, button label.body-medium, button label.body-small {{ fo
 .log-line {{ font-family: "{MONO}", monospace; font-size: {px(11)}; }}
 .output-card {{ padding: {px(12)}; }}
 .field.multiline {{ padding: {px(8)} {px(14)}; min-height: {px(96)}; }}
+.field.multiline > text {{ background: none; }}
 .filled.tonal-surface {{ background-color: {SURFACE}; border: 1px solid {BORDER}; }}
 .filled.tonal-surface label {{ color: {TEXT_PRIMARY}; }}
 .filled.amber-fill {{ background-color: {AMBER}; }}
@@ -303,18 +347,20 @@ button label.body-large, button label.body-medium, button label.body-small {{ fo
 .status-banner.red {{ background-color: {ERROR_CONTAINER}; border: 1px solid alpha({RED}, 0.4); }}
 .status-banner.green {{ background-color: alpha({GREEN}, 0.10); border: 1px solid alpha({GREEN}, 0.35); }}
 .status-banner.muted {{ background-color: {SURFACE}; border: 1px solid {BORDER}; }}
-alertdialog, dialog {{ background-color: {SURFACE_HIGH}; color: {TEXT_PRIMARY}; }}
-alertdialog .heading, alertdialog .title {{ color: {TEXT_PRIMARY}; font-size: {px(20)}; font-weight: 600; }}
-alertdialog .body {{ color: {TEXT_SECONDARY}; font-size: {px(14)}; }}
-alertdialog button {{ background: none; border: none; box-shadow: none; color: {SIGNAL_ORANGE}; font-weight: 500; }}
-alertdialog button.destructive-action {{ color: {RED}; }}
+dialog.alert .heading-bin label {{ color: {TEXT_PRIMARY}; font-size: {px(20)}; font-weight: 600; }}
+dialog.alert .message-area > label.body {{ color: {TEXT_SECONDARY}; font-size: {px(14)}; }}
+dialog.alert .response-area > button {{ background: none; border: none; box-shadow: none; min-height: {px(40)}; padding: 0 {px(12)}; border-radius: {px(20)}; }}
+dialog.alert .response-area > button label {{ color: {SIGNAL_ORANGE}; font-size: {px(14)}; font-weight: 500; }}
+dialog.alert .response-area > button.suggested-action {{ background-color: {SIGNAL_ORANGE}; padding: 0 {px(24)}; }}
+dialog.alert .response-area > button.suggested-action label {{ color: {ON_PRIMARY}; }}
+dialog.alert .response-area > button.destructive-action label {{ color: {RED}; }}
+.dialog-card {{ padding: {px(24)}; }}
+.textbutton.dialog-button {{ min-height: {px(40)}; min-width: {px(34)}; padding: 0 {px(12)}; }}
+.textbutton.danger-text label {{ color: {RED}; }}
 scrolledwindow, viewport {{ background: none; }}
 scrollbar {{ background: none; }}
 scrollbar slider {{ background-color: {SURFACE_LIGHT}; min-width: {px(4)}; border-radius: {px(4)}; }}
-switch {{ background-color: {SURFACE_LIGHT}; border: 2px solid {TEXT_MUTED}; min-width: {px(52)}; min-height: {px(32)}; border-radius: {px(16)}; }}
-switch:checked {{ background-color: {SIGNAL_ORANGE}; border-color: {SIGNAL_ORANGE}; }}
-switch slider {{ background-color: {TEXT_MUTED}; min-width: {px(16)}; min-height: {px(16)}; margin: {px(6)}; border-radius: {px(8)}; box-shadow: none; }}
-switch:checked slider {{ background-color: {SPACE_BLACK}; min-width: {px(24)}; min-height: {px(24)}; margin: {px(2)}; border-radius: {px(12)}; }}
+{switch_css()}
 checkbutton radio, checkbutton check {{ background: none; border: 2px solid {TEXT_MUTED}; min-width: {px(16)}; min-height: {px(16)}; border-radius: {px(10)}; -gtk-icon-source: none; }}
 checkbutton check {{ border-radius: {px(3)}; }}
 checkbutton radio:checked {{ border-color: {SIGNAL_ORANGE}; background: radial-gradient(circle, {SIGNAL_ORANGE} 0%, {SIGNAL_ORANGE} 45%, transparent 50%); }}
@@ -342,6 +388,12 @@ popover > contents {{ background-color: {SURFACE_HIGH}; color: {TEXT_PRIMARY}; b
 .new-dot {{ min-width: {px(10)}; min-height: {px(10)}; border-radius: {px(5)}; }}
 .textbutton.muted-text label {{ color: {TEXT_SECONDARY}; }}
 .filled.welcome-continue {{ min-height: {px(52)}; }}
+.filled:disabled, .filled.tonal-surface:disabled, .filled.amber-fill:disabled, .filled.red-fill:disabled, .tonal:disabled {{ background-color: alpha({TEXT_PRIMARY}, 0.12); filter: none; }}
+.filled:disabled label, .filled.tonal-surface:disabled label, .filled.red-fill:disabled label, .tonal:disabled label {{ color: alpha({TEXT_PRIMARY}, 0.38); }}
+.outlined:disabled, .outlined.red-outline:disabled, .outlined.danger:disabled {{ border-color: alpha({TEXT_PRIMARY}, 0.12); filter: none; }}
+.outlined:disabled label, .outlined.red-outline:disabled label, .outlined.danger:disabled label {{ color: alpha({TEXT_PRIMARY}, 0.38); }}
+.textbutton:disabled {{ filter: none; }}
+.textbutton:disabled label, .textbutton.off-white:disabled label, .textbutton.muted-text:disabled label, .textbutton.danger-text:disabled label {{ color: alpha({TEXT_PRIMARY}, 0.38); }}
 {colours}
 """
 

@@ -18,18 +18,22 @@ class Route:
     """One route of a run: its key ("sat", "mesh", "sms:+316...", "hub"), its label, and what
     the app knows of it: state, detail, and the cancellation's state after a cancel."""
 
-    __slots__ = ("key", "label", "state", "detail", "cancel", "short")
+    __slots__ = ("key", "label", "state", "detail", "cancel", "short", "ref", "cancel_ref")
 
-    def __init__(self, key: str, label: str, state: str = WAITING, detail: str = "Waiting to send", cancel: str | None = None, short: str | None = None):
+    def __init__(self, key: str, label: str, state: str = WAITING, detail: str = "Waiting to send", cancel: str | None = None, short: str | None = None,
+                 ref: str | None = None, cancel_ref: str | None = None):
         self.key, self.label, self.state, self.detail, self.cancel = key, label, state, detail, cancel
         self.short = short or {"sat": "satellite", "mesh": "mesh", "hub": HUB_SHORT}.get(key, label)
+        self.ref, self.cancel_ref = ref, cancel_ref  # the Bridge's msg_ref of the leg and of its cancellation
 
     def to_json(self) -> dict:
-        return {"key": self.key, "label": self.label, "state": self.state, "detail": self.detail, "cancel": self.cancel, "short": self.short}
+        return {"key": self.key, "label": self.label, "state": self.state, "detail": self.detail, "cancel": self.cancel, "short": self.short,
+                "ref": self.ref, "cancel_ref": self.cancel_ref}
 
     @classmethod
     def from_json(cls, data: dict) -> "Route":
-        return cls(data.get("key", ""), data.get("label", ""), data.get("state", WAITING), data.get("detail", ""), data.get("cancel"), data.get("short"))
+        return cls(data.get("key", ""), data.get("label", ""), data.get("state", WAITING), data.get("detail", ""), data.get("cancel"), data.get("short"),
+                   data.get("ref"), data.get("cancel_ref"))
 
 
 class Run:
@@ -125,6 +129,47 @@ def plan(s, test: bool, contacts_reach: bool) -> tuple:
     else:
         skipped.append("Hub: not set up on this phone.")
     return routes, skipped
+
+
+def state_of_delivery(d: dict) -> str:
+    """SosProgress.stateOf: a route's state from its delivery in the Bridge's queue."""
+    status = d.get("status")
+    if status in ("sent", "delivered"):
+        return SENT
+    if status == "sending":
+        return SENDING
+    if status in ("queued", "retry", "held"):
+        return WAITING
+    if status == "dead":
+        return STOPPED if d.get("last_error") == "cancelled" else FAILED
+    return FAILED
+
+
+def detail_of_delivery(d: dict) -> str:
+    """SosProgress.detailOf: a confirmation from the far end is said (the Hub's receipt by
+    satellite, the carrier's delivery report by SMS); a retry says why."""
+    state = state_of_delivery(d)
+    error = str(d.get("last_error") or "")
+    if state == SENT:
+        channel = str(d.get("channel") or "")
+        if d.get("ack_status") != "acked":
+            return "Sent"
+        if channel.startswith("iridium"):
+            return "Sent, and the Hub has it"
+        if channel.startswith("sms") or channel.startswith("cellular"):
+            return "Delivered to their phone"
+        return "Sent"
+    if state == SENDING:
+        return "Sending now"
+    if state == STOPPED:
+        return "Stopped"
+    if state == WAITING:
+        return "Waiting to send" if not d.get("retries") and not error.strip() else f"Trying again: {error.strip() or 'not sent yet'}"
+    return error.strip() or "Not sent"
+
+
+NOT_QUEUED = "Could not be queued"
+HUB_STOPPED = "Stopped before the Hub could be reached"
 
 
 def state_of_answer(ok: bool, error: str | None, queued: bool = False) -> tuple:

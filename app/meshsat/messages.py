@@ -7,6 +7,7 @@ import time
 from gi.repository import GLib, Gtk
 
 from . import api, theme
+from .layout import empty_text
 from .model import chat as chat_words
 from .model import chatkeys, words
 from .screen import Screen
@@ -163,7 +164,8 @@ class MessagesScreen(Screen):
             self._list_key = key
             clear(self.list)
             if not chats:
-                self.list.append(text("No conversations yet", "body-medium", theme.TEXT_SECONDARY))
+                # MessagesScreen.kt:354-362: Box(fillMaxSize, padding(top = 16.dp), Center)
+                self.list.append(empty_text("No conversations yet", "body-large", top=theme.dp(16)))
             for chat in chats:
                 self.list.append(self.chat_card(chat))
         else:
@@ -177,9 +179,8 @@ class MessagesScreen(Screen):
             self._list_key = key
             clear(self.list)
             if not texts:
-                empty = text("No messages yet", "body-large", theme.TEXT_MUTED, xalign=0.5)
-                empty.set_margin_top(theme.dp(16))
-                self.list.append(empty)
+                # MessagesScreen.kt:334-342, the same centred Box
+                self.list.append(empty_text("No messages yet", "body-large", top=theme.dp(16)))
             for m in texts:
                 self.list.append(self.message_card(m, s))
 

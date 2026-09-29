@@ -57,6 +57,7 @@ def case_search_filters_all_messages(ctx):
     ctx.tree.wait_text("mew")
     ctx.tree.set_text("Search messages", "nothing like this")
     ctx.tree.wait_text("No messages yet")
+    ctx.shot("no-match")  # the empty text centred in the room under the search bar
     ctx.tree.click("Clear")
     ctx.tree.click("Chats")
     ctx.tree.wait_text("Everyone on the mesh")

@@ -40,6 +40,31 @@ def battery(level) -> str | None:
     return None
 
 
+def describe(level, voltage=None) -> str | None:
+    """NodeBattery.describe as the node's own card calls it (SettingsScreen.kt:411-414): "82%,
+    3.98 V", "82%" when the node sends no voltage, "On USB power", None when it has reported no
+    battery. Android adds ", about N h left" from three hours of its own readings of the node;
+    the Bridge keeps none, so that part is not here."""
+    level = int(level or 0)
+    if level > 100:
+        return "On USB power"
+    if level <= 0:
+        return None
+    volts = float32(voltage)
+    return f"{level}%" + (f", {words.fixed(volts, 2)} V" if volts > 0 else "")
+
+
+def float32(value) -> float:
+    """The node's voltage as the float it is (DeviceMetrics.voltage): Kotlin formats that float,
+    so 3.975, which is 3.97499990... as a float, is "3.97" there and must be here."""
+    import struct  # noqa: PLC0415
+
+    try:
+        return struct.unpack("<f", struct.pack("<f", float(value or 0)))[0]
+    except (OverflowError, TypeError, ValueError):
+        return 0.0
+
+
 def signal(node: dict) -> str:
     """nodeSignal's long form from what the node list knows: the SNR only for a node heard
     directly (on a relayed packet it is the relay's), the hop count for one heard through
