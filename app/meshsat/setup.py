@@ -9,11 +9,13 @@ from gi.repository import Adw, GLib, Gtk
 
 from . import __version__ as VERSION
 from . import api, system, theme
+from .model import hub as hub_model
+from .model import satellite as satellite_model
 from .model import words
 from .pages.safety import SafetyScreen  # noqa: F401  (the Setup row and the route table use it)
 from .passes import PassesScreen
 from .screen import Screen, SubScreen
-from .widgets import KeyValue, NavRow, clear, filled_button, group_title, outlined_button, page, scroller, spacer, text, text_button, when
+from .widgets import KeyValue, NavRow, clear, confirm, filled_button, group_title, outlined_button, page, scroller, text, text_button, when
 
 # Meshtastic's LoRa config, as the Bridge relays it: protobuf field numbers of Config.LoRaConfig.
 
@@ -29,7 +31,7 @@ class SetupScreen(Screen):
         column.append(group_title("Get connected"))
         self.node = NavRow("outlined-bluetooth", "Your MeshSat node", lambda: app.push(NodeScreen(app)), theme.MESH)
         self.satellite = NavRow("transport-satellite", "Satellite", lambda: app.push(SatelliteScreen(app)), theme.IRIDIUM)
-        self.hub = NavRow("outlined-cloud", "Hub", lambda: app.push(HubScreen(app)), theme.HUB)
+        self.hub = NavRow("outlined-cloud", "Hub", lambda: app.open_route("setup/hub"), theme.HUB)
         self.sms = NavRow("outlined-sms", "SMS", lambda: app.push(SmsScreen(app)), theme.SMS)
         for row in (self.node, self.satellite, self.hub, self.sms):
             column.append(row)
@@ -76,12 +78,7 @@ class SetupScreen(Screen):
             self.satellite.set_detail("Checking the modem", "amber")
         else:
             self.satellite.set_detail("No modem on this radio", "muted")
-        hub_state = (s.hub or {}).get("link") or ""
-        if s.hub_configured():
-            # Until the Bridge tells the app about the link (B12) the row says "Connecting", never "Connected" on a guess.
-            self.hub.set_detail("Connected" if hub_state == "connected" else "Connecting", "green" if hub_state == "connected" else "amber")
-        else:
-            self.hub.set_detail("Not set up. Paste the Hub's QR code.", "muted")
+        self.hub.set_detail(*hub_model.setup_row(s.hub if s.bridge else None))
         if s.sms_ready():
             self.sms.set_detail("Allowed", "green")
         else:
@@ -347,7 +344,7 @@ class SatelliteScreen(Page):
         card.append(self.details)
         buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(12))
         self.poll = outlined_button("Poll Signal", self.poll_signal)
-        self.check = filled_button("Check Mailbox", self.check_mailbox, expand=False)
+        self.check = filled_button(satellite_model.CHECK_MAILBOX, self.check_mailbox, expand=False)
         buttons.append(self.poll)
         buttons.append(self.check)
         card.append(buttons)
@@ -361,12 +358,19 @@ class SatelliteScreen(Page):
         self.call("/api/iridium/signal/fast", lambda a: self.app.toast(f"Signal {a.body.get('bars', 0)} of 5" if a.ok and isinstance(a.body, dict) and "bars" in a.body else "No modem"), method="GET", timeout=20.0)
 
     def check_mailbox(self) -> None:
+        """A check opens a billed Iridium session: asked about first, as on Android."""
+        confirm(self.app, satellite_model.CONFIRM_TITLE, satellite_model.CONFIRM_TEXT, satellite_model.CHECK, self.start_mailbox_check,
+                cancel=satellite_model.CANCEL)
+
+    def start_mailbox_check(self) -> None:
         self.call("/api/iridium/mailbox/check", lambda a: self.app.toast(a.error if not a.ok else "Checking the satellite mailbox"), timeout=20.0)
 
     def update(self, s: api.State) -> None:
         clear(self.details)
         clear(self.health)
         modem = s.modem or {}
+        # Android offers the check only while the modem is connected
+        self.check.set_sensitive(bool(modem.get("connected")))
         if modem.get("connected"):
             self.status.set_text(f"Modem ready, signal {(s.signal or {}).get('bars', 0)} of 5.")
             for k, v in (("Model", modem.get("model", "")), ("IMEI", modem.get("imei", "") or "-"), ("Port", modem.get("port", ""))):
@@ -383,97 +387,6 @@ class SatelliteScreen(Page):
         for k, v in (("Node", "Connected" if s.mesh_connected() else "Not connected"), ("Modem", "Ready" if modem.get("connected") else "None"),
                      ("Radio", s.watchdog.get("message", "no word yet")), ("Last reset", b.get("radio_last_reset_reason") or "-")):
             self.health.append(KeyValue(k, v))
-
-
-class HubScreen(Page):
-    def __init__(self, app):
-        super().__init__(app, "Hub")
-        card = self.card("Hub connection")
-        status = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
-        self.dot = Gtk.Box()
-        self.dot.add_css_class("dot")
-        self.dot.add_css_class("dot-muted")
-        self.dot.set_valign(Gtk.Align.CENTER)
-        status.append(self.dot)
-        self.status = text("Not set up", "body-large")
-        status.append(self.status)
-        status.append(spacer())
-        # "Use the Hub" (SettingsScreen.kt): the switch follows the settings; switching the
-        # link off by hand comes with the Hub page's rewrite (0.9.1), so until then it only shows.
-        self.switch = Gtk.Switch()
-        self.switch.set_valign(Gtk.Align.CENTER)
-        self.switch.set_sensitive(False)
-        self.switch.update_property([Gtk.AccessibleProperty.LABEL], ["Use the Hub"])
-        status.append(self.switch)
-        card.append(status)
-        card.append(text("Paste the Hub's QR code", "body-medium", theme.TEXT_SECONDARY))
-        self.paste = Gtk.Entry(placeholder_text="The text behind the Hub's QR code, from the Fleet page")
-        self.paste.add_css_class("field")
-        card.append(self.paste)
-        card.append(filled_button("Use these Hub settings", self.apply))
-        card.append(outlined_button("Test the connection", self.test))
-        self.details_button = text_button("Connection details", self.toggle_details)
-        card.append(self.details_button)
-        self.details = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(0))
-        self.details.set_visible(False)
-        card.append(self.details)
-        self.update(app.state)
-
-    def toggle_details(self) -> None:
-        self.details.set_visible(not self.details.get_visible())
-
-    def apply(self) -> None:
-        raw = self.paste.get_text().strip()
-        if not raw:
-            self.app.toast("Paste the Hub's QR code first")
-            return
-        import json
-        body = None
-        try:
-            data = json.loads(raw)
-            body = {"url": data.get("url") or data.get("mqtt_url") or data.get("hub_url", ""), "username": data.get("username") or data.get("bridge_id", ""),
-                    "password": data.get("password", ""), "bridge_id": data.get("bridge_id", "")}
-        except ValueError:
-            if raw.startswith("http") or raw.startswith("mqtt"):
-                body = {"url": raw}
-        if not body or not body.get("url"):
-            self.app.toast("That is not a Hub QR code")
-            return
-
-        def saved(answer: api.Answer) -> None:
-            if not answer.ok:
-                self.app.toast(answer.error or "The Hub settings were not saved.")
-                return
-            self.app.toast("Hub settings saved. Restarting the Bridge.")
-            system.privileged("systemctl", "restart", "meshsat-bridge.service")
-
-        self.call("/api/routing/hub", saved, body=body, method="PUT")
-
-    def test(self) -> None:
-        def done(answer: api.Answer) -> None:
-            hub = answer.body if answer.ok and isinstance(answer.body, dict) else {}
-            link = hub.get("link") or ""
-            self.app.toast(f"Connected as {hub.get('bridge_id')}" if link == "connected" else "Set up, but the Bridge has not said whether the Hub answers" if hub.get("url") else "Not connected")
-
-        self.call("/api/routing/hub", done, method="GET")
-
-    def update(self, s: api.State) -> None:
-        hub = s.hub or {}
-        for c in ("dot-green", "dot-amber", "dot-muted"):
-            self.dot.remove_css_class(c)
-        if hub.get("url"):
-            ok = (hub.get("link") or "") == "connected"
-            self.dot.add_css_class("dot-green" if ok else "dot-amber")
-            self.status.set_text("Connected" if ok else "Connecting")
-            self.switch.set_active(True)
-        else:
-            self.dot.add_css_class("dot-muted")
-            self.status.set_text("Not set up")
-            self.switch.set_active(False)
-        clear(self.details)
-        for k, v in (("Hub MQTT URL", hub.get("url") or "-"), ("Bridge ID", hub.get("bridge_id") or "-"), ("Username", hub.get("username") or "-"),
-                     ("Password", "set" if hub.get("has_password") else "-"), ("Certificate", "set" if hub.get("has_cert") else "-")):
-            self.details.append(KeyValue(k, v, mono=k in ("Bridge ID",)))
 
 
 class SmsScreen(Page):

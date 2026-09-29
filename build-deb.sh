@@ -15,7 +15,7 @@
 #   $BACKPLATE                   a checkout of meshsat-lora-backplate at the pinned commit
 set -eu
 
-VERSION=0.11.0
+VERSION=0.11.1
 ARCH=arm64
 INPUTS=$HOME/build/meshsat-linux/inputs
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -23,7 +23,7 @@ BACKPLATE=${MESHSAT_BACKPLATE_DIR:-$HERE/../meshsat-lora-backplate}
 BACKPLATE_COMMIT=f80fa16
 # The Bridge's container image this package takes its binary from (fetch-bridge.sh <tag>):
 # the first 8 characters of the meshsat commit the image was built from.
-BRIDGE_TAG=0db71ea2
+BRIDGE_TAG=f761743c
 WEB_VERSION=v2.7.2
 WEB_SHA256=62657b85b4c24af4d44da2932b64143abdbf6e65a79fcb51fd0801d9540616e2
 DAEMON_SHA256=96b02d077d99b1f4d9a44e9882f571bf66cd3f9128550394989298dc24b7b1d4

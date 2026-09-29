@@ -120,6 +120,10 @@ class Tree:
                 return
             if not showing_only or node.showing or node.role in ("application", "frame"):
                 out.append(node)
+            elif showing_only:
+                # Nothing under a widget that is not showing can be showing: the other four
+                # tabs and every closed section are skipped, which made a walk take seconds.
+                return
             try:
                 count = acc.get_child_count()
             except (GLib.Error, RuntimeError):

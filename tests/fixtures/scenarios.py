@@ -120,7 +120,7 @@ def base() -> dict:
         "GET /api/messages/stats": {"today_text": 2, "total": 3},
         "GET /api/iridium/modem": {"connected": False, "port": "", "model": "", "imei": ""},
         "GET /api/iridium/signal": {"bars": 0, "timestamp": ""},
-        "GET /api/routing/hub": {"url": "", "bridge_id": "", "username": "", "has_password": False, "has_cert": False},
+        "GET /api/routing/hub": {"url": "", "bridge_id": "", "username": "", "has_password": False, "has_cert": False, "enabled": True, "state": ""},
         "GET /api/deadman": {"enabled": False, "timeout_min": 240, "last_activity": "", "triggered": False},
         "GET /api/keys/stats": {"active": 0, "retired": 0, "revoked": 0, "enabled": False},
         "GET /api/cellular/status": {"connected": False, "sim_state": "NOT_INSERTED", "registration": "", "operator": "", "model": "", "phone_number": "", "sms_sent": 0, "sms_received": 0},
@@ -203,13 +203,16 @@ def sim_ready() -> dict:
 def all_four() -> dict:
     routes = sim_ready()
     routes.update({k: v for k, v in satellite_3_bars().items() if k.startswith("GET /api/iridium")})
-    routes["GET /api/routing/hub"] = {"url": "mqtts://hub.meshsat.net:8883", "bridge_id": "msa-pinephone", "username": "msa-pinephone", "has_password": True, "has_cert": False, "link": "connected"}
+    routes["GET /api/routing/hub"] = {"url": "mqtts://hub.meshsat.net:8883", "bridge_id": "msa-pinephone", "username": "msa-pinephone", "has_password": True, "has_cert": False,
+                                      "link": "connected", "state": "connected", "enabled": True, "running_as": "msa-pinephone"}
     return routes
 
 
 def hub_set_up() -> dict:
     routes = base()
-    routes["GET /api/routing/hub"] = {"url": "mqtts://hub.meshsat.net:8883", "bridge_id": "msa-pinephone", "username": "msa-pinephone", "has_password": True, "has_cert": False}
+    # Set up and still connecting (the Bridge's state since MESHSAT-1417; its link says "disconnected")
+    routes["GET /api/routing/hub"] = {"url": "mqtts://hub.meshsat.net:8883", "bridge_id": "msa-pinephone", "username": "msa-pinephone", "has_password": True, "has_cert": False,
+                                      "link": "disconnected", "state": "connecting", "enabled": True, "running_as": "msa-pinephone"}
     return routes
 
 

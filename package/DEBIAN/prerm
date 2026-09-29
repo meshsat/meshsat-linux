@@ -14,6 +14,11 @@ if [ -d /run/systemd/system ]; then
             systemctl disable meshsat-bridge.service meshsat-radio-watch.timer meshtasticd.service meshsat-hardware.service >/dev/null 2>&1 || true
             ;;
         upgrade|deconfigure)
+            # The new version's postinst starts the Bridge again where it ran, even with its
+            # start at boot switched off (Diagnostics > "Start after a phone restart").
+            if systemctl is-active --quiet meshsat-bridge.service; then
+                mkdir -p /run/meshsat && touch /run/meshsat/bridge-was-running
+            fi
             systemctl stop meshsat-bridge.service meshsat-radio-watch.timer meshtasticd.service 2>/dev/null || true
             ;;
     esac

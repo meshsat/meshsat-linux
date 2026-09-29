@@ -9,6 +9,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+import weakref
 
 from gi.repository import GLib, Gtk
 
@@ -93,7 +94,7 @@ class Provisioning:
         self.claim_id = 0
         self.dialog = None
         self.waited_label = None
-        self.listeners = []  # the Hub card's "Getting the Hub's settings, N s"
+        self.listeners = []  # weak references: the Hub card's "Getting the Hub's settings, N s"
 
     # What starts a claim
     def from_qr(self, url: str) -> None:
@@ -157,9 +158,20 @@ class Provisioning:
             return False
         if self.waited_label is not None:
             self.waited_label.set_text(provision.waited(self.seconds()))
-        for listener in list(self.listeners):
-            listener()
+        self.notify()
         return True
+
+    def listen(self, method) -> None:
+        """A screen's method called each second of a wait and when the claim's state changes."""
+        self.listeners.append(weakref.WeakMethod(method))
+
+    def notify(self) -> None:
+        for ref in list(self.listeners):
+            method = ref()
+            if method is None:
+                self.listeners.remove(ref)
+            else:
+                method()
 
     def seconds(self) -> int:
         return int(time.monotonic() - self.started) if self.state == "Waiting" else 0
@@ -174,6 +186,7 @@ class Provisioning:
             self.apply_now(bundle)
         else:
             self.ready(bundle)
+        self.notify()
         return False
 
     # What the person sees
@@ -260,6 +273,7 @@ class Provisioning:
         self.state, self.bundle, self.request = "Idle", None, None
         self.waited_label = None
         self.close_dialog()
+        self.notify()
 
 
 class _HttpsOnly(urllib.request.HTTPRedirectHandler):

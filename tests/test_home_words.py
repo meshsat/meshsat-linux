@@ -59,11 +59,20 @@ class LanesTest(unittest.TestCase):
         self.assertEqual(lanes["hub"], ("working", "Connected as msa-1.", ""))
         self.assertEqual(home.sentence(lanes, s), ("Messages can go out by satellite, mesh, SMS and the Hub.", None))
 
-    def test_hub_with_settings_but_no_word_on_the_link_is_trying(self):
-        s = state(bridge=CONNECTED, hub={"url": "mqtts://hub", "bridge_id": "msa-1"})
-        self.assertEqual(home.hub_lane(s), ("trying", "Connecting to the Hub.", ""))
-        s.hub["link"] = "error"
-        self.assertEqual(home.hub_lane(s), ("failed", "Cannot reach the Hub. It keeps trying by itself.", ""))
+    def test_hub_lane_follows_the_links_state(self):
+        """HomeLanes.kt:217-223: no Hub link running is Off, whatever the settings say."""
+        s = state(bridge=CONNECTED, hub={"url": "mqtts://hub", "bridge_id": "msa-1", "state": ""})
+        self.assertEqual(home.hub_lane(s), ("off", "Scan the Hub's QR code to connect this phone.", ""))
+        for link, want in (("connecting", ("trying", "Connecting to the Hub.", "")),
+                           ("error", ("failed", "Cannot reach the Hub. It keeps trying by itself.", "")),
+                           ("disconnected", ("trying", "Not connected. It keeps trying by itself.", "")),
+                           ("connected", ("working", "Connected as msa-1.", ""))):
+            s.hub["state"] = link
+            self.assertEqual(home.hub_lane(s), want, link)
+        s.hub["running_as"] = "kit-7"
+        self.assertEqual(home.hub_lane(s), ("working", "Connected as kit-7.", ""))
+        s.bridge = None
+        self.assertEqual(home.hub_lane(s)[0], "off")
 
     def test_messages_on_the_way(self):
         s = state(bridge=CONNECTED, nodes=[NODE], messages=[{"delivery_status": "queued"}, {"delivery_status": "sending"}])

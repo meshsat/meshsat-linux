@@ -36,6 +36,11 @@
   </recommends>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.11.1" date="2026-09-29">
+      <description>
+        <p>The Hub page, as MeshSat Android's: where the link to the Hub stands, in Android's words, with the reason when it fails; Use the Hub; Test the connection; the connection details for setting it up by hand; and the Hub's QR code scanned from the page itself. The Setup row and the Home lane follow the link as the Bridge reports it.</p>
+      </description>
+    </release>
     <release version="0.11.0" date="2026-09-29">
       <description>
         <p>Cards, the QR scanner and the address book, as MeshSat Android's. People you carry: My card, signed by the Bridge, as a QR code with the fingerprint to read aloud; a card scanned with the camera or pasted, checked before it is added; the cards kept on this phone. The scanner uses the phone's camera, or an image. Setup > Messaging scans a kit's key bundle (its key saved the first time, and a changed key asked about), a key, or the Hub's code, which fetches the Hub's settings and applies them; a meshsat://provision link does the same. Emergency contacts can be chosen from the address book.</p>
