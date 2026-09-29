@@ -129,7 +129,7 @@ class SharePackageTest(unittest.TestCase):
 
 def namespaces() -> str | None:
     """Why the rules cannot be tried on this machine, or None when they can."""
-    for tool in ("nft", "unshare", "nsenter", "ip"):
+    for tool in ("nft", "unshare", "ip"):
         if not shutil.which(tool, path=SBIN):
             return f"no {tool} here"
     try:
