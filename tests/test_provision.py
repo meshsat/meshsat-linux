@@ -120,7 +120,9 @@ class ClaimTest(unittest.TestCase):
         self.assertTrue(pv.is_inline(code))
         bundle = pv.inline_bundle(code)
         self.assertEqual(pv.hub_body(bundle), {"url": "wss://mqtt-hub.meshsat.net/mqtt", "bridge_id": "msa-flaneur", "username": "msa-flaneur", "password": "s3cret",
-                                               "tls_cert_pem": "CERT", "tls_key_pem": "KEY", "tls_ca_pem": "CA"})
+                                               "tls_cert_pem": "CERT", "tls_key_pem": "KEY", "tls_ca_pem": "CA", "mqtt_topic_prefix": "meshsat"})
+        tenant = pv.bundle_from_json(json.dumps(dict(BUNDLE, mqtt_topic_prefix="meshsat/acme")))
+        self.assertEqual(pv.hub_body(tenant)["mqtt_topic_prefix"], "meshsat/acme")
         self.assertEqual(pv.ready_lines(bundle), ["Hub: wss://mqtt-hub.meshsat.net/mqtt", "Certificate expires: 2027-09-29T00:00:00Z", "Reticulum: rns.meshsat.net:4242"])
         self.assertEqual(pv.bundle_from_json('{"bid": null, "mqtt": 5}')["bid"], "null")
 

@@ -140,7 +140,8 @@ def bundle_from_json(text: str) -> dict:
         return "null" if value is None else str(value)
 
     return {"v": opt("v", "1"), "bid": opt("bid"), "mqtt": opt("mqtt"), "user": opt("user"), "pass": opt("pass"), "cert": opt("cert"),
-            "key": opt("key"), "ca": opt("ca"), "cert_exp": opt("cert_exp"), "ret_tcp": opt("ret_tcp")}
+            "key": opt("key"), "ca": opt("ca"), "cert_exp": opt("cert_exp"), "ret_tcp": opt("ret_tcp"),
+            "mqtt_topic_prefix": opt("mqtt_topic_prefix")}
 
 
 def inline_bundle(url: str) -> dict:
@@ -203,6 +204,8 @@ def claim(request: dict, get, sleep=time.sleep, now_ms=None, on_wait=None, cance
 
 def hub_body(bundle: dict) -> dict:
     """PUT /api/routing/hub from the settings: the CA always sent (the Bridge clears it when it
-    is left out)."""
+    is left out), and the tenant's topic root always sent, so a phone moved back to the platform
+    tenant leaves the old root behind (MESHSAT-1467; the Bridge honours it since 91dfdfd2)."""
     return {"url": bundle.get("mqtt", ""), "bridge_id": bundle.get("bid", ""), "username": bundle.get("user", ""), "password": bundle.get("pass", ""),
-            "tls_cert_pem": bundle.get("cert", ""), "tls_key_pem": bundle.get("key", ""), "tls_ca_pem": bundle.get("ca", "")}
+            "tls_cert_pem": bundle.get("cert", ""), "tls_key_pem": bundle.get("key", ""), "tls_ca_pem": bundle.get("ca", ""),
+            "mqtt_topic_prefix": bundle.get("mqtt_topic_prefix", "")}
