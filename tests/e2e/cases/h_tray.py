@@ -16,7 +16,7 @@ from driver.tray import Tray
 
 SCENARIO = "mesh-only"
 NOTIFIER = True
-# (IconName, the tooltip's text) from outside.status(): the owner's words (CLAUDE.md, "Outside the app")
+# (IconName, the tooltip's text) from outside.status(): the owner's words (local notes, "Outside the app")
 MESH_ONLY = ("meshsat-transport-mesh-symbolic", "Mesh: 1 node")
 SATELLITE = ("meshsat-iridium-3-symbolic", "Satellite: 3/5, Mesh: 1 node")
 NO_BRIDGE = ("meshsat-iridium-0-symbolic", "Nothing can send yet.")
