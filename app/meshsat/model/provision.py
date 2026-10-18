@@ -205,7 +205,7 @@ def claim(request: dict, get, sleep=time.sleep, now_ms=None, on_wait=None, cance
 def hub_body(bundle: dict) -> dict:
     """PUT /api/routing/hub from the settings: the CA always sent (the Bridge clears it when it
     is left out), and the tenant's topic root always sent, so a phone moved back to the platform
-    tenant leaves the old root behind (MESHSAT-1467; the Bridge honours it since 91dfdfd2)."""
+    tenant leaves the old root behind (MESHSAT-1467; the Bridge honours it since 3b305817)."""
     return {"url": bundle.get("mqtt", ""), "bridge_id": bundle.get("bid", ""), "username": bundle.get("user", ""), "password": bundle.get("pass", ""),
             "tls_cert_pem": bundle.get("cert", ""), "tls_key_pem": bundle.get("key", ""), "tls_ca_pem": bundle.get("ca", ""),
             "mqtt_topic_prefix": bundle.get("mqtt_topic_prefix", "")}
