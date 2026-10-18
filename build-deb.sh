@@ -20,14 +20,14 @@ ARCH=arm64
 INPUTS=$HOME/build/meshsat-linux/inputs
 HERE=$(cd "$(dirname "$0")" && pwd)
 BACKPLATE=${MESHSAT_BACKPLATE_DIR:-$HERE/../meshsat-lora-backplate}
-BACKPLATE_COMMIT=f80fa16
+BACKPLATE_COMMIT=9e38a15
 # The Bridge's container image this package takes its binary from (fetch-bridge.sh <tag>):
 # the first 8 characters of the meshsat commit the image was built from.
 BRIDGE_TAG=cad98d15
 WEB_VERSION=v2.7.2
 WEB_SHA256=62657b85b4c24af4d44da2932b64143abdbf6e65a79fcb51fd0801d9540616e2
 DAEMON_SHA256=96b02d077d99b1f4d9a44e9882f571bf66cd3f9128550394989298dc24b7b1d4
-FIRMWARE_COMMIT=6777ecc53657b3f5a6684a78e4f906f6e12ee042
+FIRMWARE_COMMIT=a0c6bda8f29f3a335d85c440f69f27b813eb2716
 
 while [ $# -gt 0 ]; do
     case "$1" in

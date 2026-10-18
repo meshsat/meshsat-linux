@@ -1669,7 +1669,7 @@
    "state": "verified",
    "test": "h_satellite_node::a_the_node_card_and_its_switch",
    "capture": "node-modem",
-   "note": "'Satellite modem on the node', its status words and 'Use the node's modem' over the Bridge's pipe to the node (B9, MESHSAT-1391, Bridge ab58709a), against a scripted Bridge; the pipe on the air is not proven: the T-Beam with the RockBLOCK is out of the phone's Bluetooth range (blocked.satellite-live)"
+   "note": "'Satellite modem on the node', its status words and 'Use the node's modem' over the Bridge's pipe to the node (B9, MESHSAT-1391, Bridge 5f6dd3ad), against a scripted Bridge; the pipe on the air is not proven: the T-Beam with the RockBLOCK is out of the phone's Bluetooth range (blocked.satellite-live)"
   },
   {
    "id": "setup.satellite.node-health",
