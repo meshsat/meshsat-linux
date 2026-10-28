@@ -36,6 +36,11 @@
   </recommends>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="1.1.0" date="2026-10-28">
+      <description>
+        <p>Voice notes and photos, as on MeshSat Android: on a Reticulum chat the microphone records while held and a photo is picked and made small, and both travel in the message's fields, as Sideband sends them; a received note plays, a photo shows in the bubble, and a Codec2 note this phone cannot decode is named and kept. Messages has the Reticulum lane: the peers the node has heard, by their names, a chat with any address, and the notification for a message by Reticulum.</p>
+      </description>
+    </release>
     <release version="1.0.3" date="2026-09-30">
       <description>
         <p>An SOS takes every route that is set up, as on Android: a leg on a route that is down (a satellite modem not plugged in, a node out of reach, the Hub offline) waits and goes out when the route is back, and the SOS screen says so. The Hub is told over the internet as well. A blank SOS name takes the Hub callsign.</p>

@@ -97,6 +97,8 @@ class FakeBridge:
         self.hub = None  # the Hub settings PUT /api/routing/hub wrote
         self.claim = None  # a scripted Hub's provisioning claim (`_claim`): {bid, nonce, busy, bundle}
         self.claims = 0
+        self.lxmf_sent = []  # POST /api/lxmf/send bodies (MESHSAT-1735)
+        self.lxmf_attachments = {}  # message id (str) -> [{"kind", "mode", "format", "data_b64"}] (`_lxmf_attachments`)
         self.apply(scenario or {})
         fake = self
 
@@ -152,6 +154,9 @@ class FakeBridge:
                     return
                 if self.path.startswith("/api/bridges/") and "/provision/" in self.path and method == "GET":
                     fake.provision_claim(self)
+                    return
+                if method == "GET" and re.match(r"^/api/lxmf/messages/[^/]+/attachments/\d+$", self.path):
+                    fake.attachment(self)
                     return
                 try:
                     status, answer = fake.answer(method, self.path, body)
@@ -215,6 +220,10 @@ class FakeBridge:
         self.claim = json.loads(json.dumps(claim)) if claim else None
         self.claims = 0
         self.key_imports, self.hub = [], None
+        # The voice notes and photos of the LXMF messages, by message id, as the Bridge's
+        # lxmf_attachments table (MESHSAT-1735); a send files its own
+        self.lxmf_sent = []
+        self.lxmf_attachments = {str(k): [dict(a) for a in v] for k, v in (routes.pop("_lxmf_attachments", None) or {}).items()}
         self.routes = routes
 
     # Life
@@ -276,6 +285,20 @@ class FakeBridge:
         """The few calls whose answer depends on what the app did before."""
         if path == "/api/sos/status" and method == "GET":
             return 200, self.sos_status()
+        if path.startswith("/api/lxmf/"):
+            reduced = self.reduce_lxmf(method, path, body)
+            if reduced is not None:
+                return reduced
+        if path == "/api/messages" and method == "GET" and f"GET {full_path}" not in self.routes:
+            # Any other limit than the app's 200 (the notifier asks for 20): the same list, cut
+            listed = self.routes.get("GET /api/messages?limit=200")
+            if isinstance(listed, dict) and isinstance(listed.get("messages"), list):
+                limit = urllib.parse.parse_qs(urllib.parse.urlparse(full_path).query).get("limit", ["200"])[0]
+                try:
+                    limit = max(1, int(limit))
+                except ValueError:
+                    limit = 200
+                return 200, {"messages": listed["messages"][:limit]}
         if path == "/api/sos/activate" and method == "POST":
             # As the Bridge since MESHSAT-1447: every route named (else the mesh), each a leg that
             # waits in the queue for its link; the satellite leg waits for a modem, the Hub's for
@@ -715,6 +738,98 @@ class FakeBridge:
                 return 200, {"status": "bound"}
         return None
 
+    # The LXMF messages' voice notes and photos (the Bridge's lxmf_handlers.go, MESHSAT-1735)
+    def lxmf_messages(self) -> list:
+        listed = self.routes.get("GET /api/messages?limit=200")
+        return listed.get("messages") if isinstance(listed, dict) and isinstance(listed.get("messages"), list) else []
+
+    def lxmf_message_id(self, param: str):
+        """The {id} of the attachment routes: a row id, or the message's LXMF hash (64 hex) the
+        scenario gave as `lxmf_hash`; None when it names no message."""
+        rows = self.lxmf_messages()
+        if re.fullmatch(r"[0-9a-f]{64}", param or ""):
+            return next((r.get("id") for r in rows if r.get("lxmf_hash") == param), None)
+        try:
+            wanted = int(param)
+        except ValueError:
+            return None
+        return wanted if any(r.get("id") == wanted for r in rows) else None
+
+    def reduce_lxmf(self, method: str, path: str, body):
+        import base64  # noqa: PLC0415
+
+        if path == "/api/lxmf/send" and method == "POST":
+            body = body or {}
+            if not re.fullmatch(r"[0-9a-f]{32}", str(body.get("to") or "")):
+                return 400, {"error": "to must be a 32-hex LXMF destination hash"}
+            atts = []
+            for kind, key in (("image", "format"), ("audio", "mode")):
+                item = body.get(kind)
+                if item is None:
+                    continue
+                if not isinstance(item, dict) or key not in item or not item.get("data_b64"):
+                    return 400, {"error": f"{kind} needs {key} and data_b64"}
+                try:
+                    data = base64.b64decode(item["data_b64"], validate=True)
+                except (ValueError, TypeError):
+                    return 400, {"error": f"{kind}: undecodable base64"}
+                atts.append({"kind": kind, "mode": int(item.get("mode") or 0), "format": str(item.get("format") or ""), "data_b64": item["data_b64"], "_size": len(data)})
+            if sum(a["_size"] for a in atts) > 64 * 1024:
+                return 413, {"error": "attachments exceed 65536 bytes"}
+            if not body.get("content") and not atts:
+                return 400, {"error": "content is required"}
+            self.lxmf_sent.append(dict(body))
+            # As the Bridge's worker files the sent message, with its attachments under it
+            rows = self.lxmf_messages()
+            next_id = max([r.get("id") or 0 for r in rows] + [0]) + 1
+            rows.insert(0, {"id": next_id, "from_node": "lxmf:" + "0" * 32, "to_node": "lxmf:" + body["to"], "portnum": 1, "portnum_name": "LXMF",
+                            "decoded_text": body.get("content") or "", "rx_time": int(time.time()), "direction": "tx", "transport": "reticulum",
+                            "delivery_status": "delivered"})
+            if atts:
+                self.lxmf_attachments[str(next_id)] = [{k: v for k, v in a.items() if k != "_size"} for a in atts]
+            return 202, {"delivery_id": len(self.lxmf_sent), "msg_ref": f"lxmf-{len(self.lxmf_sent)}", "channel": "lxmf_0"}
+        match = re.fullmatch(r"/api/lxmf/messages/([^/]+)/attachments", path)
+        if match and method == "GET":
+            message_id = self.lxmf_message_id(match.group(1))
+            if message_id is None:
+                return 404, {"error": "no such message"}
+            items = []
+            for i, a in enumerate(self.lxmf_attachments.get(str(message_id), [])):
+                size = len(base64.b64decode(a["data_b64"]))
+                ctype = ("audio/codec2" if 1 <= a.get("mode", 0) <= 9 else "audio/ogg") if a["kind"] == "audio" else f"image/{a.get('format') or 'webp'}"
+                items.append({"index": i, "kind": a["kind"], "mode": a.get("mode", 0), "format": a.get("format", ""), "size": size, "content_type": ctype,
+                              "url": f"/api/lxmf/messages/{message_id}/attachments/{i}"})
+            return 200, {"message_id": message_id, "lxmf_hash": "", "attachments": items}
+        return None
+
+    def attachment(self, handler) -> None:
+        """GET /api/lxmf/messages/{id}/attachments/{n}: the bytes, as the Bridge serves them."""
+        import base64  # noqa: PLC0415
+
+        with self.lock:
+            self.requests.append({"t": time.time(), "method": "GET", "path": handler.path, "body": None})
+        match = re.fullmatch(r"/api/lxmf/messages/([^/]+)/attachments/(\d+)", handler.path)
+        message_id = self.lxmf_message_id(match.group(1))
+        items = self.lxmf_attachments.get(str(message_id), []) if message_id is not None else []
+        n = int(match.group(2))
+        if n >= len(items):
+            body = json.dumps({"error": "no such attachment"}).encode()
+            handler.send_response(404)
+            handler.send_header("Content-Type", "application/json")
+            handler.send_header("Content-Length", str(len(body)))
+            handler.end_headers()
+            handler.wfile.write(body)
+            return
+        a = items[n]
+        data = base64.b64decode(a["data_b64"])
+        handler.send_response(200)
+        handler.send_header("Content-Type", ("audio/codec2" if 1 <= a.get("mode", 0) <= 9 else "audio/ogg") if a["kind"] == "audio" else f"image/{a.get('format') or 'webp'}")
+        handler.send_header("Content-Length", str(len(data)))
+        if a["kind"] == "audio":
+            handler.send_header("X-LXMF-Audio-Mode", str(a.get("mode", 0)))
+        handler.end_headers()
+        handler.wfile.write(data)
+
     def reduce_transforms(self, link: str, body: dict):
         listed = self.routes.get("GET /api/interfaces")
         record = next((i for i in listed if i.get("id") == link), None) if isinstance(listed, list) else None
@@ -914,7 +1029,7 @@ class FakeBridge:
                 self.down = bool(body.get("down", True))
                 return 200, {"down": self.down}
             if order == "reset":
-                self.requests, self.unexpected, self.sent = [], [], []
+                self.requests, self.unexpected, self.sent, self.lxmf_sent = [], [], [], []
                 self.queued = {}
                 self.delay, self.down = 0.0, False
                 self.sos = {"active": False, "started_at": "", "sends": 0, "test": False}
@@ -927,7 +1042,8 @@ class FakeBridge:
                              "tiles_down": self.tiles_down, "tile_requests": self.tile_requests,
                              "key_imports": self.key_imports, "hub": self.hub, "claims": self.claims,
                              "mailbox": self.mailbox, "mailbox_checks": self.mailbox_checks, "queued": self.queued, "chat_keys": self.chat_keys,
-                             "interfaces": self.routes.get("GET /api/interfaces")}
+                             "interfaces": self.routes.get("GET /api/interfaces"), "lxmf_sent": self.lxmf_sent,
+                             "lxmf_attachments": {k: len(v) for k, v in self.lxmf_attachments.items()}}
         if order == "event":
             self.push(body)
             return 200, {"listeners": len(self.listeners)}

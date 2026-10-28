@@ -429,6 +429,7 @@ class State:
         self.keys = None
         self.cellular = None  # /api/cellular/status: the phone's SIM, through ModemManager
         self.sms = []  # /api/cellular/sms: texts sent and received through the SIM
+        self.lxmf_peers = []  # /api/lxmf/peers: the Reticulum (LXMF) addresses the node has a path to, with their names
         self.contacts = []  # emergency contacts, [{"name", "phone"}], kept by the app as Android does
         self.sos_name = ""
         self.node_service = False
@@ -574,6 +575,7 @@ def _poll_state(s: "State", names: dict, asker: "NameAsker") -> "State":
         for field in LIVE:
             setattr(s, field, None)
         s.sms = []
+        s.lxmf_peers = []
         s.packets = []
     else:
         nodes = (get("/api/nodes") or {}).get("nodes") or []
@@ -602,6 +604,8 @@ def _poll_state(s: "State", names: dict, asker: "NameAsker") -> "State":
         s.cellular = get("/api/cellular/status")
         sms = get("/api/cellular/sms?limit=200")
         s.sms = sms if isinstance(sms, list) else []
+        peers = get("/api/lxmf/peers")  # 503 while LXMF is not running: no peers
+        s.lxmf_peers = [p for p in peers if isinstance(p, dict)] if isinstance(peers, list) else []
     s.hardware = hardware()
     if bridge is not None and s.node_mode() == "bluetooth":
         s.ble = ble_status()

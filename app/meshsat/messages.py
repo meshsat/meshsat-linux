@@ -2,12 +2,14 @@
 """Messages, as ui/screens/MessagesScreen.kt: the filter chips, the counts, Chats / All
 Messages / New message, the conversation cards; the chat with its orange back arrow, lane
 subtitle, lock, bubbles and composer; the New message dialog."""
+import threading
 import time
 
 from gi.repository import Gdk, GLib, Gtk, Pango
 
-from . import api, theme
+from . import api, files, media, theme, voicenotes
 from .layout import empty_text
+from .model import attachments as att_words
 from .model import chat as chat_words
 from .model import chatkeys, words
 from .screen import Screen
@@ -16,9 +18,14 @@ from .widgets import (Card, Chip, Field, SubHeader, Tag, clear, hscroll, icon, i
 
 EVERYONE = "!ffffffff"
 SATELLITE = "satellite"
-# The transport's badge on a message, as Android stores the transport ("iridium", not "satellite").
-BADGE = {"mesh": "MESH", "satellite": "IRIDIUM", "sms": "SMS"}
-TRANSPORT_OF_LANE = {"mesh": "mesh", "satellite": "iridium", "sms": "sms"}
+# The transport's badge on a message, as Android stores the transport ("iridium", not "satellite";
+# "lxmf" for a Reticulum message).
+BADGE = {"mesh": "MESH", "satellite": "IRIDIUM", "sms": "SMS", "reticulum": "LXMF"}
+TRANSPORT_OF_LANE = {"mesh": "mesh", "satellite": "iridium", "sms": "sms", "reticulum": "lxmf"}
+# The transport filters, in Android's order (MessagesScreen.kt:246; the Hub lane is not here yet)
+FILTERS = (("all", "All"), ("mesh", "Mesh"), ("satellite", "Satellite"), ("reticulum", "Reticulum"), ("sms", "SMS"))
+# A picked photo: what GdkPixbuf and Pillow read
+PHOTO_PATTERNS = ("*.png", "*.jpg", "*.jpeg", "*.webp", "*.gif", "*.bmp", "*.PNG", "*.JPG", "*.JPEG")
 # The compose box (OutlinedTextField, maxLines = 4): the text 16 dp in from the outline on every
 # side, at most four lines before it scrolls.
 COMPOSE_PAD = 16
@@ -71,13 +78,16 @@ def filter_chip(label_text: str, on_tap, lane: str | None = None, selected: bool
     return chip
 
 
-def lane_of(message: dict) -> str:
-    transport = message.get("transport")
-    if transport in ("iridium", "iridium_imt", "sbd", "imt"):
-        return "satellite"
-    if transport in ("sms", "cellular"):
-        return "sms"
-    return "mesh"
+lane_of = chat_words.lane_of
+
+
+def chat_texts(s: api.State) -> list:
+    """Every message of the chats: the texts, and an LXMF message with no text (a voice note or
+    a photo alone, MESHSAT-1735), the SMS store's texts, and this app's own Reticulum sends only
+    until the Bridge has filed its own row for them."""
+    texts = [m for m in s.messages if m.get("portnum_name") in ("TEXT_MESSAGE_APP", "LXMF") and (m.get("decoded_text") or lane_of(m) == "reticulum")
+             and m.get("transport") != "sms"]
+    return chat_words.merge_lxmf(texts) + sms_as_messages(s)
 
 
 def sms_as_messages(s: api.State) -> list:
@@ -97,7 +107,7 @@ def sms_as_messages(s: api.State) -> list:
 
 
 def conversations(s: api.State) -> list:
-    texts = [m for m in s.messages if m.get("portnum_name") == "TEXT_MESSAGE_APP" and m.get("decoded_text") and m.get("transport") != "sms"] + sms_as_messages(s)
+    texts = chat_texts(s)
     me = (s.bridge or {}).get("node_id")
     groups = {}
     for m in texts:
@@ -105,6 +115,9 @@ def conversations(s: api.State) -> list:
             key = SATELLITE
         elif lane_of(m) == "sms":
             key = "sms:" + str(m.get("from_node") if m.get("direction") == "rx" else m.get("to_node"))
+        elif lane_of(m) == "reticulum":
+            # The Bridge files an LXMF message's ends as "lxmf:<hash>": the far end is the chat
+            key = str(m.get("from_node") if m.get("direction") == "rx" else m.get("to_node"))
         elif m.get("to_node") == EVERYONE or m.get("from_node") == EVERYONE:
             key = EVERYONE
         else:
@@ -119,6 +132,8 @@ def conversations(s: api.State) -> list:
             title = "Everyone on the mesh"
         elif key.startswith("sms:"):
             title = key[4:]  # Peers.displayName: a phone number is named by itself, an emergency contact's too
+        elif key.startswith(chat_words.LXMF_PREFIX):
+            title = chat_words.lxmf_name(key, s.lxmf_peers)
         else:
             title = name_of(key, s)
         out.append({"key": key, "title": title, "lane": lane_of(items[0]), "items": items, "last": items[0]})
@@ -139,8 +154,9 @@ class MessagesScreen(Screen):
         # The transport filters: a selected Mesh, Satellite or SMS chip takes its lane's colour
         filters = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
         self.filter_chips = {}
-        for key, label_text in (("all", "All"), ("mesh", "Mesh"), ("satellite", "Satellite"), ("sms", "SMS")):
-            chip = filter_chip(label_text, lambda c, k=key: self.set_filter(k), lane=None if key == "all" else key, selected=key == "all")
+        for key, label_text in FILTERS:
+            # A selected Reticulum chip is plain SurfaceLight on Android (no lane colour of its own)
+            chip = filter_chip(label_text, lambda c, k=key: self.set_filter(k), lane=None if key in ("all", "reticulum") else key, selected=key == "all")
             self.filter_chips[key] = chip
             filters.append(chip)
         column.append(hscroll(filters))
@@ -224,7 +240,7 @@ class MessagesScreen(Screen):
             for chat in chats:
                 self.list.append(self.chat_card(chat))
         else:
-            texts = [m for m in s.messages if m.get("portnum_name") == "TEXT_MESSAGE_APP" and m.get("decoded_text") and m.get("transport") != "sms"] + sms_as_messages(s)
+            texts = chat_texts(s)
             texts.sort(key=lambda m: m.get("rx_time") or 0, reverse=True)
             texts = chat_words.search(texts, self.query)
             texts = [m for m in texts if self.filter == "all" or lane_of(m) == self.filter][:100]
@@ -307,11 +323,14 @@ class ChatScreen(Screen):
         self.route = "chat/" + key
         self._key = None
         self.sending = False
+        # A voice note and a photo waiting to go with the next message (MESHSAT-1735): only a
+        # Reticulum chat offers them, the one bearer that carries them.
+        self.pending_audio, self.pending_audio_ms, self.pending_image = None, 0, None
         # The lock: this chat's own key, kept by the Bridge (Android's KeyManagementSection).
         self.chat_key = None
         self.lock = icon_button("filled-lock-open", self.toggle_key, 24, theme.TEXT_MUTED, tooltip=chatkeys.LOCK)
         # Under the name, as the Android header: the node's id, the channel, or the transport.
-        subtitle = detail_of(key) or {"sms": "SMS"}.get(lane, "Mesh")
+        subtitle = detail_of(key) or {"sms": "SMS", "reticulum": "Reticulum"}.get(lane, "Mesh")
         self.append(SubHeader(title, app.pop, orange=True, subtitle=subtitle, subtitle_colour=theme.lane_colour(lane), trailing=self.lock, plain=True))
         self.key_section = ChatKeySection(self)
         self.key_section.set_visible(False)
@@ -332,7 +351,21 @@ class ChatScreen(Screen):
         composer.set_margin_start(theme.dp(16))
         composer.set_margin_end(theme.dp(16))
         composer.set_margin_bottom(theme.dp(16))
+        # PendingAttachments: a row per note or photo waiting, 4 dp apart, 6 dp above the box
+        self.pending_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=theme.dp(4))
+        self.pending_box.set_margin_bottom(theme.dp(6))
+        self.pending_box.set_visible(False)
+        composer.append(self.pending_box)
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(8))
+        self.record_button = self.photo_button = None
+        if lane == "reticulum":
+            # The microphone (held to record) and the photo, 4 dp apart, before the box
+            row.set_spacing(theme.dp(4))
+            self.record_button = voicenotes.RecordButton(app, self.note_taken)
+            row.append(self.record_button)
+            self.photo_button = icon_button("filled-add-photo-alternate", self.pick_photo, 24, theme.SIGNAL_ORANGE, tooltip=att_words.ATTACH_PHOTO)
+            self.photo_button.set_valign(Gtk.Align.CENTER)
+            row.append(self.photo_button)
         # OutlinedTextField(maxLines = 4): the text wraps and the box grows with it to four lines,
         # then scrolls. A TextView in a scroller that takes its height, up to four lines; the
         # placeholder lies over it while it is empty (a TextView has none of its own).
@@ -373,6 +406,12 @@ class ChatScreen(Screen):
         self.send_button.set_valign(Gtk.Align.CENTER)
         row.append(self.send_button)
         composer.append(row)
+        # What goes and what stays, before the send: the policy line first, then the bearer's own
+        self.policy = text("", "body-small", theme.TEXT_SECONDARY, wrap=True)
+        self.policy.set_margin_start(theme.dp(4))
+        self.policy.set_margin_top(theme.dp(4))
+        self.policy.set_visible(False)
+        composer.append(self.policy)
         self.hint = text("", "body-small", theme.TEXT_SECONDARY, wrap=True)
         self.hint.set_margin_start(theme.dp(4))
         self.hint.set_margin_top(theme.dp(4))
@@ -380,6 +419,60 @@ class ChatScreen(Screen):
         self.append(composer)
         self.composer_changed()
         self.update(app.state)
+
+    # The note and the photo waiting to go (MESHSAT-1735)
+    def has_attachments(self) -> bool:
+        return self.pending_audio is not None or self.pending_image is not None
+
+    def note_taken(self, data: bytes, ms: int) -> None:
+        self.pending_audio, self.pending_audio_ms = data, ms
+        self.show_pending()
+
+    def pick_photo(self) -> None:
+        def picked(_path, data: bytes | None) -> None:
+            if data is None:
+                return
+            budget = att_words.MAX_BYTES - len(self.pending_audio or b"")
+
+            def shrink() -> None:
+                from . import playback  # noqa: PLC0415
+
+                small = playback.shrink_photo(data, budget)
+                GLib.idle_add(lambda: self.photo_ready(small) or False)
+
+            threading.Thread(target=shrink, daemon=True).start()
+
+        files.pick(self.app, att_words.ATTACH_PHOTO, picked, patterns=PHOTO_PATTERNS)
+
+    def photo_ready(self, small: bytes | None) -> None:
+        if small is None:
+            self.app.toast(att_words.PICTURE_FAILED)
+            return
+        self.pending_image = small
+        self.show_pending()
+
+    def drop_audio(self) -> None:
+        self.pending_audio, self.pending_audio_ms = None, 0
+        self.show_pending()
+
+    def drop_image(self) -> None:
+        self.pending_image = None
+        self.show_pending()
+
+    def show_pending(self) -> None:
+        """The rows under the chips: one of each at most, the buttons disabled meanwhile."""
+        clear(self.pending_box)
+        if self.pending_audio is not None:
+            self.pending_box.append(voicenotes.pending_audio_row(self.pending_audio, self.pending_audio_ms, self.drop_audio))
+        if self.pending_image is not None:
+            self.pending_box.append(voicenotes.pending_image_row(self.pending_image, self.drop_image))
+        self.pending_box.set_visible(self.has_attachments())
+        if self.record_button is not None:
+            self.record_button.set_sensitive(self.pending_audio is None)
+        if self.photo_button is not None:
+            self.photo_button.set_sensitive(self.pending_image is None)
+            self.photo_button.set_child(icon("filled-add-photo-alternate", 24, theme.SIGNAL_ORANGE if self.pending_image is None else theme.TEXT_MUTED))
+        self.composer_changed()
 
     # The chat's key
     def on_show(self) -> None:
@@ -425,13 +518,26 @@ class ChatScreen(Screen):
         s = self.app.state
         value = self.composed()
         self.placeholder.set_visible(not value)
-        self.hint.set_text(chat_words.compose_hint(self.transport, value, self.everyone, s.mesh_connected(), s.modem_connected()))
-        ready = chat_words.can_send(self.transport, value) and not self.sending
+        if self.lane == "reticulum":
+            peers = s.lxmf_peers
+            self.hint.set_text(chat_words.lxmf_hint(chat_words.lxmf_announced(self.key, peers), chat_words.lxmf_known(self.key, peers)))
+        else:
+            self.hint.set_text(chat_words.compose_hint(self.transport, value, self.everyone, s.mesh_connected(), s.modem_connected()))
+        audio_bytes, image_bytes = len(self.pending_audio or b""), len(self.pending_image or b"")
+        note = att_words.note(self.transport, audio_bytes, self.pending_audio_ms, image_bytes)
+        self.policy.set_text(note or "")
+        self.policy.set_visible(bool(note))
+        paint(self.policy, theme.TEXT_SECONDARY if att_words.carries(self.transport) else theme.AMBER)
+        ready = chat_words.can_send(self.transport, value) if self.lane != "reticulum" else att_words.can_send(self.transport, value, self.has_attachments())
+        ready = ready and att_words.fits(audio_bytes, image_bytes) and not self.sending
         self.send_button.set_sensitive(ready)
         self.send_button.set_child(icon("filled-send", 24, theme.SIGNAL_ORANGE if ready else theme.TEXT_MUTED))
 
     def send(self) -> None:
         value = self.composed().strip()
+        if self.lane == "reticulum":
+            self.send_lxmf(value)
+            return
         if not chat_words.can_send(self.transport, value) or self.sending:
             return
         body = {"text": value}
@@ -464,6 +570,39 @@ class ChatScreen(Screen):
             self.app.poller.poll_now()
 
         api.fetch("/api/messages/send", sent, method="POST", body=body)
+
+    def send_lxmf(self, value: str) -> None:
+        """A Reticulum message through the Bridge's POST /api/lxmf/send, the note and the photo
+        in its fields (MESHSAT-1735); the row shows at once from this app's own record and
+        plays from memory until the Bridge files its own."""
+        audio, image = self.pending_audio, self.pending_image
+        if not att_words.can_send(self.transport, value, self.has_attachments()) or not att_words.fits(len(audio or b""), len(image or b"")) or self.sending:
+            return
+        body = att_words.send_body(chat_words.lxmf_hash(self.key), value, audio, att_words.AUDIO_OPUS_OGG, image, att_words.IMAGE_WEBP)
+        self.sending = True
+        self.composer_changed()
+        me = (self.app.state.bridge or {}).get("node_id")
+
+        def sent(answer: api.Answer) -> None:
+            self.sending = False
+            if not answer.ok:
+                self.composer_changed()
+                self.app.toast(answer.error or "The message did not go.")
+                return
+            self.buffer.set_text("")
+            record = api.record_sent(value, self.key, "reticulum", me)
+            items = []
+            if image:
+                items.append({"kind": att_words.KIND_IMAGE, "mode": 0, "format": att_words.IMAGE_WEBP, "size": len(image), "data": image})
+            if audio:
+                items.append({"kind": att_words.KIND_AUDIO, "mode": att_words.AUDIO_OPUS_OGG, "format": "", "size": len(audio), "data": audio})
+            if items:
+                media.CACHE.put_pending(record["id"], items)
+            self.pending_audio, self.pending_audio_ms, self.pending_image = None, 0, None
+            self.show_pending()
+            self.app.poller.poll_now()
+
+        api.fetch("/api/lxmf/send", sent, method="POST", body=body, timeout=30.0)
 
     def update(self, s: api.State) -> None:
         me = (s.bridge or {}).get("node_id")
@@ -511,16 +650,32 @@ class ChatScreen(Screen):
             top.append(mark)
         top.append(icon_button("outlined-content-copy", lambda t=m.get("decoded_text", ""): self.app.copy(t), 12, theme.TEXT_MUTED, tooltip="Copy", small=True))
         bubble.append(top)
-        body = text(m.get("decoded_text", ""), "body-medium", wrap=True)
-        body.set_margin_top(theme.dp(4))
-        body.set_selectable(True)
-        bubble.append(body)
+        if m.get("decoded_text") or lane != "reticulum":
+            body = text(m.get("decoded_text", ""), "body-medium", wrap=True)
+            body.set_margin_top(theme.dp(4))
+            body.set_selectable(True)
+            bubble.append(body)
+        if lane == "reticulum":
+            # The voice note and the photo under the text, asked of the Bridge once per message
+            # and kept (MESHSAT-1735); a text-less message shows the card alone.
+            extras = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+            bubble.append(extras)
+            media.CACHE.listing(m, lambda atts, box=extras, row=m: self.show_attachments(box, row, atts))
         # Android's fillMaxWidth(0.8f): four of five equal columns, the fifth empty.
         row = Gtk.Grid(column_homogeneous=True)
         row.attach(bubble, 1 if mine else 0, 0, 4, 1)
         filler = Gtk.Box()
         row.attach(filler, 0 if mine else 4, 0, 1, 1)
         return row
+
+    def show_attachments(self, box: Gtk.Box, m: dict, attachments: list) -> None:
+        """The cards of a message's attachments, in the message's order."""
+        clear(box)
+        for a in attachments:
+            if a.get("kind") == att_words.KIND_AUDIO:
+                box.append(voicenotes.VoiceNoteCard(self.app, m.get("id"), a, media.CACHE))
+            elif a.get("kind") == att_words.KIND_IMAGE:
+                box.append(voicenotes.PhotoCard(self.app, m.get("id"), a, media.CACHE))
 
 
 def sealed(chat: dict) -> bool:
@@ -547,6 +702,8 @@ def detail_of(key: str) -> str | None:
         return "By satellite, through Rock7 to the Hub"
     if key.startswith("sms:"):
         return None
+    if key.startswith(chat_words.LXMF_PREFIX):
+        return chat_words.lxmf_detail(key)
     return key
 
 
@@ -568,7 +725,7 @@ def new_message(app) -> None:
         inner = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=theme.dp(12))
         dot = Gtk.Box()
         dot.add_css_class("new-dot")
-        dot.add_css_class({"satellite": "bg-iridium", "mesh": "bg-mesh"}.get(lane, "bg-mesh"))
+        dot.add_css_class({"satellite": "bg-iridium", "mesh": "bg-mesh", "reticulum": "bg-signal-orange"}.get(lane, "bg-mesh"))
         dot.set_valign(Gtk.Align.CENTER)
         inner.append(dot)
         texts = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
@@ -586,6 +743,14 @@ def new_message(app) -> None:
     for n in sorted(s.others(), key=lambda n: -(n.get("last_heard") or 0))[:20]:
         if n.get("user_id"):
             row(name_of(n["user_id"], s), f"On the mesh, {n['user_id']}", "mesh", "chat/" + n["user_id"])
+    # The Reticulum (LXMF) peers the node has heard, newest first (MESHSAT-1553)
+    for p in sorted(s.lxmf_peers, key=lambda p: str(p.get("last_seen") or ""), reverse=True)[:20]:
+        if chat_words.is_lxmf(str(p.get("dest_hash") or "")):
+            title, detail = chat_words.lxmf_peer_row(p)
+            row(title, detail, "reticulum", "chat/" + chat_words.lxmf_key(str(p["dest_hash"]).lower()))
+    address = Field(chat_words.LXMF_ADDRESS_LABEL)
+    address.set_margin_top(theme.dp(8))
+    rows.append(address)
     number = Field(chat_words.NUMBER_LABEL, purpose=Gtk.InputPurpose.PHONE)
     number.set_margin_top(theme.dp(8))
     rows.append(number)
@@ -593,17 +758,30 @@ def new_message(app) -> None:
     scroll.set_child(rows)
     sheet.body.append(scroll)
 
-    def text_it() -> None:
-        if chat_words.number_ok(number.text):
+    def go_it() -> None:
+        """One confirm button, as Android's: an address that reads well wins over a number."""
+        clean = chat_words.clean_lxmf_address(address.text)
+        if chat_words.is_lxmf(clean):
+            sheet.close()
+            app.open_route("chat/" + chat_words.lxmf_key(clean))
+        elif chat_words.number_ok(number.text):
             sheet.close()
             app.open_route("chat/sms:" + chat_words.number_of(number.text))
 
     cancel = sheet.button("Cancel", sheet.close)
     cancel.add_css_class("muted-text")
-    go = sheet.button(chat_words.TEXT_NUMBER, text_it)
+    go = sheet.button(chat_words.TEXT_NUMBER, go_it)
     go.set_sensitive(False)
-    number.on_change = lambda value: go.set_sensitive(chat_words.number_ok(value))
-    number.entry.connect("activate", lambda *_: text_it())
+
+    def changed(*_) -> None:
+        lxmf_ok = chat_words.is_lxmf(chat_words.clean_lxmf_address(address.text))
+        go.set_label(chat_words.MESSAGE_THIS_ADDRESS if lxmf_ok else chat_words.TEXT_NUMBER)
+        go.set_sensitive(lxmf_ok or chat_words.number_ok(number.text))
+
+    address.on_change = changed
+    number.on_change = changed
+    address.entry.connect("activate", lambda *_: go_it())
+    number.entry.connect("activate", lambda *_: go_it())
     sheet.present()
 
 

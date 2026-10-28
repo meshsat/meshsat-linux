@@ -157,5 +157,5 @@ class SentLog:
 def sent_record(text: str, to: str | None, lane: str, me: str | None, everyone: str = "!ffffffff") -> dict:
     """A text this app just sent, in the shape of the Bridge's stored messages."""
     return {"id": -int(time.time() * 1000), "from_node": me or "", "to_node": to or everyone, "portnum": 1, "portnum_name": "TEXT_MESSAGE_APP",
-            "decoded_text": text, "rx_time": int(time.time()), "direction": "tx", "transport": {"satellite": "iridium", "sms": "sms"}.get(lane, "radio"),
+            "decoded_text": text, "rx_time": int(time.time()), "direction": "tx", "transport": {"satellite": "iridium", "sms": "sms", "reticulum": "reticulum"}.get(lane, "radio"),
             "delivery_status": "sent", "local": True}

@@ -19,6 +19,7 @@ from . import __version__, api, flows, maptiles, routes, sosflow, store, theme, 
 from .home import HomeScreen  # noqa: E402
 from .mapview import MapScreen  # noqa: E402
 from .messages import ChatScreen, MessagesScreen, name_of  # noqa: E402
+from .model import chat as chat_words  # noqa: E402
 from .model import dashboard, words  # noqa: E402
 from .model.home import MODEM_SEEN  # noqa: E402
 from .people import PeopleScreen  # noqa: E402
@@ -422,6 +423,11 @@ class MeshSatApp(Adw.Application):
             elif peer.startswith("sms:"):
                 # Peers.displayName: a phone number is named by itself, a contact's too
                 self.push(ChatScreen(self, peer, peer[4:], "sms"), "SMS")
+            elif peer.startswith(chat_words.LXMF_PREFIX) or chat_words.is_lxmf(peer):
+                # A Reticulum (LXMF) address: named as the peer announced itself, else by its first characters
+                key = peer if peer.startswith(chat_words.LXMF_PREFIX) else chat_words.lxmf_key(peer.lower())
+                title = chat_words.lxmf_name(key, self.state.lxmf_peers)
+                self.push(ChatScreen(self, key, title, "reticulum"), title)
             else:
                 self.push(ChatScreen(self, peer, name_of(peer, self.state), "mesh"), name_of(peer, self.state))
             return

@@ -47,9 +47,17 @@ def inbound_text(event: dict) -> dict | None:
         text = data.get("text") or data.get("decoded_text") or event.get("message") or ""
         if not text:
             return None
-        source = str(data.get("source") or data.get("interface") or data.get("gateway") or "")
-        lane = "sms" if "cell" in source or "sms" in source else "satellite" if "irid" in source or "sbd" in source or "imt" in source else "mesh"
-        return {"lane": lane, "from": data.get("from") or data.get("sender") or data.get("imei") or "", "text": text}
+        source = str(data.get("source") or data.get("interface") or data.get("gateway") or data.get("iface") or "")
+        sender = str(data.get("from") or data.get("sender") or data.get("imei") or "")
+        if "sms" in source or "cell" in source:
+            lane = "sms"
+        elif "irid" in source or "sbd" in source or "imt" in source:
+            lane = "satellite"
+        elif "lxmf" in source or "rns" in source or "reticulum" in source or sender.startswith("lxmf:"):
+            lane = "reticulum"
+        else:
+            lane = "mesh"
+        return {"lane": lane, "from": sender, "text": text}
     if kind == "sms_received":
         text = data.get("text") or event.get("message") or ""
         if not text:

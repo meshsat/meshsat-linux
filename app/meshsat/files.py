@@ -87,7 +87,11 @@ def pick_file(app, title: str, on_picked, patterns=()) -> None:
 def save(app, name: str, text: str, on_saved) -> None:
     """A copy of `text` where the person chooses, first named `name`; `on_saved(True)` once
     written, `on_saved(False)` when it could not be, `on_saved(None)` when they chose nothing."""
-    data = text.encode("utf-8")
+    save_bytes(app, name, text.encode("utf-8"), on_saved)
+
+
+def save_bytes(app, name: str, data: bytes, on_saved) -> None:
+    """`save` for bytes as they are (a voice note this phone cannot play)."""
     if system.TEST:
         folder = os.environ.get("MESHSAT_APP_SAVE_DIR", "")
         path = os.path.join(folder, name) if folder else ""

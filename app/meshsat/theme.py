@@ -55,6 +55,9 @@ TAG_MESH = _over(MESH, SURFACE, 0.15)
 TAG_SATELLITE = _over(IRIDIUM, SURFACE, 0.15)
 TAG_HUB = _over(HUB, SURFACE, 0.15)
 TAG_SMS = _over(SMS, SURFACE, 0.15)
+# A Reticulum (LXMF) conversation is MeshSatTeal on Android (MessagesScreen.kt:410), which is
+# Signal Orange in both apps' palettes.
+TAG_RETICULUM = _over(SIGNAL_ORANGE, SURFACE, 0.15)
 # Not a Color.kt token: the literal red of SettingsScreen's "Restart" and of CredentialsScreen.
 SOFT_RED = "#E57373"
 
@@ -68,7 +71,7 @@ NIGHT_MATRIX = (0.24, 0.47, 0.09, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1
 # turned by 180 degrees so water stays blue and parks green, then toned to the app's surfaces.
 DARK_TILES_MATRIX = (0.5051, -1.2584, -0.1267, 0, 234.40, -0.3749, -0.3784, -0.1267, 0, 234.40, -0.3749, -1.2584, 0.7533, 0, 234.40, 0, 0, 0, 1, 0)
 
-LANES = {"satellite": IRIDIUM, "mesh": MESH, "sms": SMS, "hub": HUB, "location": GREEN, "radio": OFF_WHITE}
+LANES = {"satellite": IRIDIUM, "mesh": MESH, "sms": SMS, "hub": HUB, "location": GREEN, "radio": OFF_WHITE, "reticulum": SIGNAL_ORANGE}
 
 # Every token, by name and by value: colours are given to widgets as CSS classes (.fg-x, .bg-x),
 # never as per-widget providers, which GTK 4 does not apply to symbolic icons.
@@ -201,6 +204,7 @@ button label.body-small {{ font-size: {px(12)}; font-weight: 400; }}
 .tag-satellite {{ background-color: {TAG_SATELLITE}; color: {IRIDIUM}; }}
 .tag-hub {{ background-color: {TAG_HUB}; color: {HUB}; }}
 .tag-sms {{ background-color: {TAG_SMS}; color: {SMS}; }}
+.tag-reticulum {{ background-color: {TAG_RETICULUM}; color: {SIGNAL_ORANGE}; }}
 .count {{ background-color: {SURFACE_LIGHT}; border-radius: {px(4)}; padding: {px(2)} {px(6)}; font-size: {px(12)}; font-weight: 400; color: {TEXT_SECONDARY}; }}
 .filled {{ background-color: {SIGNAL_ORANGE}; border-radius: {px(20)}; padding: 0 {px(24)}; min-height: {px(40)}; border: none; box-shadow: none; }}
 .filled label {{ color: {ON_PRIMARY}; font-size: {px(14)}; font-weight: 500; }}
@@ -242,6 +246,15 @@ entry > text > placeholder {{ color: {TEXT_SECONDARY}; opacity: 1; }}
 .state-tag.tint-satellite {{ background-color: alpha({IRIDIUM}, 0.15); }}
 .state-tag.tint-sms {{ background-color: alpha({SMS}, 0.15); }}
 .state-tag.tint-hub {{ background-color: alpha({HUB}, 0.15); }}
+.state-tag.tint-reticulum {{ background-color: alpha({SIGNAL_ORANGE}, 0.15); }}
+/* The voice notes and photos of a chat (VoiceNote.kt, MESHSAT-1735): the 48 dp round microphone on
+   SurfaceLight, red at 25 % while it records; the rows of a note and a photo waiting to go, and
+   the card of a received note, on SurfaceLight with 8 dp corners; a photo with 8 dp corners. */
+.record {{ background-color: {SURFACE_LIGHT}; border: none; box-shadow: none; padding: 0; min-width: {px(48)}; min-height: {px(48)}; border-radius: {px(24)}; }}
+.record.holding {{ background-color: alpha({RED}, 0.25); }}
+.pending-row {{ background-color: {SURFACE_LIGHT}; border-radius: {px(8)}; padding: {px(2)} {px(8)}; }}
+.note-card {{ background-color: {SURFACE_LIGHT}; border: 0.5px solid {BORDER}; border-radius: {px(8)}; padding: {px(4)} {px(8)}; }}
+.photo {{ border-radius: {px(8)}; }}
 .score-tag {{ border-radius: {px(6)}; padding: {px(4)} {px(10)}; }}
 .lane-dot {{ border-radius: {px(5)}; }}
 .divider {{ background-color: {BORDER}; min-height: 1px; }}

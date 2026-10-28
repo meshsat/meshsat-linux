@@ -125,6 +125,7 @@ def base() -> dict:
         "GET /api/keys/stats": {"active": 0, "retired": 0, "revoked": 0, "enabled": False},
         "GET /api/cellular/status": {"connected": False, "sim_state": "NOT_INSERTED", "registration": "", "operator": "", "model": "", "phone_number": "", "sms_sent": 0, "sms_received": 0},
         "GET /api/cellular/sms?limit=200": [],
+        "GET /api/lxmf/peers": [],  # no Reticulum peer heard
         "GET /api/mesh/ble/status": {"mode": "off", "address": "", "name": "", "connected": False, "pairing_pending": False, "satellite_pipe": False},
         "GET /api/config": rec("config", {"config_6": {"7": 3, "2": 0, "8": 3, "10": 0}, "channel_0": {"2": {"3": "msat-ttc-01"}}}),
         "GET /api/aprs/status": {"connected": False},
@@ -503,7 +504,55 @@ def bluetooth_node_modem() -> dict:
     return routes
 
 
-SCENARIOS = {"fresh": fresh, "mesh-only": mesh_only, "one-node": one_node, "nameless-node": nameless_node, "satellite-3-bars": satellite_3_bars, "sim-ready": sim_ready,
+# Reticulum (LXMF) peers and messages (MESHSAT-1735): made-up addresses, never a real node's.
+LXMF_PEER = "1234567890abcdef" * 2  # announced as "Sideband test"
+LXMF_OTHER = "fedcba0987654321" * 2  # heard, no name
+LXMF_ME = "0" * 32
+
+
+def lxmf_message(id_: int, peer: str, text: str, when: int, direction: str = "rx") -> dict:
+    """An LXMF message as the Bridge's rnsstack files it: the ends "lxmf:<hash>", port LXMF,
+    transport reticulum; the text may be empty for a note or a photo alone."""
+    me, other = "lxmf:" + LXMF_ME, "lxmf:" + peer
+    return {"id": id_, "from_node": other if direction == "rx" else me, "to_node": me if direction == "rx" else other, "portnum": 1, "portnum_name": "LXMF",
+            "decoded_text": text, "rx_time": when, "rx_snr": 0, "rx_rssi": 0, "direction": direction, "transport": "reticulum",
+            "delivery_status": "delivered" if direction == "tx" else ""}
+
+
+def opus_note_b64(ms: int) -> str:
+    """A playable Ogg Opus note of `ms` of silence, base64, from the app's own Ogg writer."""
+    import base64
+    import sys
+
+    sys.path.insert(0, os.path.join(HERE, "..", "..", "app"))
+    from meshsat.model import attachments  # noqa: PLC0415
+
+    return base64.b64encode(attachments.ogg_opus_write(attachments.silent_opus_packets(ms))).decode("ascii")
+
+
+def lxmf() -> dict:
+    """Two Reticulum peers, one named; a chat with the named one holding a text, a voice note
+    without text (Opus, 2 s), a Codec2 note (700C, 1 s: 25 frames of 4 bytes) and a photo
+    (a 2x2 WebP), and a text this phone sent."""
+    import base64
+
+    routes = base()
+    routes["GET /api/lxmf/peers"] = [{"dest_hash": LXMF_PEER, "display_name": "Sideband test", "stamp_cost": 0, "hops": 1, "interface": "tcp_rns_0", "last_seen": stamp(120)},
+                                     {"dest_hash": LXMF_OTHER, "display_name": "", "stamp_cost": 0, "hops": 3, "interface": "tcp_rns_0", "last_seen": stamp(3600)}]
+    messages = list(routes["GET /api/messages?limit=200"]["messages"])
+    messages = [lxmf_message(14, LXMF_PEER, "", NOW - 60), lxmf_message(13, LXMF_PEER, "", NOW - 120), lxmf_message(12, LXMF_PEER, "", NOW - 180),
+                lxmf_message(11, LXMF_PEER, "hello over reticulum", NOW - 240), lxmf_message(10, LXMF_PEER, "sent from the phone", NOW - 400, "tx")] + messages
+    routes["GET /api/messages?limit=200"] = {"messages": messages}
+    routes["GET /api/messages/stats"] = {"today_text": 4, "total": len(messages)}
+    # A 2x2 lossless WebP (three grey pixels and one orange), 46 bytes, as Pillow 12 wrote it
+    webp = base64.b64encode(bytes.fromhex("5249464626000000574542505650384c1a0000002f014000000ff08bb0fbe91f036cfe63090a0104404113d1ff68")).decode("ascii")
+    routes["_lxmf_attachments"] = {14: [{"kind": "audio", "mode": 0x10, "format": "", "data_b64": opus_note_b64(2000)}],
+                                   13: [{"kind": "audio", "mode": 0x03, "format": "", "data_b64": base64.b64encode(bytes(range(100))).decode("ascii")}],
+                                   12: [{"kind": "image", "mode": 0, "format": "webp", "data_b64": webp}]}
+    return routes
+
+
+SCENARIOS = {"fresh": fresh, "mesh-only": mesh_only, "one-node": one_node, "nameless-node": nameless_node, "satellite-3-bars": satellite_3_bars, "sim-ready": sim_ready, "lxmf": lxmf,
              "all-four": all_four, "hub-set-up": hub_set_up, "integrations": integrations, "integrations-empty": integrations_empty, "sos-active": sos_active, "bluetooth-pairing": bluetooth_pairing, "bluetooth-connected": bluetooth_connected,
              "queue-busy": queue_busy, "advanced": advanced, "messaging": messaging, "messaging-encoder": lambda: messaging(True), "zones": zones, "zones-down": zones_down,
              "bluetooth-node-modem": bluetooth_node_modem, "home-cards": home_cards, "bluetooth-off": bluetooth_off, "bluetooth-off-sos": lambda: {**bluetooth_off(), "_sos": sos_active()["_sos"]}}

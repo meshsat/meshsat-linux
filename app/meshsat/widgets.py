@@ -501,7 +501,7 @@ class Chip(Gtk.Button):
 
 class Tag(Gtk.Label):
     def __init__(self, lane: str):
-        super().__init__(label={"mesh": "Mesh", "satellite": "Satellite", "hub": "Hub", "sms": "SMS"}.get(lane, lane))
+        super().__init__(label={"mesh": "Mesh", "satellite": "Satellite", "hub": "Hub", "sms": "SMS", "reticulum": "Reticulum"}.get(lane, lane))
         self.add_css_class("tag")
         self.add_css_class(f"tag-{lane}")
         self.set_valign(Gtk.Align.CENTER)

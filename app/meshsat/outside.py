@@ -14,11 +14,55 @@ def signal_icon(bars: int) -> str:
 
 def message_notification(item: dict) -> tuple[str, str]:
     """(title, text) for a text that arrived: "Mesh: !a1b3c2ec", "Iridium: 300434…",
-    "SMS: +316…", with the text under it."""
+    "SMS: +316…", "Reticulum: <name or the address's first characters>", with the text under
+    it; a Reticulum message with no text says what it carries ("Voice note", "Photo"), as
+    Android's notification does (GatewayService.kt, MESHSAT-1735)."""
     lane = item.get("lane")
     sender = item.get("from") or "?"
+    if lane == "reticulum":
+        who = reticulum_sender(sender, item.get("peers"))
+        return f"Reticulum: {who}", item.get("text") or attachment_words(item.get("attachments") or [])
     title = {"satellite": f"Iridium: {sender}", "sms": f"SMS: {sender}"}.get(lane, f"Mesh: {sender}")
     return title, item.get("text", "")
+
+
+def reticulum_sender(sender: str, peers: list | None = None) -> str:
+    """Who an LXMF message came from, as Android names it: the display name the peer
+    announced when the node has heard it, else the first eight characters of its address
+    (the Bridge files it as "lxmf:<hash>")."""
+    address = (sender or "").strip()
+    if address.startswith("lxmf:"):
+        address = address[5:]
+    for p in peers or []:
+        if str(p.get("dest_hash") or "").lower() == address.lower() and (p.get("display_name") or "").strip():
+            return str(p["display_name"]).strip()
+    return address[:8] if len(address) == 32 else address or "?"
+
+
+def attachment_words(attachments: list) -> str:
+    """What a text-less message carries, in the message's order: "Voice note", "Photo",
+    "Photo and Voice note"."""
+    names = []
+    for a in attachments:
+        kind = a.get("kind") if isinstance(a, dict) else a
+        names.append("Voice note" if kind == "audio" else "Photo")
+    return " and ".join(names)
+
+
+def new_reticulum_rows(rows: list, last_id: int | None) -> tuple:
+    """The Reticulum messages that arrived since the last look, out of the Bridge's message
+    list (newest first): (the rows to tell about, oldest first; the new watermark). The first
+    look only sets the watermark: nothing stored before the notifier started is told. No
+    event announces an LXMF message (a voice note without text least of all), so the notifier
+    reads the list."""
+    ids = [int(r.get("id") or 0) for r in rows if isinstance(r, dict)]
+    top = max(ids, default=0)
+    if last_id is None:
+        return [], top
+    fresh = [r for r in rows if isinstance(r, dict) and int(r.get("id") or 0) > last_id and r.get("direction") == "rx"
+             and r.get("transport") in ("reticulum", "rns", "lxmf")]
+    fresh.sort(key=lambda r: int(r.get("id") or 0))
+    return fresh, max(top, last_id)
 
 
 def failure_notification(event: dict) -> tuple[str, str] | None:

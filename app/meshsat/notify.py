@@ -117,6 +117,7 @@ class Notifier:
         self.status = outside.status(None, None, None, [])
         self.sos_active = False
         self.signal_shown = None
+        self.messages_seen = None  # the newest message id looked at, for the Reticulum messages no event announces
         self.tray_registered = False
         self.notifications = Gio.DBusProxy.new_sync(self.bus, Gio.DBusProxyFlags.DO_NOT_LOAD_PROPERTIES, None, "org.freedesktop.Notifications",
                                                     "/org/freedesktop/Notifications", "org.freedesktop.Notifications", None)
@@ -210,10 +211,7 @@ class Notifier:
     def on_event(self, event: dict) -> bool:
         item = events.inbound_text(event)
         if item is not None:
-            if self.seen.new(item["from"], item["text"]) and not app_in_front():
-                self.counter += 1
-                title, text = outside.message_notification(item)
-                self.post(f"message-{self.counter}", title, text, actions=(("default", "Open"),))
+            self.tell(item)
             return False
         failure = outside.failure_notification(event)
         if failure is not None:
@@ -230,6 +228,7 @@ class Notifier:
         modem = signal = sos = None
         nodes = []
         ble = None
+        arrived = []
         try:
             bridge = api.polled("/api/status")
             if bridge is not None:
@@ -237,12 +236,46 @@ class Notifier:
                 signal = api.polled("/api/iridium/signal")
                 sos = api.polled("/api/sos/status")
                 nodes = (api.polled("/api/nodes") or {}).get("nodes") or []
+                arrived = self.reticulum_arrivals()
         except api.Throttled:
             return  # the Bridge asked for a pause: the notifications stay as they are
         hardware = api.hardware()
         if bridge is not None and hardware.get("node") == "bluetooth":
             ble = api.ble_status()
         GLib.idle_add(self.apply, bridge, modem, signal, sos, nodes, hardware, ble)
+        for item in arrived:
+            GLib.idle_add(self.tell, item)
+
+    def reticulum_arrivals(self) -> list:
+        """The Reticulum (LXMF) messages that arrived since the last poll, as items for the
+        notification: no event of the Bridge announces them (a voice note without text least
+        of all), so the newest messages are read each poll; a text-less one is named by what
+        it carries, from the Bridge's attachment list (MESHSAT-1735)."""
+        rows = (api.polled("/api/messages?limit=20") or {}).get("messages") or []
+        fresh, self.messages_seen = outside.new_reticulum_rows(rows, self.messages_seen)
+        if not fresh:
+            return []
+        peers = api.polled("/api/lxmf/peers")
+        out = []
+        for row in fresh:
+            attachments = []
+            if not (row.get("decoded_text") or "").strip():
+                listed = api.get(f"/api/lxmf/messages/{row.get('id')}/attachments") or {}
+                attachments = [a for a in (listed.get("attachments") or []) if isinstance(a, dict)] if isinstance(listed, dict) else []
+                if not attachments:
+                    continue  # nothing to say about it
+            out.append({"lane": "reticulum", "from": row.get("from_node") or "", "text": row.get("decoded_text") or "", "attachments": attachments,
+                        "peers": peers if isinstance(peers, list) else []})
+        return out
+
+    def tell(self, item: dict) -> bool:
+        """One notification for a text (or a note, or a photo) that arrived, unless the app is
+        in front or it was told about already."""
+        if self.seen.new(item.get("from", ""), item.get("text") or outside.attachment_words(item.get("attachments") or [])) and not app_in_front():
+            self.counter += 1
+            title, text = outside.message_notification(item)
+            self.post(f"message-{self.counter}", title, text, actions=(("default", "Open"),))
+        return False
 
     def apply(self, bridge, modem, signal, sos, nodes, hardware, ble) -> bool:
         shown = outside.signal_notification(modem, signal)

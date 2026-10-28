@@ -59,6 +59,28 @@ class WordsTest(unittest.TestCase):
         self.assertEqual(outside.message_notification({"lane": "satellite", "from": "300434061234560", "text": "x"})[0], "Iridium: 300434061234560")
         self.assertEqual(outside.message_notification({"lane": "sms", "from": "+31612345678", "text": "x"})[0], "SMS: +31612345678")
 
+    def test_a_reticulum_message_is_named_by_its_peer_and_a_note_by_what_it_carries(self):
+        peer = "1234567890abcdef" * 2
+        peers = [{"dest_hash": peer, "display_name": "Sideband test"}]
+        self.assertEqual(outside.message_notification({"lane": "reticulum", "from": "lxmf:" + peer, "text": "hello"}), ("Reticulum: 12345678", "hello"))
+        self.assertEqual(outside.message_notification({"lane": "reticulum", "from": "lxmf:" + peer, "text": "hello", "peers": peers}), ("Reticulum: Sideband test", "hello"))
+        self.assertEqual(outside.message_notification({"lane": "reticulum", "from": peer, "text": "", "attachments": [{"kind": "audio"}]}), ("Reticulum: 12345678", "Voice note"))
+        self.assertEqual(outside.message_notification({"lane": "reticulum", "from": peer, "text": "", "attachments": [{"kind": "image"}]})[1], "Photo")
+        self.assertEqual(outside.message_notification({"lane": "reticulum", "from": peer, "text": "", "attachments": [{"kind": "image"}, {"kind": "audio"}]})[1], "Photo and Voice note")
+        self.assertEqual(outside.attachment_words(["audio", "image"]), "Voice note and Photo")
+        self.assertEqual(outside.reticulum_sender("", None), "?")
+
+    def test_the_reticulum_messages_since_the_last_look(self):
+        rows = [{"id": 14, "direction": "rx", "transport": "reticulum", "decoded_text": ""}, {"id": 13, "direction": "tx", "transport": "reticulum", "decoded_text": "mine"},
+                {"id": 12, "direction": "rx", "transport": "reticulum", "decoded_text": "hi"}, {"id": 11, "direction": "rx", "transport": "radio", "decoded_text": "mesh"}]
+        fresh, mark = outside.new_reticulum_rows(rows, None)
+        self.assertEqual((fresh, mark), ([], 14), "the first look only sets the watermark")
+        fresh, mark = outside.new_reticulum_rows(rows, 11)
+        self.assertEqual([r["id"] for r in fresh], [12, 14], "received Reticulum rows above the mark, oldest first; a sent one and a mesh one are not told")
+        self.assertEqual(mark, 14)
+        self.assertEqual(outside.new_reticulum_rows([], 14), ([], 14), "an empty list keeps the mark")
+        self.assertEqual(outside.new_reticulum_rows(rows, 14), ([], 14))
+
     def test_signal(self):
         self.assertIsNone(outside.signal_notification(None, None))
         self.assertIsNone(outside.signal_notification({"connected": False}, {"bars": 3}))

@@ -263,7 +263,7 @@
    "state": "verified",
    "test": "h_messages::search_filters_all_messages",
    "capture": "messages",
-   "note": "search and the MessageCard rows of All Messages since 0.7.0"
+   "note": "search and the MessageCard rows of All Messages since 0.7.0; the Reticulum filter chip and the Reticulum chats, keyed lxmf:<hash> and named as the peer announced itself (1.1.0)"
   },
   {
    "id": "messages.new-message",
@@ -274,7 +274,7 @@
    "state": "verified",
    "test": "h_messages::new_message_to_a_typed_number",
    "capture": "new-message-number",
-   "note": "Android's rows (the lane's dot, title, detail), the 20 nodes heard most recently, and the phone number in the same dialog with 'Text this number' only for a number (0.12.0; the second sheet of 0.5.1 is gone)"
+   "note": "Android's rows (the lane's dot, title, detail), the 20 nodes heard most recently, and the phone number in the same dialog with 'Text this number' only for a number (0.12.0; the second sheet of 0.5.1 is gone); the Reticulum peers the node has heard ('By Reticulum, <16>... N hops away') and an address typed or pasted, one confirm button that reads 'Message this address' for one (1.1.0, h_voice::f_new_message_lists_the_peers_and_takes_an_address, not yet run on the phone)"
   },
   {
    "id": "messages.search",
@@ -329,7 +329,7 @@
    "state": "verified",
    "test": "h_chat::the_composer_says_how_the_message_goes",
    "capture": "chat-everyone",
-   "note": "the four placeholders, the six footer lines, the bytes and credits, the 340-byte limit that disables Send; the node-down toast (h_chat::the_mesh_down_refuses_the_send)"
+   "note": "the four placeholders, the six footer lines, the bytes and credits, the 340-byte limit that disables Send; the node-down toast (h_chat::the_mesh_down_refuses_the_send); 'Message by Reticulum' and the three Reticulum lines (LxmfWordsTest, 1.1.0)"
   },
   {
    "id": "chat.ticks",
@@ -1714,6 +1714,90 @@
    "test": "h_sos_position::the_satellite_route_is_a_position_report",
    "capture": "position-report-confirmed",
    "note": "with the phone's fix the test's satellite leg is POST /api/sos/test {satellite, latitude, longitude, altitude}: the Bridge queues Android's 31-byte frame on the modem (MESHSAT-1430), idempotent while it waits, dropped after 30 min; without a fix the test text by satellite, as Android"
+  },
+  {
+   "id": "chat.lane.reticulum",
+   "kind": "behaviour",
+   "android": "ui/Peers.kt (isLxmf, displayName, lxmfName, detail), ui/screens/MessagesScreen.kt:246,410,690,755",
+   "linux": "model/chat.py:lane_of, lxmf_name, lxmf_detail, lxmf_hint; messages.py:conversations, ChatScreen",
+   "modes": "both",
+   "state": "built",
+   "test": "h_voice::a_reticulum_chat_has_the_microphone_and_the_mesh_chat_has_not",
+   "capture": "reticulum-chat",
+   "note": "the Reticulum (LXMF) conversation Android has had since MESHSAT-1553, added with the voice notes (1.1.0): the name the peer announced (GET /api/lxmf/peers) else 'Reticulum <8>', 'By Reticulum (LXMF), <hash>', the LXMF badge, Android's three lines under the box; a send is POST /api/lxmf/send, shown at once from this app's record until the Bridge files its row (merge_lxmf, LxmfWordsTest); the words verified on the runner, the screen built and waiting for the phone"
+  },
+  {
+   "id": "chat.attachments.policy",
+   "kind": "strings",
+   "android": "lxmf/AttachmentPolicy.kt, lxmf/LxAttachments.kt",
+   "linux": "model/attachments.py",
+   "modes": "both",
+   "state": "verified",
+   "test": "PolicyTest.test_the_line_under_the_box",
+   "capture": "source",
+   "note": "carries, note (both lines), canSend, fits, the seconds and sizes as Kotlin formats them, the mode names, the caps (64 KiB, 30 s); the amber line is carried though the buttons are shown on a Reticulum chat only (docs/VOICE_NOTES.md)"
+  },
+  {
+   "id": "chat.attachments.composer",
+   "kind": "card",
+   "android": "ui/components/VoiceNote.kt:RecordNoteButton, PendingAttachments",
+   "linux": "voicenotes.py:RecordButton, pending_audio_row, pending_image_row; messages.py:ChatScreen.pick_photo, send_lxmf; playback.py:Recorder, shrink_photo",
+   "modes": "both",
+   "state": "built",
+   "test": "h_voice::c_a_note_recorded_through_the_test_source_goes_in_the_send_body",
+   "capture": "note-sent",
+   "note": "the microphone held to record (GStreamer opusenc ! oggmux, mono 48 kHz 16 kbit/s, 30 s), a click to start and a click to stop for a screen reader and the tests, Android's toasts; the photo through GdkPixbuf's WebP saver or Pillow to a 640 px WebP under the cap minus the note; the pending rows with play and remove; one of each; the send body as the Bridge takes it (SendTest); no transcript; waiting for the phone"
+  },
+  {
+   "id": "chat.attachments.bubbles",
+   "kind": "card",
+   "android": "ui/components/VoiceNote.kt:VoiceNoteCard, PhotoCard",
+   "linux": "voicenotes.py:VoiceNoteCard, PhotoCard; media.py:Attachments; messages.py:ChatScreen.show_attachments",
+   "modes": "both",
+   "state": "built",
+   "test": "h_voice::b_a_received_note_a_codec2_note_and_a_photo_show_their_cards",
+   "capture": "reticulum-cards",
+   "note": "the list asked once per message and kept, a 404 and an empty list too (CacheTest); 'Voice note, 4.2 s, 7 KB' with play/stop through playbin on a file under $XDG_RUNTIME_DIR; a Codec2 note named with the 'playback not supported' line and, this edition's own, 'Save a copy'; a photo inline, at most 320 dp tall, else 'Photo (webp, 3 KB) could not be shown.'; waiting for the phone"
+  },
+  {
+   "id": "chat.attachments.codec2",
+   "kind": "behaviour",
+   "android": "lxmf/LxAttachments.kt (the names; no decoder on Android)",
+   "linux": "model/attachments.py:CODEC2_GEOMETRY, codec2_frames; playback.py:decode_codec2, can_play",
+   "modes": "both",
+   "state": "verified",
+   "test": "ModesTest.test_the_codec2_frame_table",
+   "capture": "source",
+   "note": "a Codec2 note plays where pycodec2 is importable (the packed frames at the mode's frame size, 8 kHz 16-bit mono, played as a WAV), which Android never does; without it the same card as Android's; 450 and 450PWB never"
+  },
+  {
+   "id": "chat.attachments.transcript",
+   "kind": "card",
+   "android": "ui/components/VoiceNote.kt:TranscriptProposal, audio/SpeechTranscriber.kt",
+   "linux": "",
+   "modes": "both",
+   "state": "excluded",
+   "note": "Linux phones have no platform speech recogniser; 'Heard: ...', 'Use as text' and 'Discard' are not ported"
+  },
+  {
+   "id": "chat.lxmf.method-chips",
+   "kind": "card",
+   "android": "ui/screens/MessagesScreen.kt:654-670 (Direct, Auto, Opportunistic, Propagated)",
+   "linux": "",
+   "modes": "both",
+   "state": "excluded",
+   "note": "the Bridge's POST /api/lxmf/send takes no method: its router sends direct, as a resource for a message with attachments"
+  },
+  {
+   "id": "notification.reticulum",
+   "kind": "notification",
+   "android": "GatewayService.kt:2387 (\"Reticulum: <name>\", \"Voice note\", \"Photo\")",
+   "linux": "outside.py:message_notification, reticulum_sender, attachment_words, new_reticulum_rows; notify.py:reticulum_arrivals",
+   "modes": "both",
+   "state": "verified",
+   "test": "WordsTest.test_a_reticulum_message_is_named_by_its_peer_and_a_note_by_what_it_carries",
+   "capture": "source",
+   "note": "no event of the Bridge announces an LXMF message, so the notifier reads the newest messages every poll and tells about the Reticulum rows above its watermark; a text-less row is named from the attachment list"
   }
  ]
 }
